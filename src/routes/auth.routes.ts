@@ -2,7 +2,8 @@ import { Router } from "express"
 import bcrypt from "bcryptjs"
 import { prisma } from "../app"
 
-const router = Router()
+const router = Router();
+
 
 // Register endpoint
 router.post("/register", async (req, res) => {
@@ -45,6 +46,7 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ message: "Internal server error" })
   }
 })
+
 
 // Login endpoint
 router.post("/login", async (req, res) => {
