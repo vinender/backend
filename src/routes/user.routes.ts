@@ -1,106 +1,24 @@
-import { Router } from "express"
-import { prisma } from "../app"
+import { Router } from 'express';
+import userController from '../controllers/user.controller';
+import { protect, restrictTo } from '../middleware/auth.middleware';
 
-const router = Router()
+const router = Router();
 
-// Get all users (admin only - add auth middleware later)
-router.get("/", async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      }
-    })
-    res.json(users)
-  } catch (error) {
-    console.error("Error fetching users:", error)
-    res.status(500).json({ message: "Internal server error" })
-  }
-})
+// All routes require authentication
+router.use(protect);
 
-// Get user by ID
-router.get("/:id", async (req, res) => {
-  try {
-    const { id } = req.params
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        phone: true,
-        bio: true,
-        image: true,
-        createdAt: true,
-        updatedAt: true,
-        ownedFields: {
-          select: {
-            id: true,
-            name: true,
-            city: true,
-            state: true,
-            pricePerHour: true,
-            isActive: true,
-          }
-        },
-        _count: {
-          select: {
-            bookings: true,
-            reviews: true,
-          }
-        }
-      }
-    })
+// User routes
+router.get('/stats', userController.getUserStats);
+router.patch('/change-password', userController.changePassword);
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" })
-    }
+// Admin only routes
+router.get('/', restrictTo('ADMIN'), userController.getAllUsers);
 
-    res.json(user)
-  } catch (error) {
-    console.error("Error fetching user:", error)
-    res.status(500).json({ message: "Internal server error" })
-  }
-})
+// User profile routes
+router
+  .route('/:id')
+  .get(userController.getUser)
+  .patch(userController.updateUser)
+  .delete(userController.deleteUser);
 
-// Update user profile
-router.put("/:id", async (req, res) => {
-  try {
-    const { id } = req.params
-    const { name, phone, bio, image } = req.body
-
-    const updatedUser = await prisma.user.update({
-      where: { id },
-      data: {
-        name,
-        phone,
-        bio,
-        image,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        phone: true,
-        bio: true,
-        image: true,
-        createdAt: true,
-        updatedAt: true,
-      }
-    })
-
-    res.json(updatedUser)
-  } catch (error) {
-    console.error("Error updating user:", error)
-    res.status(500).json({ message: "Internal server error" })
-  }
-})
-
-export default router
+export default router;
