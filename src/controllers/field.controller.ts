@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import FieldModel from '../models/field.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
+import prisma from '../config/database';
 
 class FieldController {
   // Create new field
@@ -12,6 +13,12 @@ class FieldController {
     // Only field owners can create fields
     if (userRole !== 'FIELD_OWNER' && userRole !== 'ADMIN') {
       throw new AppError('Only field owners can create fields', 403);
+    }
+
+    // Check if owner already has a field (one field per owner restriction)
+    const existingFields = await FieldModel.findByOwner(ownerId);
+    if (existingFields && existingFields.length > 0) {
+      throw new AppError('Field owners can only have one field. Please update your existing field instead.', 400);
     }
 
     const fieldData = {
@@ -28,7 +35,7 @@ class FieldController {
     });
   });
 
-  // Get all fields with filters
+  // Get all fields with filters and pagination
   getAllFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const {
       city,
@@ -36,29 +43,37 @@ class FieldController {
       type,
       minPrice,
       maxPrice,
+      search,
       page = 1,
       limit = 10,
     } = req.query;
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
 
-    const fields = await FieldModel.findAll({
+    const result = await FieldModel.findAll({
       city: city as string,
       state: state as string,
       type: type as string,
       minPrice: minPrice ? Number(minPrice) : undefined,
       maxPrice: maxPrice ? Number(maxPrice) : undefined,
       skip,
-      take: Number(limit),
+      take: limitNum,
     });
+
+    const totalPages = Math.ceil(result.total / limitNum);
 
     res.json({
       success: true,
-      data: fields,
+      data: result.fields,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total: fields.length,
+        page: pageNum,
+        limit: limitNum,
+        total: result.total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
       },
     });
   });
@@ -188,6 +203,298 @@ class FieldController {
       data: fields,
       total: fields.length,
     });
+  });
+
+  // Get field owner's single field (since they can only have one)
+  getOwnerField = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+
+    const field = await FieldModel.findOneByOwner(ownerId);
+    
+    if (!field) {
+      return res.status(404).json({
+        success: false,
+        message: 'No field found for this owner',
+        field: null
+      });
+    }
+    
+    // Return the field with step completion status
+    res.json({
+      success: true,
+      field: {
+        ...field,
+        stepStatus: {
+          fieldDetails: field.fieldDetailsCompleted || false,
+          uploadImages: field.uploadImagesCompleted || false,
+          pricingAvailability: field.pricingAvailabilityCompleted || false,
+          bookingRules: field.bookingRulesCompleted || false
+        },
+        allStepsCompleted: field.fieldDetailsCompleted && 
+                          field.uploadImagesCompleted && 
+                          field.pricingAvailabilityCompleted && 
+                          field.bookingRulesCompleted
+      }
+    });
+  });
+
+  // Save field progress (auto-save functionality)
+  saveFieldProgress = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+    const { step, data } = req.body;
+
+    // Check if field already exists for this owner
+    const existingFields = await FieldModel.findByOwner(ownerId);
+    
+    if (!existingFields || existingFields.length === 0) {
+      throw new AppError('No field found for this owner', 404);
+    }
+
+    const fieldId = existingFields[0].id;
+    let updateData: any = {};
+
+    // Update based on which step is being saved
+    switch(step) {
+      case 'field-details':
+        updateData = {
+          name: data.fieldName,
+          size: data.fieldSize,
+          terrainType: data.terrainType, // This is terrain type, not field type
+          type: 'PRIVATE', // Default field type - you can add a field type selector in the form if needed
+          description: data.description,
+          maxDogs: parseInt(data.maxDogs) || 10,
+          openingTime: data.startTime,
+          closingTime: data.endTime,
+          operatingDays: data.openingDays ? [data.openingDays] : [],
+          amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+          address: data.streetAddress,
+          city: data.city,
+          state: data.county,
+          zipCode: data.postalCode,
+          country: data.country,
+          fieldDetailsCompleted: true
+        };
+        break;
+
+      case 'upload-images':
+        updateData = {
+          images: data.images || [],
+          uploadImagesCompleted: true
+        };
+        break;
+
+      case 'pricing-availability':
+        updateData = {
+          pricePerHour: parseFloat(data.pricePerHour) || 0,
+          pricePerDay: data.weekendPrice ? parseFloat(data.weekendPrice) : null,
+          instantBooking: data.instantBooking || false,
+          pricingAvailabilityCompleted: true
+        };
+        break;
+
+      case 'booking-rules':
+        updateData = {
+          rules: data.rules ? [data.rules] : [],
+          cancellationPolicy: data.policies || '',
+          bookingRulesCompleted: true
+        };
+        break;
+
+      default:
+        throw new AppError('Invalid step', 400);
+    }
+
+    // Update field
+    const field = await FieldModel.update(fieldId, updateData);
+
+    // Check if all steps are completed
+    const allStepsCompleted = field.fieldDetailsCompleted && 
+                             field.uploadImagesCompleted && 
+                             field.pricingAvailabilityCompleted && 
+                             field.bookingRulesCompleted;
+
+    // If all steps completed, activate the field
+    if (allStepsCompleted && !field.isActive) {
+      await FieldModel.update(fieldId, { isActive: true });
+    }
+
+    res.json({
+      success: true,
+      message: 'Progress saved',
+      fieldId: field.id,
+      stepCompleted: true,
+      allStepsCompleted,
+      isActive: allStepsCompleted
+    });
+  });
+
+
+  // Submit field for review
+  submitFieldForReview = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+
+    // Get the field
+    const field = await FieldModel.findOneByOwner(ownerId);
+    
+    if (!field) {
+      throw new AppError('No field found for this owner', 404);
+    }
+
+    // Check if all steps are completed
+    if (!field.fieldDetailsCompleted || 
+        !field.uploadImagesCompleted || 
+        !field.pricingAvailabilityCompleted || 
+        !field.bookingRulesCompleted) {
+      throw new AppError('Please complete all steps before submitting', 400);
+    }
+
+    // Submit the field
+    const submittedField = await FieldModel.submitField(field.id);
+
+    res.json({
+      success: true,
+      message: 'Field submitted successfully!',
+      data: submittedField
+    });
+  });
+
+  // Get bookings for field owner's field
+  getFieldBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+    const { status = 'all', page = 1, limit = 10 } = req.query;
+
+    try {
+      // First get the owner's field
+      const fields = await FieldModel.findByOwner(ownerId);
+      
+      if (!fields || fields.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No field found for this owner',
+          bookings: [],
+          stats: {
+            todayBookings: 0,
+            totalBookings: 0,
+            totalEarnings: 0
+          }
+        });
+      }
+
+      const fieldId = fields[0].id;
+
+      // Get bookings from database
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      let bookingFilter: any = { fieldId };
+
+      // Filter based on status
+      if (status === 'today') {
+        bookingFilter.date = {
+          gte: today,
+          lt: tomorrow
+        };
+      } else if (status === 'upcoming') {
+        bookingFilter.date = {
+          gte: tomorrow
+        };
+      } else if (status === 'previous') {
+        bookingFilter.date = {
+          lt: today
+        };
+      }
+
+      const pageNum = Number(page);
+      const limitNum = Number(limit);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Fetch bookings with user details and count
+      const [bookings, totalFilteredBookings] = await Promise.all([
+        prisma.booking.findMany({
+          where: bookingFilter,
+          include: {
+            user: true
+          },
+          orderBy: {
+            date: status === 'previous' ? 'desc' : 'asc'
+          },
+          skip,
+          take: limitNum
+        }),
+        prisma.booking.count({ where: bookingFilter })
+      ]);
+
+      // Get overall stats
+      const totalBookings = await prisma.booking.count({
+        where: { fieldId }
+      });
+
+      const todayBookings = await prisma.booking.count({
+        where: {
+          fieldId,
+          date: {
+            gte: today,
+            lt: tomorrow
+          }
+        }
+      });
+
+      const totalEarnings = await prisma.booking.aggregate({
+        where: { 
+          fieldId,
+          status: 'COMPLETED'
+        },
+        _sum: {
+          totalPrice: true
+        }
+      });
+
+      // Format bookings for frontend
+      const formattedBookings = bookings.map((booking: any) => ({
+        id: booking.id,
+        userName: booking.user.name,
+        userAvatar: booking.user.profileImage || null,
+        time: `${booking.startTime} - ${booking.endTime}`,
+        orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+        status: booking.status.toLowerCase(),
+        frequency: 'NA', // Add recurring logic if needed
+        dogs: booking.numberOfDogs,
+        amount: booking.totalPrice,
+        date: booking.date
+      }));
+
+      res.json({
+        success: true,
+        bookings: formattedBookings,
+        stats: {
+          todayBookings,
+          totalBookings,
+          totalEarnings: totalEarnings._sum.totalPrice || 0
+        },
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: totalFilteredBookings,
+          totalPages: Math.ceil(totalFilteredBookings / limitNum),
+          hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+          hasPrevPage: pageNum > 1
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch bookings',
+        bookings: [],
+        stats: {
+          todayBookings: 0,
+          totalBookings: 0,
+          totalEarnings: 0
+        }
+      });
+    }
   });
 }
 

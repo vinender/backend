@@ -14,6 +14,10 @@ router.get('/:id', optionalAuth, fieldController.getField);
 router.use(protect);
 
 // Field owner routes
+router.get('/owner/field', restrictTo('FIELD_OWNER'), fieldController.getOwnerField);
+router.get('/owner/bookings', restrictTo('FIELD_OWNER'), fieldController.getFieldBookings);
+router.post('/save-progress', restrictTo('FIELD_OWNER'), fieldController.saveFieldProgress);
+router.post('/submit-for-review', restrictTo('FIELD_OWNER'), fieldController.submitFieldForReview);
 router.get('/my-fields', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.getMyFields);
 router.post('/', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.createField);
 

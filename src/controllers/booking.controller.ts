@@ -3,6 +3,7 @@ import BookingModel from '../models/booking.model';
 import FieldModel from '../models/field.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
+import prisma from '../config/database';
 
 class BookingController {
   // Create a new booking
@@ -120,24 +121,98 @@ class BookingController {
     });
   });
 
-  // Get user's bookings (dog owner)
+  // Get user's bookings with pagination
   getMyBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
+    const { status, page = 1, limit = 10 } = req.query;
 
-    let bookings;
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    let whereClause: any = {};
+    
     if (userRole === 'DOG_OWNER') {
-      bookings = await BookingModel.findByDogOwner(userId);
+      whereClause.dogOwnerId = userId;
     } else if (userRole === 'FIELD_OWNER') {
-      bookings = await BookingModel.findByFieldOwner(userId);
+      // For field owner, we need to get their field first
+      const fields = await prisma.field.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      
+      if (fields.length === 0) {
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false,
+          },
+        });
+      }
+      
+      whereClause.fieldId = { in: fields.map(f => f.id) };
     } else {
       throw new AppError('Invalid user role', 400);
     }
 
+    // Add status filter if provided
+    if (status) {
+      whereClause.status = status as string;
+    }
+
+    // Get bookings with pagination
+    const [bookings, total] = await Promise.all([
+      prisma.booking.findMany({
+        where: whereClause,
+        skip,
+        take: limitNum,
+        include: {
+          field: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      prisma.booking.count({ where: whereClause }),
+    ]);
+
+    const totalPages = Math.ceil(total / limitNum);
+
     res.json({
       success: true,
       data: bookings,
-      total: bookings.length,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
     });
   });
 

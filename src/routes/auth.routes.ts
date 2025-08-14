@@ -15,10 +15,12 @@ router.get('/test', (req, res) => {
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/refresh-token', authController.refreshToken);
+router.post('/social-login', authController.socialLogin);
 
 // Protected routes
 router.get('/me', protect, authController.getMe);
 router.post('/logout', protect, authController.logout);
+router.patch('/update-role', protect, authController.updateRole);
 
 
 export default router;

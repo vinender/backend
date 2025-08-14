@@ -27,7 +27,7 @@ class AuthController {
       throw new AppError('Password must be at least 8 characters long', 400);
     }
 
-    // Check if user already exists
+    // Check if user already exists by email
     const existingUser = await UserModel.findByEmail(email);
     if (existingUser) {
       // Check if user has OAuth accounts
@@ -46,6 +46,14 @@ class AuthController {
       }
     }
 
+    // Check if phone number already exists
+    if (phone) {
+      const existingUserByPhone = await UserModel.findByPhone(phone);
+      if (existingUserByPhone) {
+        throw new AppError('This phone number is already registered with another account. Please use a different phone number or sign in to your existing account.', 409);
+      }
+    }
+
     // Validate role
     const validRoles = ['DOG_OWNER', 'FIELD_OWNER', 'ADMIN'];
     if (role && !validRoles.includes(role)) {
@@ -60,6 +68,29 @@ class AuthController {
       role: role || 'DOG_OWNER',
       phone,
     });
+
+    // If user is a field owner, create an empty field document
+    if (user.role === 'FIELD_OWNER') {
+      try {
+        const FieldModel = require('../models/field.model').default;
+        await FieldModel.create({
+          ownerId: user.id,
+          // All fields are optional/have defaults
+          fieldDetailsCompleted: false,
+          uploadImagesCompleted: false,
+          pricingAvailabilityCompleted: false,
+          bookingRulesCompleted: false,
+          isActive: false,
+          amenities: [],
+          rules: [],
+          images: [],
+          operatingDays: []
+        });
+      } catch (error) {
+        console.error('Error creating empty field for field owner:', error);
+        // Don't fail registration if field creation fails
+      }
+    }
 
     // Generate JWT token
     const token = jwt.sign(
@@ -205,6 +236,174 @@ class AuthController {
     } catch (error) {
       throw new AppError('Invalid refresh token', 401);
     }
+  });
+
+  // Social login (Google/Apple)
+  socialLogin = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { email, name, image, provider, providerId, role } = req.body;
+
+    // Validate input
+    if (!email || !provider || !providerId) {
+      throw new AppError('Missing required fields', 400);
+    }
+
+    // Validate provider
+    const validProviders = ['google', 'apple'];
+    if (!validProviders.includes(provider)) {
+      throw new AppError('Invalid provider', 400);
+    }
+
+    // Validate role if provided
+    const validRoles = ['DOG_OWNER', 'FIELD_OWNER'];
+    if (role && !validRoles.includes(role)) {
+      throw new AppError('Invalid role specified', 400);
+    }
+
+    // Create or update user
+    const user = await UserModel.createOrUpdateSocialUser({
+      email,
+      name,
+      image,
+      provider,
+      providerId,
+      role: role || 'DOG_OWNER',
+    });
+
+    // If user is a new field owner, create an empty field document
+    if (user.role === 'FIELD_OWNER') {
+      try {
+        const FieldModel = require('../models/field.model').default;
+        // Check if field already exists for this owner
+        const existingField = await FieldModel.findOneByOwner(user.id);
+        
+        if (!existingField) {
+          await FieldModel.create({
+            ownerId: user.id,
+            // All fields are optional/have defaults
+            fieldDetailsCompleted: false,
+            uploadImagesCompleted: false,
+            pricingAvailabilityCompleted: false,
+            bookingRulesCompleted: false,
+            isActive: false,
+            amenities: [],
+            rules: [],
+            images: [],
+            operatingDays: []
+          });
+        }
+      } catch (error) {
+        console.error('Error creating empty field for field owner:', error);
+        // Don't fail social login if field creation fails
+      }
+    }
+
+    // Store OAuth account info
+    const account = await UserModel.hasOAuthAccount(user.id);
+    if (!account) {
+      // Create account record for tracking OAuth provider
+      // This would typically be done in a separate Account model
+      // For now, we're just tracking the provider in the User model
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role,
+        provider: user.provider
+      },
+      JWT_SECRET,
+      { 
+        expiresIn: JWT_EXPIRES_IN as string | number
+      }
+    );
+
+    res.json({
+      success: true,
+      message: 'Social login successful',
+      data: {
+        user,
+        token,
+      },
+    });
+  });
+
+  // Update user role (for OAuth users who selected role after account creation)
+  updateRole = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { email, role } = req.body;
+    const userId = (req as any).user?.id;
+
+    // Validate input
+    if (!email || !role) {
+      throw new AppError('Email and role are required', 400);
+    }
+
+    // Validate role
+    const validRoles = ['DOG_OWNER', 'FIELD_OWNER'];
+    if (!validRoles.includes(role)) {
+      throw new AppError('Invalid role specified', 400);
+    }
+
+    // Verify the user is updating their own role
+    const user = await UserModel.findByEmail(email);
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    if (user.id !== userId) {
+      throw new AppError('You can only update your own role', 403);
+    }
+
+    // Update the user's role
+    const updatedUser = await UserModel.updateRole(user.id, role);
+
+    // If user is now a field owner, create an empty field document if it doesn't exist
+    if (role === 'FIELD_OWNER') {
+      try {
+        const FieldModel = require('../models/field.model').default;
+        const existingField = await FieldModel.findOneByOwner(user.id);
+        
+        if (!existingField) {
+          await FieldModel.create({
+            ownerId: user.id,
+            fieldDetailsCompleted: false,
+            uploadImagesCompleted: false,
+            pricingAvailabilityCompleted: false,
+            bookingRulesCompleted: false,
+            isActive: false,
+            amenities: [],
+            rules: [],
+            images: [],
+            operatingDays: []
+          });
+        }
+      } catch (error) {
+        console.error('Error creating empty field for field owner:', error);
+      }
+    }
+
+    // Generate new token with updated role
+    const token = jwt.sign(
+      { 
+        id: updatedUser.id, 
+        email: updatedUser.email, 
+        role: updatedUser.role 
+      },
+      JWT_SECRET,
+      { 
+        expiresIn: JWT_EXPIRES_IN as string | number
+      }
+    );
+
+    res.json({
+      success: true,
+      message: 'Role updated successfully',
+      data: {
+        user: updatedUser,
+        token,
+      },
+    });
   });
 }
 

@@ -37,8 +37,9 @@ model User {
   password      String?
   image         String?
   role          UserRole  @default(DOG_OWNER)
-  phone         String?
+  phone         String?   @unique
   bio           String?
+  provider      String    @default("general") // google, apple, or general
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -86,30 +87,46 @@ model Session {
 
 model Field {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  name            String
-  description     String
-  address         String
-  city            String
-  state           String
-  zipCode         String
+  name            String?
+  description     String?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
   country         String    @default("US")
   latitude        Float?
   longitude       Float?
-  ownerId         String  @db.ObjectId
+  ownerId         String    @db.ObjectId
   type            FieldType @default(PRIVATE)
-  size            String    // e.g., "Small", "Medium", "Large", "Extra Large"
-  pricePerHour    Float
+  size            String?   // e.g., "Small", "Medium", "Large", "Extra Large"
+  terrainType     String?   // e.g., "Grass", "Dirt", "Sand", "Mixed"
+  pricePerHour    Float?
   pricePerDay     Float?
   amenities       String[]  // e.g., ["Water bowls", "Agility equipment", "Shade areas"]
   rules           String[]  // e.g., ["Dogs must be leashed", "Clean up after your dog"]
   images          String[]
-  isActive        Boolean   @default(true)
+  isActive        Boolean   @default(false) // Field is active only when all steps are completed
   maxDogs         Int       @default(10)
-  openingTime     String    // e.g., "08:00"
-  closingTime     String    // e.g., "20:00"
+  openingTime     String?   // e.g., "08:00"
+  closingTime     String?   // e.g., "20:00"
   operatingDays   String[]  // e.g., ["Monday", "Tuesday", "Wednesday"]
   instantBooking  Boolean   @default(false)
   cancellationPolicy String?
+  
+  // Additional field details
+  fieldFeatures   Json?     // Store complex field features as JSON
+  numberOfDogs    Int?      // Number of dogs allowed at once
+  
+  // Step completion tracking
+  fieldDetailsCompleted Boolean @default(false)
+  uploadImagesCompleted Boolean @default(false)
+  pricingAvailabilityCompleted Boolean @default(false)
+  bookingRulesCompleted Boolean @default(false)
+  
+  // Submission status
+  isSubmitted Boolean @default(false) // True when field owner submits the field for review
+  submittedAt DateTime?
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
