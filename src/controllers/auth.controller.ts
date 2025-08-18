@@ -27,8 +27,9 @@ class AuthController {
       throw new AppError('Password must be at least 8 characters long', 400);
     }
 
-    // Check if user already exists by email
-    const existingUser = await UserModel.findByEmail(email);
+    // Check if user already exists with same email AND role
+    const userRole = role || 'DOG_OWNER';
+    const existingUser = await UserModel.findByEmailAndRole(email, userRole);
     if (existingUser) {
       // Check if user has OAuth accounts
       const hasOAuthAccount = await UserModel.hasOAuthAccount(existingUser.id);
@@ -36,13 +37,13 @@ class AuthController {
       
       if (hasOAuthAccount && !hasPassword) {
         // User exists with OAuth only
-        throw new AppError('This email is already registered with Google/Apple. Please sign in using the social login option.', 409);
+        throw new AppError('This account is already registered with Google/Apple. Please sign in using the social login option.', 409);
       } else if (hasPassword) {
         // User exists with email/password
-        throw new AppError('An account with this email already exists. Please sign in instead.', 409);
+        throw new AppError(`An account with this email already exists as ${userRole.replace('_', ' ')}. Please sign in instead.`, 409);
       } else {
         // Generic message
-        throw new AppError('User already exists with this email', 409);
+        throw new AppError(`User already exists with this email and role`, 409);
       }
     }
 
@@ -65,7 +66,7 @@ class AuthController {
       name,
       email,
       password,
-      role: role || 'DOG_OWNER',
+      role: userRole,
       phone,
     });
 
@@ -117,17 +118,27 @@ class AuthController {
 
   // Login user
   login = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     // Validate input
     if (!email || !password) {
       throw new AppError('Email and password are required', 400);
     }
 
-    // Find user by email
-    const user = await UserModel.findByEmail(email);
-    if (!user) {
-      throw new AppError('Invalid email or password', 401);
+    // Find user by email and role if role is provided
+    let user;
+    if (role) {
+      user = await UserModel.findByEmailAndRole(email, role);
+      if (!user) {
+        throw new AppError(`No ${role.replace('_', ' ')} account found with this email`, 401);
+      }
+    } else {
+      // If no role specified, find any user with this email
+      // This maintains backward compatibility
+      user = await UserModel.findByEmail(email);
+      if (!user) {
+        throw new AppError('Invalid email or password', 401);
+      }
     }
     
     // Check if user has password (they might only have OAuth)

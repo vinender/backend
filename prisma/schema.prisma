@@ -31,13 +31,13 @@ enum FieldType {
 
 model User {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  email         String    @unique
+  email         String
   emailVerified DateTime?
   name          String?
   password      String?
   image         String?
   role          UserRole  @default(DOG_OWNER)
-  phone         String?   @unique
+  phone         String?
   bio           String?
   provider      String    @default("general") // google, apple, or general
   createdAt     DateTime  @default(now())
@@ -48,6 +48,12 @@ model User {
   sessions      Session[]
   ownedFields   Field[]      @relation("FieldOwner")
   bookings      Booking[]
+  
+  // Compound unique constraint: same email can exist with different roles
+  @@unique([email, role])
+  // Phone should still be unique across all users if provided
+  @@index([phone])
+  @@index([email])
   reviews       Review[]
   favorites     Favorite[]
   payments      Payment[]
@@ -90,6 +96,7 @@ model Field {
   name            String?
   description     String?
   address         String?
+  apartment       String?   // Apartment/Suite field
   city            String?
   state           String?
   zipCode         String?
@@ -100,6 +107,9 @@ model Field {
   type            FieldType @default(PRIVATE)
   size            String?   // e.g., "Small", "Medium", "Large", "Extra Large"
   terrainType     String?   // e.g., "Grass", "Dirt", "Sand", "Mixed"
+  fenceType       String?   // e.g., "Wooden", "Metal", "Mesh", "Electric"
+  fenceSize       String?   // e.g., "3ft", "4ft", "5ft", "6ft", "6ft+"
+  surfaceType     String?   // e.g., "Soft Sand", "Grass", "Artificial Grass", "Concrete"
   pricePerHour    Float?
   pricePerDay     Float?
   amenities       String[]  // e.g., ["Water bowls", "Agility equipment", "Shade areas"]

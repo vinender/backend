@@ -44,10 +44,22 @@ class UserModel {
     });
   }
 
-  // Find user by email
+  // Find user by email (returns first match, use for login without role)
   async findByEmail(email: string) {
-    return prisma.user.findUnique({
+    return prisma.user.findFirst({
       where: { email },
+    });
+  }
+  
+  // Find user by email and role
+  async findByEmailAndRole(email: string, role: 'DOG_OWNER' | 'FIELD_OWNER' | 'ADMIN') {
+    return prisma.user.findUnique({
+      where: {
+        email_role: {
+          email,
+          role
+        }
+      },
     });
   }
 
@@ -156,26 +168,19 @@ class UserModel {
     providerId: string;
     role?: 'DOG_OWNER' | 'FIELD_OWNER' | 'ADMIN';
   }) {
-    // Check if user exists
-    const existingUser = await this.findByEmail(data.email);
+    const userRole = data.role || 'DOG_OWNER';
+    
+    // Check if user exists with same email and role
+    const existingUser = await this.findByEmailAndRole(data.email, userRole);
     
     if (existingUser) {
-      // If user exists but doesn't have a provider set (first social login)
-      // we should update their role if provided
+      // Update existing user with social login info
       const updateData: any = {
         name: data.name || existingUser.name,
         image: data.image || existingUser.image,
         emailVerified: new Date(), // Social logins are verified
         provider: data.provider, // Update provider to track social login
       };
-      
-      // Only update role if:
-      // 1. User doesn't have a provider set (first social login)
-      // 2. A role was explicitly provided
-      // 3. User's current role is still the default DOG_OWNER
-      if (!existingUser.provider && data.role && existingUser.role === 'DOG_OWNER') {
-        updateData.role = data.role;
-      }
       
       return prisma.user.update({
         where: { id: existingUser.id },
@@ -194,13 +199,13 @@ class UserModel {
       });
     }
     
-    // Create new user from social login
+    // Create new user from social login with specific role
     return prisma.user.create({
       data: {
         email: data.email,
         name: data.name || data.email.split('@')[0],
         image: data.image,
-        role: data.role || 'DOG_OWNER',
+        role: userRole,
         provider: data.provider,
         emailVerified: new Date(), // Social logins are verified
       },

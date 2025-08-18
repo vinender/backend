@@ -260,6 +260,9 @@ class FieldController {
           name: data.fieldName,
           size: data.fieldSize,
           terrainType: data.terrainType, // This is terrain type, not field type
+          fenceType: data.fenceType,
+          fenceSize: data.fenceSize,
+          surfaceType: data.surfaceType,
           type: 'PRIVATE', // Default field type - you can add a field type selector in the form if needed
           description: data.description,
           maxDogs: parseInt(data.maxDogs) || 10,
@@ -268,6 +271,7 @@ class FieldController {
           operatingDays: data.openingDays ? [data.openingDays] : [],
           amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
           address: data.streetAddress,
+          apartment: data.apartment,
           city: data.city,
           state: data.county,
           zipCode: data.postalCode,
