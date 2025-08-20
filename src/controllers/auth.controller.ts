@@ -70,28 +70,31 @@ class AuthController {
       phone,
     });
 
-    // If user is a field owner, create an empty field document
-    if (user.role === 'FIELD_OWNER') {
-      try {
-        const FieldModel = require('../models/field.model').default;
-        await FieldModel.create({
-          ownerId: user.id,
-          // All fields are optional/have defaults
-          fieldDetailsCompleted: false,
-          uploadImagesCompleted: false,
-          pricingAvailabilityCompleted: false,
-          bookingRulesCompleted: false,
-          isActive: false,
-          amenities: [],
-          rules: [],
-          images: [],
-          operatingDays: []
-        });
-      } catch (error) {
-        console.error('Error creating empty field for field owner:', error);
-        // Don't fail registration if field creation fails
-      }
-    }
+    // NOTE: Empty field creation removed - fields are now created dynamically
+    // when the field owner first saves their field details.
+    // This prevents orphaned field documents and handles cases where
+    // fields are deleted from the database.
+    
+    // Old code kept for reference:
+    // if (user.role === 'FIELD_OWNER') {
+    //   try {
+    //     const FieldModel = require('../models/field.model').default;
+    //     await FieldModel.create({
+    //       ownerId: user.id,
+    //       fieldDetailsCompleted: false,
+    //       uploadImagesCompleted: false,
+    //       pricingAvailabilityCompleted: false,
+    //       bookingRulesCompleted: false,
+    //       isActive: false,
+    //       amenities: [],
+    //       rules: [],
+    //       images: [],
+    //       operatingDays: []
+    //     });
+    //   } catch (error) {
+    //     console.error('Error creating empty field for field owner:', error);
+    //   }
+    // }
 
     // Generate JWT token
     const token = jwt.sign(
@@ -280,33 +283,9 @@ class AuthController {
       role: role || 'DOG_OWNER',
     });
 
-    // If user is a new field owner, create an empty field document
-    if (user.role === 'FIELD_OWNER') {
-      try {
-        const FieldModel = require('../models/field.model').default;
-        // Check if field already exists for this owner
-        const existingField = await FieldModel.findOneByOwner(user.id);
-        
-        if (!existingField) {
-          await FieldModel.create({
-            ownerId: user.id,
-            // All fields are optional/have defaults
-            fieldDetailsCompleted: false,
-            uploadImagesCompleted: false,
-            pricingAvailabilityCompleted: false,
-            bookingRulesCompleted: false,
-            isActive: false,
-            amenities: [],
-            rules: [],
-            images: [],
-            operatingDays: []
-          });
-        }
-      } catch (error) {
-        console.error('Error creating empty field for field owner:', error);
-        // Don't fail social login if field creation fails
-      }
-    }
+    // NOTE: Empty field creation removed - fields are now created dynamically
+    // when the field owner first saves their field details.
+    // See comment in register method for more details.
 
     // Store OAuth account info
     const account = await UserModel.hasOAuthAccount(user.id);
@@ -369,30 +348,9 @@ class AuthController {
     // Update the user's role
     const updatedUser = await UserModel.updateRole(user.id, role);
 
-    // If user is now a field owner, create an empty field document if it doesn't exist
-    if (role === 'FIELD_OWNER') {
-      try {
-        const FieldModel = require('../models/field.model').default;
-        const existingField = await FieldModel.findOneByOwner(user.id);
-        
-        if (!existingField) {
-          await FieldModel.create({
-            ownerId: user.id,
-            fieldDetailsCompleted: false,
-            uploadImagesCompleted: false,
-            pricingAvailabilityCompleted: false,
-            bookingRulesCompleted: false,
-            isActive: false,
-            amenities: [],
-            rules: [],
-            images: [],
-            operatingDays: []
-          });
-        }
-      } catch (error) {
-        console.error('Error creating empty field for field owner:', error);
-      }
-    }
+    // NOTE: Empty field creation removed - fields are now created dynamically
+    // when the field owner first saves their field details.
+    // See comment in register method for more details.
 
     // Generate new token with updated role
     const token = jwt.sign(

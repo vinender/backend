@@ -1,0 +1,208 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const database_1 = __importDefault(require("../config/database"));
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const constants_1 = require("../config/constants");
+class UserModel {
+    // Create a new user
+    async create(data) {
+        const hashedPassword = await bcryptjs_1.default.hash(data.password, constants_1.BCRYPT_ROUNDS);
+        return database_1.default.user.create({
+            data: {
+                ...data,
+                password: hashedPassword,
+                role: data.role || 'DOG_OWNER',
+                provider: data.provider || 'general',
+            },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                provider: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+    }
+    // Find user by email (returns first match, use for login without role)
+    async findByEmail(email) {
+        return database_1.default.user.findFirst({
+            where: { email },
+        });
+    }
+    // Find user by email and role
+    async findByEmailAndRole(email, role) {
+        return database_1.default.user.findUnique({
+            where: {
+                email_role: {
+                    email,
+                    role
+                }
+            },
+        });
+    }
+    // Find user by phone
+    async findByPhone(phone) {
+        return database_1.default.user.findFirst({
+            where: { phone },
+        });
+    }
+    // Find user by ID
+    async findById(id) {
+        return database_1.default.user.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                bio: true,
+                image: true,
+                provider: true,
+                emailVerified: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+    }
+    // Update user
+    async update(id, data) {
+        return database_1.default.user.update({
+            where: { id },
+            data,
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                bio: true,
+                image: true,
+                provider: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+    }
+    // Delete user
+    async delete(id) {
+        return database_1.default.user.delete({
+            where: { id },
+        });
+    }
+    // Verify password
+    async verifyPassword(plainPassword, hashedPassword) {
+        return bcryptjs_1.default.compare(plainPassword, hashedPassword);
+    }
+    // Check if user has OAuth account
+    async hasOAuthAccount(userId) {
+        const account = await database_1.default.account.findFirst({
+            where: { userId },
+        });
+        return !!account;
+    }
+    // Get OAuth providers for a user
+    async getOAuthProviders(userId) {
+        const accounts = await database_1.default.account.findMany({
+            where: { userId },
+            select: { provider: true },
+        });
+        return accounts.map(a => a.provider);
+    }
+    // Get all users (admin only)
+    async findAll(skip = 0, take = 10) {
+        return database_1.default.user.findMany({
+            skip,
+            take,
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
+    }
+    // Create or update user from social login
+    async createOrUpdateSocialUser(data) {
+        const userRole = data.role || 'DOG_OWNER';
+        // Check if user exists with same email and role
+        const existingUser = await this.findByEmailAndRole(data.email, userRole);
+        if (existingUser) {
+            // Update existing user with social login info
+            const updateData = {
+                name: data.name || existingUser.name,
+                image: data.image || existingUser.image,
+                emailVerified: new Date(), // Social logins are verified
+                provider: data.provider, // Update provider to track social login
+            };
+            return database_1.default.user.update({
+                where: { id: existingUser.id },
+                data: updateData,
+                select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                    role: true,
+                    phone: true,
+                    provider: true,
+                    image: true,
+                    createdAt: true,
+                    updatedAt: true,
+                },
+            });
+        }
+        // Create new user from social login with specific role
+        return database_1.default.user.create({
+            data: {
+                email: data.email,
+                name: data.name || data.email.split('@')[0],
+                image: data.image,
+                role: userRole,
+                provider: data.provider,
+                emailVerified: new Date(), // Social logins are verified
+            },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                provider: true,
+                image: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+    }
+    // Update user role
+    async updateRole(id, role) {
+        return database_1.default.user.update({
+            where: { id },
+            data: { role },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                phone: true,
+                provider: true,
+                image: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+    }
+}
+exports.default = new UserModel();

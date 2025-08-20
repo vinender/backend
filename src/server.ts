@@ -20,6 +20,7 @@ import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import fieldRoutes from './routes/field.routes';
 import bookingRoutes from './routes/booking.routes';
+import reviewRoutes from './routes/review.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -121,6 +122,7 @@ class Server {
           users: '/api/users',
           fields: '/api/fields',
           bookings: '/api/bookings',
+          reviews: '/api/reviews',
         },
       });
     });
@@ -130,6 +132,7 @@ class Server {
     this.app.use('/api/users', userRoutes);
     this.app.use('/api/fields', fieldRoutes);
     this.app.use('/api/bookings', bookingRoutes);
+    this.app.use('/api/reviews', reviewRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

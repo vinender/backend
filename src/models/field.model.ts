@@ -33,14 +33,41 @@ export interface CreateFieldInput {
   bookingRulesCompleted?: boolean;
   isSubmitted?: boolean;
   submittedAt?: Date;
+  isClaimed?: boolean;
+  ownerName?: string;
+  joinedOn?: string;
 }
 
 class FieldModel {
   // Create a new field
   async create(data: CreateFieldInput) {
+    // Get owner details if not provided
+    let ownerName = data.ownerName;
+    let joinedOn = data.joinedOn;
+    
+    if ((!ownerName || !joinedOn) && data.ownerId) {
+      const owner = await prisma.user.findUnique({
+        where: { id: data.ownerId },
+        select: { name: true, createdAt: true },
+      });
+      
+      if (owner) {
+        ownerName = ownerName || owner.name || undefined;
+        // Format joinedOn as "Month Year" if not provided
+        if (!joinedOn && owner.createdAt) {
+          const date = new Date(owner.createdAt);
+          const month = date.toLocaleDateString('en-US', { month: 'long' });
+          const year = date.getFullYear();
+          joinedOn = `${month} ${year}`;
+        }
+      }
+    }
+    
     return prisma.field.create({
       data: {
         ...data,
+        ownerName,
+        joinedOn,
         country: data.country || 'UK',
         type: data.type || 'PRIVATE',
         maxDogs: data.maxDogs || 10,
@@ -243,9 +270,31 @@ class FieldModel {
 
   // Update field
   async update(id: string, data: Partial<CreateFieldInput>) {
+    // If updating owner, also update owner name and joined date
+    let updateData: any = { ...data };
+    
+    if (data.ownerId && (!data.ownerName || !data.joinedOn)) {
+      const owner = await prisma.user.findUnique({
+        where: { id: data.ownerId },
+        select: { name: true, createdAt: true },
+      });
+      
+      if (owner) {
+        if (!data.ownerName) {
+          updateData.ownerName = owner.name || undefined;
+        }
+        if (!data.joinedOn && owner.createdAt) {
+          const date = new Date(owner.createdAt);
+          const month = date.toLocaleDateString('en-US', { month: 'long' });
+          const year = date.getFullYear();
+          updateData.joinedOn = `${month} ${year}`;
+        }
+      }
+    }
+    
     return prisma.field.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         owner: {
           select: {

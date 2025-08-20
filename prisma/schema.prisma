@@ -58,6 +58,8 @@ model User {
   favorites     Favorite[]
   payments      Payment[]
 
+  fieldReviews  FieldReview[]
+  
   @@map("users")
 }
 
@@ -137,6 +139,13 @@ model Field {
   isSubmitted Boolean @default(false) // True when field owner submits the field for review
   submittedAt DateTime?
   
+  // Field claim status
+  isClaimed Boolean @default(false) // True when field is claimed by the owner
+  
+  // Owner information (denormalized for performance)
+  ownerName       String?   // Owner's name (denormalized)
+  joinedOn        String?   // Owner's join date in "Month Year" format (e.g., "March 2025")
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -144,6 +153,7 @@ model Field {
   owner           User      @relation("FieldOwner", fields: [ownerId], references: [id])
   bookings        Booking[]
   reviews         Review[]
+  fieldReviews    FieldReview[]
   favorites       Favorite[]
   availability    FieldAvailability[]
 
@@ -242,6 +252,33 @@ model Review {
   @@index([fieldId])
   @@index([userId])
   @@map("reviews")
+}
+
+model FieldReview {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  fieldId     String   @db.ObjectId
+  userId      String   @db.ObjectId
+  userName    String?  // Denormalized for performance
+  userImage   String?  // Denormalized for performance
+  rating      Int      // 1-5
+  title       String?
+  comment     String
+  images      String[]
+  helpfulCount Int     @default(0)
+  verified    Boolean  @default(false) // If user has actually booked this field
+  response    String?  // Field owner's response
+  respondedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  field       Field    @relation(fields: [fieldId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([fieldId, createdAt])
+  @@index([userId])
+  @@index([rating])
+  @@map("field_reviews")
 }
 
 model Favorite {
