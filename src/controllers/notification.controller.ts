@@ -13,7 +13,17 @@ export const notificationController = {
   // Get all notifications for a user
   async getUserNotifications(req: AuthRequest, res: Response) {
     try {
-      const userId = req.userId;
+      // Get userId from req.user (set by auth middleware) or req.userId
+      const userId = req.user?.id || req.user?._id || req.userId;
+      console.log('Getting notifications for user:', userId);
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not authenticated',
+        });
+      }
+      
       const { page = 1, limit = 20, unreadOnly = false } = req.query;
       
       const skip = (Number(page) - 1) * Number(limit);
@@ -59,7 +69,7 @@ export const notificationController = {
   // Mark notification as read
   async markAsRead(req: AuthRequest, res: Response) {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id || req.user?._id || req.userId;
       const { id } = req.params;
 
       const notification = await prisma.notification.findFirst({
@@ -97,7 +107,7 @@ export const notificationController = {
   // Mark all notifications as read
   async markAllAsRead(req: AuthRequest, res: Response) {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id || req.user?._id || req.userId;
 
       await prisma.notification.updateMany({
         where: { userId, read: false },
@@ -123,7 +133,7 @@ export const notificationController = {
   // Delete a notification
   async deleteNotification(req: AuthRequest, res: Response) {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id || req.user?._id || req.userId;
       const { id } = req.params;
 
       const notification = await prisma.notification.findFirst({
@@ -157,7 +167,7 @@ export const notificationController = {
   // Clear all notifications
   async clearAllNotifications(req: AuthRequest, res: Response) {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id || req.user?._id || req.userId;
 
       await prisma.notification.deleteMany({
         where: { userId },
@@ -192,7 +202,16 @@ export async function createNotification({
   data?: any;
 }) {
   try {
-    console.log('Creating notification for user:', userId, { type, title, message });
+    console.log('=== Creating Notification ===');
+    console.log('Target User ID (ObjectId):', userId);
+    console.log('Notification Type:', type);
+    console.log('Title:', title);
+    
+    // Validate userId is a valid ObjectId
+    if (!userId || typeof userId !== 'string' || userId.length !== 24) {
+      console.error('Invalid userId format:', userId);
+      return null;
+    }
     
     const notification = await prisma.notification.create({
       data: {
@@ -204,15 +223,22 @@ export async function createNotification({
       },
     });
     
-    console.log('Notification created successfully:', notification);
+    console.log('Notification created in DB with ID:', notification.id);
+    console.log('Notification userId:', notification.userId);
 
     // Emit real-time notification if WebSocket is connected
     const io = (global as any).io;
     if (io) {
-      console.log('Emitting real-time notification to user:', userId);
-      io.to(`user-${userId}`).emit('notification', notification);
+      const roomName = `user-${userId}`;
+      console.log('Emitting to WebSocket room:', roomName);
+      
+      // Get all sockets in the room to verify
+      const sockets = await io.in(roomName).fetchSockets();
+      console.log(`Found ${sockets.length} socket(s) in room ${roomName}`);
+      
+      io.to(roomName).emit('notification', notification);
     } else {
-      console.log('WebSocket not available, notification saved to DB only');
+      console.log('WebSocket server not available, notification saved to DB only');
     }
 
     return notification;

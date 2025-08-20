@@ -132,9 +132,9 @@ class ReviewController {
       });
 
       if (existingReview) {
-        return res.status(400).json({
+        return res.status(409).json({
           success: false,
-          message: 'You have already reviewed this field',
+          message: 'You have already reviewed this field. You can edit your existing review instead.',
         });
       }
 
@@ -177,34 +177,52 @@ class ReviewController {
         },
       });
 
-      // Send notification to field owner
-      console.log('Looking for field:', fieldId);
+      // Get field details for notifications
       const field = await prisma.field.findUnique({
         where: { id: fieldId },
         select: { ownerId: true, name: true },
       });
-      
-      console.log('Field found:', field);
 
-      if (field?.ownerId) {
-        console.log('Sending notification to field owner:', field.ownerId);
-        const notificationResult = await createNotification({
+      console.log('Review notification debug:');
+      console.log('- Reviewer userId:', userId);
+      console.log('- Field ownerId:', field?.ownerId);
+      console.log('- Are they the same?', field?.ownerId === userId);
+
+      // Send notification to field owner (if not reviewing their own field)
+      if (field?.ownerId && field.ownerId !== userId) {
+        console.log('Sending "new review" notification to field owner:', field.ownerId);
+        await createNotification({
           userId: field.ownerId,
-          type: 'review_posted',
-          title: 'New Review Posted',
-          message: `${user?.name || 'A user'} has posted a ${rating} star review for ${field.name}`,
+          type: 'new_review_received',
+          title: "You've got a new review!",
+          message: `See what a recent visitor had to say about their experience at ${field.name}.`,
           data: {
             reviewId: review.id,
             fieldId,
             fieldName: field.name,
             rating,
             reviewerName: user?.name,
+            comment: comment?.substring(0, 100), // Include preview of the comment
           },
         });
-        console.log('Notification result:', notificationResult);
       } else {
-        console.log('Field owner not found or field does not have an owner');
+        console.log('Skipping field owner notification - reviewer is the field owner');
       }
+
+      // Send confirmation notification to the reviewer
+      console.log('Sending "review posted" confirmation to reviewer:', userId);
+      await createNotification({
+        userId: userId,
+        type: 'review_posted_success',
+        title: 'Review Posted Successfully',
+        message: `Your ${rating} star review for ${field?.name} has been posted successfully.`,
+        data: {
+          reviewId: review.id,
+          fieldId,
+          fieldName: field?.name,
+          rating,
+        },
+      });
 
       res.status(201).json({
         success: true,

@@ -51,13 +51,13 @@ class BookingController {
       notes,
     });
 
-    // Send notification to field owner
-    if (field.ownerId) {
+    // Send notification to field owner (if not booking their own field)
+    if (field.ownerId && field.ownerId !== dogOwnerId) {
       await createNotification({
         userId: field.ownerId,
-        type: 'booking_received',
-        title: 'New Booking Received',
-        message: `You have a new booking for ${field.name} on ${new Date(date).toLocaleDateString()} from ${startTime} to ${endTime}`,
+        type: 'new_booking_received',
+        title: 'New Booking Received!',
+        message: `You have a new booking request for ${field.name} on ${new Date(date).toLocaleDateString()} from ${startTime} to ${endTime}. Please review and confirm.`,
         data: {
           bookingId: booking.id,
           fieldId: field.id,
@@ -65,6 +65,7 @@ class BookingController {
           date,
           startTime,
           endTime,
+          dogOwnerName: (req as any).user.name,
         },
       });
     }
@@ -72,9 +73,9 @@ class BookingController {
     // Send confirmation notification to dog owner
     await createNotification({
       userId: dogOwnerId,
-      type: 'booking_confirmed',
-      title: 'Booking Confirmed',
-      message: `Your booking for ${field.name} on ${new Date(date).toLocaleDateString()} has been confirmed`,
+      type: 'booking_request_sent',
+      title: 'Booking Request Sent',
+      message: `Your booking request for ${field.name} on ${new Date(date).toLocaleDateString()} has been sent to the field owner. You'll be notified once it's confirmed.`,
       data: {
         bookingId: booking.id,
         fieldId: field.id,
@@ -286,6 +287,40 @@ class BookingController {
 
     const updatedBooking = await BookingModel.updateStatus(id, status);
 
+    // Send notifications based on status change
+    const field = (booking.field as any);
+    
+    if (status === 'CONFIRMED') {
+      // Notify dog owner that booking is confirmed
+      await createNotification({
+        userId: booking.dogOwnerId,
+        type: 'booking_confirmed',
+        title: 'Booking Confirmed!',
+        message: `Your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been confirmed by the field owner.`,
+        data: {
+          bookingId: booking.id,
+          fieldId: field.id,
+          fieldName: field.name,
+          date: booking.date,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+        },
+      });
+    } else if (status === 'COMPLETED') {
+      // Notify dog owner that booking is completed
+      await createNotification({
+        userId: booking.dogOwnerId,
+        type: 'booking_completed',
+        title: 'Booking Completed',
+        message: `We hope you enjoyed your visit to ${field.name}. Consider leaving a review!`,
+        data: {
+          bookingId: booking.id,
+          fieldId: field.id,
+          fieldName: field.name,
+        },
+      });
+    }
+
     res.json({
       success: true,
       message: `Booking ${status.toLowerCase()} successfully`,
@@ -328,6 +363,56 @@ class BookingController {
     }
 
     const cancelledBooking = await BookingModel.cancel(id);
+
+    // Send cancellation notifications
+    const field = (booking.field as any);
+    
+    if (isDogOwner) {
+      // Dog owner cancelled - notify field owner
+      if (field.ownerId) {
+        await createNotification({
+          userId: field.ownerId,
+          type: 'booking_cancelled_by_customer',
+          title: 'Booking Cancelled',
+          message: `A booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the customer.`,
+          data: {
+            bookingId: booking.id,
+            fieldId: field.id,
+            fieldName: field.name,
+            date: booking.date,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+          },
+        });
+      }
+      
+      // Send confirmation to dog owner
+      await createNotification({
+        userId: booking.dogOwnerId,
+        type: 'booking_cancelled_success',
+        title: 'Booking Cancelled',
+        message: `Your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled successfully.`,
+        data: {
+          bookingId: booking.id,
+          fieldId: field.id,
+          fieldName: field.name,
+        },
+      });
+    } else if (isFieldOwner) {
+      // Field owner cancelled - notify dog owner
+      await createNotification({
+        userId: booking.dogOwnerId,
+        type: 'booking_cancelled_by_owner',
+        title: 'Booking Cancelled by Field Owner',
+        message: `Unfortunately, your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the field owner.`,
+        data: {
+          bookingId: booking.id,
+          fieldId: field.id,
+          fieldName: field.name,
+          date: booking.date,
+        },
+      });
+    }
 
     res.json({
       success: true,
