@@ -7,6 +7,8 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { rateLimit } from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
+import { createServer } from 'http';
+import { setupWebSocket } from './utils/websocket';
 
 // Load environment variables
 dotenv.config();
@@ -21,6 +23,7 @@ import userRoutes from './routes/user.routes';
 import fieldRoutes from './routes/field.routes';
 import bookingRoutes from './routes/booking.routes';
 import reviewRoutes from './routes/review.routes';
+import notificationRoutes from './routes/notification.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -123,6 +126,7 @@ class Server {
           fields: '/api/fields',
           bookings: '/api/bookings',
           reviews: '/api/reviews',
+          notifications: '/api/notifications',
         },
       });
     });
@@ -133,6 +137,7 @@ class Server {
     this.app.use('/api/fields', fieldRoutes);
     this.app.use('/api/bookings', bookingRoutes);
     this.app.use('/api/reviews', reviewRoutes);
+    this.app.use('/api/notifications', notificationRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));
@@ -163,7 +168,12 @@ class Server {
   }
 
   public start(): void {
-    const server = this.app.listen(PORT, () => {
+    const httpServer = createServer(this.app);
+    
+    // Setup WebSocket
+    setupWebSocket(httpServer);
+    
+    httpServer.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════════════════╗
 ║                                                    ║
@@ -175,10 +185,13 @@ class Server {
 ║                                                    ║
 ║   API: http://localhost:${PORT}/api                    ║
 ║   Health: http://localhost:${PORT}/health              ║
+║   WebSocket: ws://localhost:${PORT}                   ║
 ║                                                    ║
 ╚════════════════════════════════════════════════════╝
       `);
     });
+    
+    const server = httpServer;
 
     // Graceful shutdown
     process.on('SIGTERM', () => {

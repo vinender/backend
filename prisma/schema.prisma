@@ -57,8 +57,8 @@ model User {
   reviews       Review[]
   favorites     Favorite[]
   payments      Payment[]
-
   fieldReviews  FieldReview[]
+  notifications Notification[]
   
   @@map("users")
 }
@@ -293,4 +293,24 @@ model Favorite {
 
   @@unique([userId, fieldId])
   @@map("favorites")
+}
+
+model Notification {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  type        String   // booking_received, booking_confirmed, field_approved, payment_received, review_posted, etc.
+  title       String
+  message     String
+  data        Json?    // Additional data like bookingId, fieldId, etc.
+  read        Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
 }

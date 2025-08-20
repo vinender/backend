@@ -4,6 +4,7 @@ import FieldModel from '../models/field.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
+import { createNotification } from './notification.controller';
 
 class BookingController {
   // Create a new booking
@@ -48,6 +49,41 @@ class BookingController {
       endTime,
       totalPrice,
       notes,
+    });
+
+    // Send notification to field owner
+    if (field.ownerId) {
+      await createNotification({
+        userId: field.ownerId,
+        type: 'booking_received',
+        title: 'New Booking Received',
+        message: `You have a new booking for ${field.name} on ${new Date(date).toLocaleDateString()} from ${startTime} to ${endTime}`,
+        data: {
+          bookingId: booking.id,
+          fieldId: field.id,
+          fieldName: field.name,
+          date,
+          startTime,
+          endTime,
+        },
+      });
+    }
+
+    // Send confirmation notification to dog owner
+    await createNotification({
+      userId: dogOwnerId,
+      type: 'booking_confirmed',
+      title: 'Booking Confirmed',
+      message: `Your booking for ${field.name} on ${new Date(date).toLocaleDateString()} has been confirmed`,
+      data: {
+        bookingId: booking.id,
+        fieldId: field.id,
+        fieldName: field.name,
+        date,
+        startTime,
+        endTime,
+        totalPrice,
+      },
     });
 
     res.status(201).json({

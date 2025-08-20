@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const database_1 = __importDefault(require("../config/database"));
+const notification_controller_1 = require("./notification.controller");
 class ReviewController {
     // Get all reviews for a field with pagination
     async getFieldReviews(req, res) {
@@ -157,6 +158,33 @@ class ReviewController {
                     },
                 },
             });
+            // Send notification to field owner
+            console.log('Looking for field:', fieldId);
+            const field = await database_1.default.field.findUnique({
+                where: { id: fieldId },
+                select: { ownerId: true, name: true },
+            });
+            console.log('Field found:', field);
+            if (field?.ownerId) {
+                console.log('Sending notification to field owner:', field.ownerId);
+                const notificationResult = await (0, notification_controller_1.createNotification)({
+                    userId: field.ownerId,
+                    type: 'review_posted',
+                    title: 'New Review Posted',
+                    message: `${user?.name || 'A user'} has posted a ${rating} star review for ${field.name}`,
+                    data: {
+                        reviewId: review.id,
+                        fieldId,
+                        fieldName: field.name,
+                        rating,
+                        reviewerName: user?.name,
+                    },
+                });
+                console.log('Notification result:', notificationResult);
+            }
+            else {
+                console.log('Field owner not found or field does not have an owner');
+            }
             res.status(201).json({
                 success: true,
                 data: review,

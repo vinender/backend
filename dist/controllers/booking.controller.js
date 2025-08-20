@@ -8,6 +8,7 @@ const field_model_1 = __importDefault(require("../models/field.model"));
 const asyncHandler_1 = require("../utils/asyncHandler");
 const AppError_1 = require("../utils/AppError");
 const database_1 = __importDefault(require("../config/database"));
+const notification_controller_1 = require("./notification.controller");
 class BookingController {
     // Create a new booking
     createBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
@@ -40,6 +41,39 @@ class BookingController {
             endTime,
             totalPrice,
             notes,
+        });
+        // Send notification to field owner
+        if (field.ownerId) {
+            await (0, notification_controller_1.createNotification)({
+                userId: field.ownerId,
+                type: 'booking_received',
+                title: 'New Booking Received',
+                message: `You have a new booking for ${field.name} on ${new Date(date).toLocaleDateString()} from ${startTime} to ${endTime}`,
+                data: {
+                    bookingId: booking.id,
+                    fieldId: field.id,
+                    fieldName: field.name,
+                    date,
+                    startTime,
+                    endTime,
+                },
+            });
+        }
+        // Send confirmation notification to dog owner
+        await (0, notification_controller_1.createNotification)({
+            userId: dogOwnerId,
+            type: 'booking_confirmed',
+            title: 'Booking Confirmed',
+            message: `Your booking for ${field.name} on ${new Date(date).toLocaleDateString()} has been confirmed`,
+            data: {
+                bookingId: booking.id,
+                fieldId: field.id,
+                fieldName: field.name,
+                date,
+                startTime,
+                endTime,
+                totalPrice,
+            },
         });
         res.status(201).json({
             success: true,

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
+import { createNotification } from './notification.controller';
 
 // Extend Request type to include user
 interface AuthRequest extends Request {
@@ -175,6 +176,35 @@ class ReviewController {
           },
         },
       });
+
+      // Send notification to field owner
+      console.log('Looking for field:', fieldId);
+      const field = await prisma.field.findUnique({
+        where: { id: fieldId },
+        select: { ownerId: true, name: true },
+      });
+      
+      console.log('Field found:', field);
+
+      if (field?.ownerId) {
+        console.log('Sending notification to field owner:', field.ownerId);
+        const notificationResult = await createNotification({
+          userId: field.ownerId,
+          type: 'review_posted',
+          title: 'New Review Posted',
+          message: `${user?.name || 'A user'} has posted a ${rating} star review for ${field.name}`,
+          data: {
+            reviewId: review.id,
+            fieldId,
+            fieldName: field.name,
+            rating,
+            reviewerName: user?.name,
+          },
+        });
+        console.log('Notification result:', notificationResult);
+      } else {
+        console.log('Field owner not found or field does not have an owner');
+      }
 
       res.status(201).json({
         success: true,

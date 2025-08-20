@@ -163,10 +163,13 @@ class FieldController {
         const ownerId = req.user.id;
         const field = await field_model_1.default.findOneByOwner(ownerId);
         if (!field) {
-            return res.status(404).json({
-                success: false,
-                message: 'No field found for this owner',
-                field: null
+            // Return success with null field to indicate no field exists yet
+            // This allows the frontend to show the add field form
+            return res.status(200).json({
+                success: true,
+                message: 'No field found. Please add your field.',
+                field: null,
+                showAddForm: true
             });
         }
         // Return the field with step completion status
@@ -193,10 +196,67 @@ class FieldController {
         const { step, data } = req.body;
         // Check if field already exists for this owner
         const existingFields = await field_model_1.default.findByOwner(ownerId);
+        let fieldId;
+        let isNewField = false;
+        // If no field exists, create a new one with initial data
         if (!existingFields || existingFields.length === 0) {
-            throw new AppError_1.AppError('No field found for this owner', 404);
+            // Create a new field with the data from the first step
+            // This handles the case where the field was deleted or never created
+            isNewField = true;
+            // Prepare initial field data based on the step
+            let initialFieldData = {
+                ownerId,
+                isActive: false,
+                fieldDetailsCompleted: false,
+                uploadImagesCompleted: false,
+                pricingAvailabilityCompleted: false,
+                bookingRulesCompleted: false,
+            };
+            // If the first step is field-details, include that data
+            if (step === 'field-details') {
+                initialFieldData = {
+                    ...initialFieldData,
+                    name: data.fieldName,
+                    size: data.fieldSize,
+                    terrainType: data.terrainType,
+                    fenceType: data.fenceType,
+                    fenceSize: data.fenceSize,
+                    surfaceType: data.surfaceType,
+                    type: 'PRIVATE',
+                    description: data.description,
+                    maxDogs: parseInt(data.maxDogs) || 10,
+                    openingTime: data.startTime,
+                    closingTime: data.endTime,
+                    operatingDays: data.openingDays ? [data.openingDays] : [],
+                    amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+                    address: data.streetAddress,
+                    apartment: data.apartment,
+                    city: data.city,
+                    state: data.county,
+                    zipCode: data.postalCode,
+                    country: data.country,
+                    fieldDetailsCompleted: true
+                };
+            }
+            // Create the new field
+            const newField = await field_model_1.default.create(initialFieldData);
+            fieldId = newField.id;
+            // If we've already processed the data in field creation, we're done
+            if (step === 'field-details') {
+                return res.json({
+                    success: true,
+                    message: 'Field created and progress saved',
+                    fieldId: newField.id,
+                    stepCompleted: true,
+                    allStepsCompleted: false,
+                    isActive: false,
+                    isNewField: true
+                });
+            }
         }
-        const fieldId = existingFields[0].id;
+        else {
+            fieldId = existingFields[0].id;
+        }
         let updateData = {};
         // Update based on which step is being saved
         switch (step) {
@@ -225,25 +285,60 @@ class FieldController {
                 };
                 break;
             case 'upload-images':
-                updateData = {
-                    images: data.images || [],
-                    uploadImagesCompleted: true
-                };
+                // If this is a new field created from a non-field-details step, 
+                // we need to ensure basic field info exists
+                if (isNewField) {
+                    updateData = {
+                        name: 'Untitled Field',
+                        type: 'PRIVATE',
+                        images: data.images || [],
+                        uploadImagesCompleted: true
+                    };
+                }
+                else {
+                    updateData = {
+                        images: data.images || [],
+                        uploadImagesCompleted: true
+                    };
+                }
                 break;
             case 'pricing-availability':
-                updateData = {
-                    pricePerHour: parseFloat(data.pricePerHour) || 0,
-                    pricePerDay: data.weekendPrice ? parseFloat(data.weekendPrice) : null,
-                    instantBooking: data.instantBooking || false,
-                    pricingAvailabilityCompleted: true
-                };
+                if (isNewField) {
+                    updateData = {
+                        name: 'Untitled Field',
+                        type: 'PRIVATE',
+                        pricePerHour: parseFloat(data.pricePerHour) || 0,
+                        pricePerDay: data.weekendPrice ? parseFloat(data.weekendPrice) : null,
+                        instantBooking: data.instantBooking || false,
+                        pricingAvailabilityCompleted: true
+                    };
+                }
+                else {
+                    updateData = {
+                        pricePerHour: parseFloat(data.pricePerHour) || 0,
+                        pricePerDay: data.weekendPrice ? parseFloat(data.weekendPrice) : null,
+                        instantBooking: data.instantBooking || false,
+                        pricingAvailabilityCompleted: true
+                    };
+                }
                 break;
             case 'booking-rules':
-                updateData = {
-                    rules: data.rules ? [data.rules] : [],
-                    cancellationPolicy: data.policies || '',
-                    bookingRulesCompleted: true
-                };
+                if (isNewField) {
+                    updateData = {
+                        name: 'Untitled Field',
+                        type: 'PRIVATE',
+                        rules: data.rules ? [data.rules] : [],
+                        cancellationPolicy: data.policies || '',
+                        bookingRulesCompleted: true
+                    };
+                }
+                else {
+                    updateData = {
+                        rules: data.rules ? [data.rules] : [],
+                        cancellationPolicy: data.policies || '',
+                        bookingRulesCompleted: true
+                    };
+                }
                 break;
             default:
                 throw new AppError_1.AppError('Invalid step', 400);
@@ -261,11 +356,12 @@ class FieldController {
         }
         res.json({
             success: true,
-            message: 'Progress saved',
+            message: isNewField ? 'Field created and progress saved' : 'Progress saved',
             fieldId: field.id,
             stepCompleted: true,
             allStepsCompleted,
-            isActive: allStepsCompleted
+            isActive: allStepsCompleted,
+            isNewField
         });
     });
     // Submit field for review

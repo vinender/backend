@@ -1,0 +1,114 @@
+import { Server } from 'socket.io';
+import { Server as HTTPServer } from 'http';
+import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export function setupWebSocket(server: HTTPServer) {
+  const io = new Server(server, {
+    cors: {
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      credentials: true,
+    },
+  });
+
+  // Store io instance globally for use in other modules
+  (global as any).io = io;
+
+  // Authentication middleware
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token;
+      
+      if (!token) {
+        return next(new Error('Authentication error'));
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, role: true, email: true, name: true },
+      });
+
+      if (!user) {
+        return next(new Error('User not found'));
+      }
+
+      // Attach user to socket
+      (socket as any).userId = user.id;
+      (socket as any).userRole = user.role;
+      (socket as any).user = user;
+
+      next();
+    } catch (error) {
+      next(new Error('Authentication error'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    const userId = (socket as any).userId;
+    const userRole = (socket as any).userRole;
+    
+    console.log(`User ${userId} connected (role: ${userRole})`);
+
+    // Join user-specific room
+    socket.join(`user-${userId}`);
+    
+    // Join role-specific room
+    socket.join(`role-${userRole}`);
+
+    // Send initial unread count
+    sendUnreadCount(userId);
+
+    // Handle disconnect
+    socket.on('disconnect', () => {
+      console.log(`User ${userId} disconnected`);
+    });
+
+    // Handle marking notifications as read
+    socket.on('markAsRead', async (notificationId: string) => {
+      try {
+        await prisma.notification.update({
+          where: { id: notificationId },
+          data: { read: true, readAt: new Date() },
+        });
+        
+        // Send updated unread count
+        sendUnreadCount(userId);
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    });
+
+    // Handle marking all as read
+    socket.on('markAllAsRead', async () => {
+      try {
+        await prisma.notification.updateMany({
+          where: { userId, read: false },
+          data: { read: true, readAt: new Date() },
+        });
+        
+        // Send updated unread count
+        sendUnreadCount(userId);
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+      }
+    });
+  });
+
+  // Helper function to send unread count
+  async function sendUnreadCount(userId: string) {
+    try {
+      const unreadCount = await prisma.notification.count({
+        where: { userId, read: false },
+      });
+      
+      io.to(`user-${userId}`).emit('unreadCount', unreadCount);
+    } catch (error) {
+      console.error('Error sending unread count:', error);
+    }
+  }
+
+  return io;
+}

@@ -12,6 +12,8 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = require("express-rate-limit");
 const express_mongo_sanitize_1 = __importDefault(require("express-mongo-sanitize"));
+const http_1 = require("http");
+const websocket_1 = require("./utils/websocket");
 // Load environment variables
 dotenv_1.default.config();
 // Import configuration
@@ -23,6 +25,7 @@ const user_routes_1 = __importDefault(require("./routes/user.routes"));
 const field_routes_1 = __importDefault(require("./routes/field.routes"));
 const booking_routes_1 = __importDefault(require("./routes/booking.routes"));
 const review_routes_1 = __importDefault(require("./routes/review.routes"));
+const notification_routes_1 = __importDefault(require("./routes/notification.routes"));
 class Server {
     app;
     constructor() {
@@ -111,6 +114,7 @@ class Server {
                     fields: '/api/fields',
                     bookings: '/api/bookings',
                     reviews: '/api/reviews',
+                    notifications: '/api/notifications',
                 },
             });
         });
@@ -120,6 +124,7 @@ class Server {
         this.app.use('/api/fields', field_routes_1.default);
         this.app.use('/api/bookings', booking_routes_1.default);
         this.app.use('/api/reviews', review_routes_1.default);
+        this.app.use('/api/notifications', notification_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }
@@ -145,7 +150,10 @@ class Server {
         });
     }
     start() {
-        const server = this.app.listen(constants_1.PORT, () => {
+        const httpServer = (0, http_1.createServer)(this.app);
+        // Setup WebSocket
+        (0, websocket_1.setupWebSocket)(httpServer);
+        httpServer.listen(constants_1.PORT, () => {
             console.log(`
 ╔════════════════════════════════════════════════════╗
 ║                                                    ║
@@ -157,10 +165,12 @@ class Server {
 ║                                                    ║
 ║   API: http://localhost:${constants_1.PORT}/api                    ║
 ║   Health: http://localhost:${constants_1.PORT}/health              ║
+║   WebSocket: ws://localhost:${constants_1.PORT}                   ║
 ║                                                    ║
 ╚════════════════════════════════════════════════════╝
       `);
         });
+        const server = httpServer;
         // Graceful shutdown
         process.on('SIGTERM', () => {
             console.log('SIGTERM signal received: closing HTTP server');
