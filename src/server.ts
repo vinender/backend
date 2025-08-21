@@ -24,6 +24,9 @@ import fieldRoutes from './routes/field.routes';
 import bookingRoutes from './routes/booking.routes';
 import reviewRoutes from './routes/review.routes';
 import notificationRoutes from './routes/notification.routes';
+import paymentRoutes from './routes/payment.routes';
+import stripeRoutes from './routes/stripe.routes';
+import favoriteRoutes from './routes/favorite.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -80,6 +83,10 @@ class Server {
     // Data sanitization against NoSQL query injection
     this.app.use(mongoSanitize());
 
+    // Stripe webhook endpoint (raw body needed, must be before JSON parser)
+    this.app.use('/api/stripe', express.raw({ type: 'application/json' }));
+    this.app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
     // Body parsing middleware
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -127,10 +134,14 @@ class Server {
           bookings: '/api/bookings',
           reviews: '/api/reviews',
           notifications: '/api/notifications',
+          payments: '/api/payments',
         },
       });
     });
 
+    // Stripe webhook route (must be before other routes due to raw body requirement)
+    this.app.use('/api/stripe', stripeRoutes);
+    
     // Mount API routes
     this.app.use('/api/auth', authRoutes);
     this.app.use('/api/users', userRoutes);
@@ -138,6 +149,8 @@ class Server {
     this.app.use('/api/bookings', bookingRoutes);
     this.app.use('/api/reviews', reviewRoutes);
     this.app.use('/api/notifications', notificationRoutes);
+    this.app.use('/api/payments', paymentRoutes);
+    this.app.use('/api/favorites', favoriteRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

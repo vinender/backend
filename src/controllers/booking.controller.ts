@@ -171,7 +171,7 @@ class BookingController {
     let whereClause: any = {};
     
     if (userRole === 'DOG_OWNER') {
-      whereClause.dogOwnerId = userId;
+      whereClause.userId = userId;
     } else if (userRole === 'FIELD_OWNER') {
       // For field owner, we need to get their field first
       const fields = await prisma.field.findMany({

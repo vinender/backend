@@ -8,9 +8,16 @@ const router = Router();
 // Public routes (with optional auth for better data)
 router.get('/', optionalAuth, fieldController.getAllFields);
 router.get('/search/location', fieldController.searchByLocation);
+
+// Field ownership claiming routes (for field owners to claim unclaimed fields)
+// These are NOT for booking - they're for claiming ownership of unclaimed fields
+router.get('/unclaimed', protect, restrictTo('FIELD_OWNER'), fieldController.getFieldForClaim);
+router.post('/claim-ownership', protect, restrictTo('FIELD_OWNER'), fieldController.claimField);
+
+// Public route with ID parameter (must come after specific routes)
 router.get('/:id', optionalAuth, fieldController.getField);
 
-// Protected routes (require authentication)
+// All remaining routes require authentication
 router.use(protect);
 
 // Field owner routes

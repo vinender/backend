@@ -597,6 +597,81 @@ class FieldController {
       });
     }
   });
+
+  // Get fields available for claiming
+  getFieldForClaim = asyncHandler(async (req: Request, res: Response) => {
+    const fields = await prisma.field.findMany({
+      where: {
+        isClaimed: false,
+        isActive: true
+      },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        images: true,
+        size: true,
+        pricePerHour: true
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: fields
+    });
+  });
+
+  // Claim a field
+  claimField = asyncHandler(async (req: Request, res: Response) => {
+    const { fieldId } = req.body;
+    const userId = (req as any).user.id;
+
+    if (!fieldId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Field ID is required'
+      });
+    }
+
+    // Check if field exists and is not already claimed
+    const field = await prisma.field.findUnique({
+      where: { id: fieldId }
+    });
+
+    if (!field) {
+      return res.status(404).json({
+        success: false,
+        message: 'Field not found'
+      });
+    }
+
+    if (field.isClaimed) {
+      return res.status(400).json({
+        success: false,
+        message: 'This field has already been claimed'
+      });
+    }
+
+    // Update field with owner information
+    const updatedField = await prisma.field.update({
+      where: { id: fieldId },
+      data: {
+        isClaimed: true,
+        ownerId: userId,
+        ownerName: (req as any).user.name || (req as any).user.email,
+        joinedOn: new Date()
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Field claimed successfully',
+      data: updatedField
+    });
+  });
 }
 
 export default new FieldController();
