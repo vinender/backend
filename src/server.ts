@@ -9,6 +9,8 @@ import { rateLimit } from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 import { createServer } from 'http';
 import { setupWebSocket } from './utils/websocket';
+import { initializeSocket } from './config/socket';
+import { initializeKafka } from './config/kafka';
 
 // Load environment variables
 dotenv.config();
@@ -27,18 +29,23 @@ import notificationRoutes from './routes/notification.routes';
 import paymentRoutes from './routes/payment.routes';
 import stripeRoutes from './routes/stripe.routes';
 import favoriteRoutes from './routes/favorite.routes';
+import chatRoutes from './routes/chat.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
 
 class Server {
   private app: Application;
+  private httpServer: any;
+  private io: any;
 
   constructor() {
     this.app = express();
+    this.httpServer = createServer(this.app);
     this.configureMiddleware();
     this.configureRoutes();
     this.configureErrorHandling();
+    this.configureSocketAndKafka();
   }
 
   private configureMiddleware(): void {
@@ -135,6 +142,7 @@ class Server {
           reviews: '/api/reviews',
           notifications: '/api/notifications',
           payments: '/api/payments',
+          chat: '/api/chat',
         },
       });
     });
@@ -151,9 +159,20 @@ class Server {
     this.app.use('/api/notifications', notificationRoutes);
     this.app.use('/api/payments', paymentRoutes);
     this.app.use('/api/favorites', favoriteRoutes);
+    this.app.use('/api/chat', chatRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));
+  }
+
+  private configureSocketAndKafka(): void {
+    // Initialize Socket.io
+    this.io = initializeSocket(this.httpServer);
+    
+    // Initialize Kafka (optional - will fallback to direct processing if not available)
+    initializeKafka(this.io).catch(error => {
+      console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
+    });
   }
 
   private configureErrorHandling(): void {
@@ -181,12 +200,10 @@ class Server {
   }
 
   public start(): void {
-    const httpServer = createServer(this.app);
-    
     // Setup WebSocket
-    setupWebSocket(httpServer);
+    setupWebSocket(this.httpServer);
     
-    httpServer.listen(PORT, () => {
+    this.httpServer.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════════════════╗
 ║                                                    ║
@@ -204,7 +221,7 @@ class Server {
       `);
     });
     
-    const server = httpServer;
+    const server = this.httpServer;
 
     // Graceful shutdown
     process.on('SIGTERM', () => {

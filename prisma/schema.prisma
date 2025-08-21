@@ -60,6 +60,8 @@ model User {
   fieldReviews  FieldReview[]
   notifications Notification[]
   transactions  Transaction[]
+  sentMessages      Message[]      @relation("SentMessages")
+  receivedMessages  Message[]      @relation("ReceivedMessages")
   
   @@map("users")
 }
@@ -157,6 +159,7 @@ model Field {
   fieldReviews    FieldReview[]
   favorites       Favorite[]
   availability    FieldAvailability[]
+  conversations   Conversation[]
 
   @@index([city, state])
   @@index([ownerId])
@@ -212,6 +215,49 @@ model Booking {
   @@index([fieldId])
   @@index([date, status])
   @@map("bookings")
+}
+
+model Conversation {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  participants  String[]  @db.ObjectId // Array of user IDs
+  fieldId       String?   @db.ObjectId // Optional: related to a specific field
+  lastMessage   String?
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  messages      Message[]
+  field         Field?    @relation(fields: [fieldId], references: [id])
+  
+  @@index([participants])
+  @@index([fieldId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String       @db.ObjectId
+  senderId       String       @db.ObjectId
+  receiverId     String       @db.ObjectId
+  content        String
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  // Relations
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver       User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@index([isRead])
+  @@map("messages")
 }
 
 model Payment {
