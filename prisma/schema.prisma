@@ -160,6 +160,7 @@ model Field {
   favorites       Favorite[]
   availability    FieldAvailability[]
   conversations   Conversation[]
+  claims          FieldClaim[]
 
   @@index([city, state])
   @@index([ownerId])
@@ -388,4 +389,44 @@ model Transaction {
   @@index([bookingId])
   @@index([status])
   @@map("transactions")
+}
+
+model FieldClaim {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  fieldId       String   @db.ObjectId
+  fullName      String
+  email         String
+  phoneCode     String
+  phoneNumber   String
+  isLegalOwner  Boolean
+  documents     String[] // Array of S3 URLs
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewNotes   String?
+  reviewedAt    DateTime?
+  reviewedBy    String?  @db.ObjectId
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  field         Field    @relation(fields: [fieldId], references: [id])
+
+  @@index([fieldId])
+  @@index([email])
+  @@index([status])
+  @@map("field_claims")
+}
+
+model OtpVerification {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  email      String
+  otp        String
+  type       String   // SIGNUP, RESET_PASSWORD, EMAIL_VERIFICATION
+  verified   Boolean  @default(false)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([email, otp])
+  @@index([expiresAt])
+  @@map("otp_verifications")
 }

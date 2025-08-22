@@ -21,6 +21,7 @@ import './config/database'; // Initialize database connection
 
 // Import routes
 import authRoutes from './routes/auth.routes';
+import authOtpRoutes from './routes/auth.otp.routes';
 import userRoutes from './routes/user.routes';
 import fieldRoutes from './routes/field.routes';
 import bookingRoutes from './routes/booking.routes';
@@ -30,6 +31,8 @@ import paymentRoutes from './routes/payment.routes';
 import stripeRoutes from './routes/stripe.routes';
 import favoriteRoutes from './routes/favorite.routes';
 import chatRoutes from './routes/chat.routes';
+import payoutRoutes from './routes/payout.routes';
+import claimRoutes from './routes/claim.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -152,6 +155,7 @@ class Server {
     
     // Mount API routes
     this.app.use('/api/auth', authRoutes);
+    this.app.use('/api/auth/otp', authOtpRoutes);
     this.app.use('/api/users', userRoutes);
     this.app.use('/api/fields', fieldRoutes);
     this.app.use('/api/bookings', bookingRoutes);
@@ -160,6 +164,8 @@ class Server {
     this.app.use('/api/payments', paymentRoutes);
     this.app.use('/api/favorites', favoriteRoutes);
     this.app.use('/api/chat', chatRoutes);
+    this.app.use('/api/payouts', payoutRoutes);
+    this.app.use('/api/claims', claimRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

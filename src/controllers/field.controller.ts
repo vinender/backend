@@ -598,6 +598,392 @@ class FieldController {
     }
   });
 
+  // Get today's bookings for field owner
+  getTodayBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+    const { page = 1, limit = 12 } = req.query;
+
+    try {
+      // First get the owner's field
+      const fields = await FieldModel.findByOwner(ownerId);
+      
+      if (!fields || fields.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No field found for this owner',
+          bookings: [],
+          stats: {
+            todayBookings: 0,
+            totalBookings: 0,
+            totalEarnings: 0
+          }
+        });
+      }
+
+      const fieldId = fields[0].id;
+
+      // Get today's date range
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const bookingFilter = {
+        fieldId,
+        date: {
+          gte: today,
+          lt: tomorrow
+        }
+      };
+
+      const pageNum = Number(page);
+      const limitNum = Number(limit);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Fetch bookings with user details and count
+      const [bookings, totalFilteredBookings] = await Promise.all([
+        prisma.booking.findMany({
+          where: bookingFilter,
+          include: {
+            user: true
+          },
+          orderBy: {
+            date: 'asc'
+          },
+          skip,
+          take: limitNum
+        }),
+        prisma.booking.count({ where: bookingFilter })
+      ]);
+
+      // Get overall stats
+      const [totalBookings, totalEarnings] = await Promise.all([
+        prisma.booking.count({ where: { fieldId } }),
+        prisma.booking.aggregate({
+          where: { 
+            fieldId,
+            status: 'COMPLETED'
+          },
+          _sum: {
+            totalPrice: true
+          }
+        })
+      ]);
+
+      // Format bookings for frontend
+      const formattedBookings = bookings.map((booking: any) => ({
+        id: booking.id,
+        userName: booking.user.name,
+        userAvatar: booking.user.profileImage || null,
+        userEmail: booking.user.email,
+        userPhone: booking.user.phone,
+        time: `${booking.startTime} - ${booking.endTime}`,
+        orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+        status: booking.status.toLowerCase(),
+        frequency: booking.recurring || 'NA',
+        dogs: booking.numberOfDogs || 1,
+        amount: booking.totalPrice,
+        date: booking.date.toISOString(),
+        fieldName: fields[0].name,
+        fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+        notes: booking.notes || null
+      }));
+
+      res.status(200).json({
+        success: true,
+        bookings: formattedBookings,
+        stats: {
+          todayBookings: totalFilteredBookings,
+          totalBookings,
+          totalEarnings: totalEarnings._sum.totalPrice || 0
+        },
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: totalFilteredBookings,
+          totalPages: Math.ceil(totalFilteredBookings / limitNum),
+          hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+          hasPrevPage: pageNum > 1
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching today bookings:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch today bookings',
+        bookings: [],
+        stats: {
+          todayBookings: 0,
+          totalBookings: 0,
+          totalEarnings: 0
+        }
+      });
+    }
+  });
+
+  // Get upcoming bookings for field owner
+  getUpcomingBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+    const { page = 1, limit = 12 } = req.query;
+
+    try {
+      // First get the owner's field
+      const fields = await FieldModel.findByOwner(ownerId);
+      
+      if (!fields || fields.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No field found for this owner',
+          bookings: [],
+          stats: {
+            todayBookings: 0,
+            totalBookings: 0,
+            totalEarnings: 0
+          }
+        });
+      }
+
+      const fieldId = fields[0].id;
+
+      // Get tomorrow and beyond
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const bookingFilter = {
+        fieldId,
+        date: {
+          gte: tomorrow
+        }
+      };
+
+      const pageNum = Number(page);
+      const limitNum = Number(limit);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Fetch bookings with user details and count
+      const [bookings, totalFilteredBookings] = await Promise.all([
+        prisma.booking.findMany({
+          where: bookingFilter,
+          include: {
+            user: true
+          },
+          orderBy: {
+            date: 'asc'
+          },
+          skip,
+          take: limitNum
+        }),
+        prisma.booking.count({ where: bookingFilter })
+      ]);
+
+      // Get overall stats
+      const [totalBookings, todayBookings, totalEarnings] = await Promise.all([
+        prisma.booking.count({ where: { fieldId } }),
+        prisma.booking.count({
+          where: {
+            fieldId,
+            date: {
+              gte: today,
+              lt: tomorrow
+            }
+          }
+        }),
+        prisma.booking.aggregate({
+          where: { 
+            fieldId,
+            status: 'COMPLETED'
+          },
+          _sum: {
+            totalPrice: true
+          }
+        })
+      ]);
+
+      // Format bookings for frontend
+      const formattedBookings = bookings.map((booking: any) => ({
+        id: booking.id,
+        userName: booking.user.name,
+        userAvatar: booking.user.profileImage || null,
+        userEmail: booking.user.email,
+        userPhone: booking.user.phone,
+        time: `${booking.startTime} - ${booking.endTime}`,
+        orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+        status: booking.status.toLowerCase(),
+        frequency: booking.recurring || 'NA',
+        dogs: booking.numberOfDogs || 1,
+        amount: booking.totalPrice,
+        date: booking.date.toISOString(),
+        fieldName: fields[0].name,
+        fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+        notes: booking.notes || null
+      }));
+
+      res.status(200).json({
+        success: true,
+        bookings: formattedBookings,
+        stats: {
+          todayBookings,
+          totalBookings,
+          totalEarnings: totalEarnings._sum.totalPrice || 0
+        },
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: totalFilteredBookings,
+          totalPages: Math.ceil(totalFilteredBookings / limitNum),
+          hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+          hasPrevPage: pageNum > 1
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching upcoming bookings:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch upcoming bookings',
+        bookings: [],
+        stats: {
+          todayBookings: 0,
+          totalBookings: 0,
+          totalEarnings: 0
+        }
+      });
+    }
+  });
+
+  // Get previous bookings for field owner
+  getPreviousBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+    const { page = 1, limit = 12 } = req.query;
+
+    try {
+      // First get the owner's field
+      const fields = await FieldModel.findByOwner(ownerId);
+      
+      if (!fields || fields.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No field found for this owner',
+          bookings: [],
+          stats: {
+            todayBookings: 0,
+            totalBookings: 0,
+            totalEarnings: 0
+          }
+        });
+      }
+
+      const fieldId = fields[0].id;
+
+      // Get past bookings
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const bookingFilter = {
+        fieldId,
+        date: {
+          lt: today
+        }
+      };
+
+      const pageNum = Number(page);
+      const limitNum = Number(limit);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Fetch bookings with user details and count
+      const [bookings, totalFilteredBookings] = await Promise.all([
+        prisma.booking.findMany({
+          where: bookingFilter,
+          include: {
+            user: true
+          },
+          orderBy: {
+            date: 'desc'
+          },
+          skip,
+          take: limitNum
+        }),
+        prisma.booking.count({ where: bookingFilter })
+      ]);
+
+      // Get overall stats
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const [totalBookings, todayBookings, totalEarnings] = await Promise.all([
+        prisma.booking.count({ where: { fieldId } }),
+        prisma.booking.count({
+          where: {
+            fieldId,
+            date: {
+              gte: today,
+              lt: tomorrow
+            }
+          }
+        }),
+        prisma.booking.aggregate({
+          where: { 
+            fieldId,
+            status: 'COMPLETED'
+          },
+          _sum: {
+            totalPrice: true
+          }
+        })
+      ]);
+
+      // Format bookings for frontend
+      const formattedBookings = bookings.map((booking: any) => ({
+        id: booking.id,
+        userName: booking.user.name,
+        userAvatar: booking.user.profileImage || null,
+        userEmail: booking.user.email,
+        userPhone: booking.user.phone,
+        time: `${booking.startTime} - ${booking.endTime}`,
+        orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+        status: booking.status.toLowerCase(),
+        frequency: booking.recurring || 'NA',
+        dogs: booking.numberOfDogs || 1,
+        amount: booking.totalPrice,
+        date: booking.date.toISOString(),
+        fieldName: fields[0].name,
+        fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+        notes: booking.notes || null
+      }));
+
+      res.status(200).json({
+        success: true,
+        bookings: formattedBookings,
+        stats: {
+          todayBookings,
+          totalBookings,
+          totalEarnings: totalEarnings._sum.totalPrice || 0
+        },
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: totalFilteredBookings,
+          totalPages: Math.ceil(totalFilteredBookings / limitNum),
+          hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+          hasPrevPage: pageNum > 1
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching previous bookings:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch previous bookings',
+        bookings: [],
+        stats: {
+          todayBookings: 0,
+          totalBookings: 0,
+          totalEarnings: 0
+        }
+      });
+    }
+  });
+
   // Get fields available for claiming
   getFieldForClaim = asyncHandler(async (req: Request, res: Response) => {
     const fields = await prisma.field.findMany({
