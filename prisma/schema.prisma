@@ -100,14 +100,17 @@ model Field {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   name            String?
   description     String?
-  address         String?
-  apartment       String?   // Apartment/Suite field
-  city            String?
-  state           String?
-  zipCode         String?
-  country         String    @default("US")
-  latitude        Float?
-  longitude       Float?
+  
+  // Location object containing all address details
+  location        Json?     // { streetAddress, city, county, postalCode, country, lat, lng, formatted_address }
+  
+  // Keep legacy fields for backward compatibility (can be deprecated later)
+  address         String?   // Street address (legacy)
+  city            String?   // City (legacy)
+  state           String?   // State/County (legacy)
+  zipCode         String?   // Postal code (legacy)
+  latitude        Float?    // Latitude (legacy)
+  longitude       Float?    // Longitude (legacy)
   ownerId         String    @db.ObjectId
   type            FieldType @default(PRIVATE)
   size            String?   // e.g., "Small", "Medium", "Large", "Extra Large"

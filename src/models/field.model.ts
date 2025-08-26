@@ -7,7 +7,6 @@ export interface CreateFieldInput {
   city?: string;
   state?: string;
   zipCode?: string;
-  country?: string;
   latitude?: number;
   longitude?: number;
   ownerId: string;
@@ -63,15 +62,17 @@ class FieldModel {
       }
     }
     
+    // Remove apartment field as it doesn't exist in the schema
+    const { apartment, ...cleanedData } = data as any;
+    
     return prisma.field.create({
       data: {
-        ...data,
+        ...cleanedData,
         ownerName,
         joinedOn,
-        country: data.country || 'UK',
-        type: data.type || 'PRIVATE',
-        maxDogs: data.maxDogs || 10,
-        instantBooking: data.instantBooking || false,
+        type: cleanedData.type || 'PRIVATE',
+        maxDogs: cleanedData.maxDogs || 10,
+        instantBooking: cleanedData.instantBooking || false,
       },
       include: {
         owner: {
@@ -270,8 +271,11 @@ class FieldModel {
 
   // Update field
   async update(id: string, data: Partial<CreateFieldInput>) {
+    // Remove apartment field as it doesn't exist in the schema
+    const { apartment, ...dataWithoutApartment } = data as any;
+    
     // If updating owner, also update owner name and joined date
-    let updateData: any = { ...data };
+    let updateData: any = { ...dataWithoutApartment };
     
     if (data.ownerId && (!data.ownerName || !data.joinedOn)) {
       const owner = await prisma.user.findUnique({

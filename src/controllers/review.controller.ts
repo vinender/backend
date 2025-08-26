@@ -183,7 +183,7 @@ class ReviewController {
         select: { ownerId: true, name: true },
       });
 
-      console.log('Review notification debug:');
+      console.log('=== Review Notification Debug ===');
       console.log('- Reviewer userId:', userId);
       console.log('- Field ownerId:', field?.ownerId);
       console.log('- Are they the same?', field?.ownerId === userId);
@@ -191,38 +191,48 @@ class ReviewController {
       // Send notification to field owner (if not reviewing their own field)
       if (field?.ownerId && field.ownerId !== userId) {
         console.log('Sending "new review" notification to field owner:', field.ownerId);
-        await createNotification({
-          userId: field.ownerId,
-          type: 'new_review_received',
-          title: "You've got a new review!",
-          message: `See what a recent visitor had to say about their experience at ${field.name}.`,
-          data: {
-            reviewId: review.id,
-            fieldId,
-            fieldName: field.name,
-            rating,
-            reviewerName: user?.name,
-            comment: comment?.substring(0, 100), // Include preview of the comment
-          },
-        });
+        try {
+          await createNotification({
+            userId: field.ownerId,
+            type: 'new_review_received',
+            title: "You've got a new review!",
+            message: `See what a recent visitor had to say about their experience at ${field.name}.`,
+            data: {
+              reviewId: review.id,
+              fieldId,
+              fieldName: field.name,
+              rating,
+              reviewerName: user?.name,
+              comment: comment?.substring(0, 100), // Include preview of the comment
+            },
+          });
+          console.log('Field owner review notification sent successfully');
+        } catch (error) {
+          console.error('Failed to send field owner review notification:', error);
+        }
       } else {
         console.log('Skipping field owner notification - reviewer is the field owner');
       }
 
       // Send confirmation notification to the reviewer
       console.log('Sending "review posted" confirmation to reviewer:', userId);
-      await createNotification({
-        userId: userId,
-        type: 'review_posted_success',
-        title: 'Review Posted Successfully',
-        message: `Your ${rating} star review for ${field?.name} has been posted successfully.`,
-        data: {
-          reviewId: review.id,
-          fieldId,
-          fieldName: field?.name,
-          rating,
-        },
-      });
+      try {
+        await createNotification({
+          userId: userId,
+          type: 'review_posted_success',
+          title: 'Review Posted Successfully',
+          message: `Your ${rating} star review for ${field?.name} has been posted successfully.`,
+          data: {
+            reviewId: review.id,
+            fieldId,
+            fieldName: field?.name,
+            rating,
+          },
+        });
+        console.log('Reviewer confirmation notification sent successfully');
+      } catch (error) {
+        console.error('Failed to send reviewer notification:', error);
+      }
 
       res.status(201).json({
         success: true,

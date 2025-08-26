@@ -29,10 +29,25 @@ export const initializeSocket = (server: HTTPServer) => {
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
       
+      console.log('WebSocket Auth - Decoded token:', {
+        id: decoded.id,
+        userId: decoded.userId,
+        email: decoded.email,
+        role: decoded.role
+      });
+      
+      // Get userId from token (it's stored as 'id' in the JWT)
+      const userId = decoded.id || decoded.userId;
+      
+      if (!userId) {
+        console.error('No userId found in token');
+        return next(new Error('Invalid token - no user ID'));
+      }
+      
       // Verify user exists
       const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-        select: { id: true, role: true, name: true }
+        where: { id: userId },
+        select: { id: true, role: true, name: true, email: true }
       });
 
       if (!user) {
@@ -41,6 +56,7 @@ export const initializeSocket = (server: HTTPServer) => {
 
       socket.userId = user.id;
       socket.userRole = user.role;
+      (socket as any).userEmail = user.email;
       
       next();
     } catch (error) {
@@ -49,11 +65,25 @@ export const initializeSocket = (server: HTTPServer) => {
   });
 
   // Connection handler
-  io.on('connection', (socket: AuthSocket) => {
-    console.log(`User ${socket.userId} connected`);
-
-    // Join user's personal room
-    socket.join(`user:${socket.userId}`);
+  io.on('connection', async (socket: AuthSocket) => {
+    console.log('=== WebSocket Connection ===');
+    console.log('User connected:');
+    console.log('  - ID (ObjectId):', socket.userId);
+    console.log('  - Email:', (socket as any).userEmail);
+    console.log('  - Role:', socket.userRole);
+    console.log('  - Socket ID:', socket.id);
+    
+    // Join user's personal room with proper format
+    const userRoom = `user-${socket.userId}`;
+    socket.join(userRoom);
+    console.log(`  - Joined room: ${userRoom}`);
+    
+    // Log all rooms this socket is in
+    console.log('  - Socket is in rooms:', Array.from(socket.rooms));
+    
+    // Check how many sockets are in the user's room
+    const socketsInRoom = await io.in(userRoom).fetchSockets();
+    console.log(`  - Total sockets in ${userRoom}: ${socketsInRoom.length}`);
 
     // Join conversation rooms
     socket.on('join-conversations', async () => {
@@ -114,7 +144,7 @@ export const initializeSocket = (server: HTTPServer) => {
         });
 
         messages.forEach(msg => {
-          io.to(`user:${msg.senderId}`).emit('message-read', {
+          io.to(`user-${msg.senderId}`).emit('message-read', {
             messageIds,
             conversationId: msg.conversationId
           });

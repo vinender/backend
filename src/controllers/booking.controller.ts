@@ -52,12 +52,45 @@ class BookingController {
     });
 
     // Send notification to field owner (if not booking their own field)
+    console.log('=== Booking Notification Debug ===');
+    console.log('Field owner ID:', field.ownerId);
+    console.log('Dog owner ID:', dogOwnerId);
+    console.log('Are they the same?', field.ownerId === dogOwnerId);
+    
     if (field.ownerId && field.ownerId !== dogOwnerId) {
+      console.log('Sending notification to field owner...');
+      try {
+        await createNotification({
+          userId: field.ownerId,
+          type: 'new_booking_received',
+          title: 'New Booking Received!',
+          message: `You have a new booking request for ${field.name} on ${new Date(date).toLocaleDateString()} from ${startTime} to ${endTime}. Please review and confirm.`,
+          data: {
+            bookingId: booking.id,
+            fieldId: field.id,
+            fieldName: field.name,
+            date,
+            startTime,
+            endTime,
+            dogOwnerName: (req as any).user.name,
+          },
+        });
+        console.log('Field owner notification sent successfully');
+      } catch (error) {
+        console.error('Failed to send field owner notification:', error);
+      }
+    } else {
+      console.log('Skipping field owner notification - booking own field');
+    }
+
+    // Send confirmation notification to dog owner
+    console.log('Sending confirmation notification to dog owner...');
+    try {
       await createNotification({
-        userId: field.ownerId,
-        type: 'new_booking_received',
-        title: 'New Booking Received!',
-        message: `You have a new booking request for ${field.name} on ${new Date(date).toLocaleDateString()} from ${startTime} to ${endTime}. Please review and confirm.`,
+        userId: dogOwnerId,
+        type: 'booking_request_sent',
+        title: 'Booking Request Sent',
+        message: `Your booking request for ${field.name} on ${new Date(date).toLocaleDateString()} has been sent to the field owner. You'll be notified once it's confirmed.`,
         data: {
           bookingId: booking.id,
           fieldId: field.id,
@@ -65,27 +98,13 @@ class BookingController {
           date,
           startTime,
           endTime,
-          dogOwnerName: (req as any).user.name,
+          totalPrice,
         },
       });
+      console.log('Dog owner confirmation notification sent successfully');
+    } catch (error) {
+      console.error('Failed to send dog owner notification:', error);
     }
-
-    // Send confirmation notification to dog owner
-    await createNotification({
-      userId: dogOwnerId,
-      type: 'booking_request_sent',
-      title: 'Booking Request Sent',
-      message: `Your booking request for ${field.name} on ${new Date(date).toLocaleDateString()} has been sent to the field owner. You'll be notified once it's confirmed.`,
-      data: {
-        bookingId: booking.id,
-        fieldId: field.id,
-        fieldName: field.name,
-        date,
-        startTime,
-        endTime,
-        totalPrice,
-      },
-    });
 
     res.status(201).json({
       success: true,

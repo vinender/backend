@@ -82,11 +82,12 @@ class Server {
       contentSecurityPolicy: false,
     }));
 
-    // Rate limiting
+    // Rate limiting - more lenient in development
     const limiter = rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      max: NODE_ENV === 'development' ? 10000 : 100, // Higher limit in dev
       message: 'Too many requests from this IP, please try again later.',
+      skip: (req) => NODE_ENV === 'development' && req.ip === '::1', // Skip for localhost in dev
     });
     this.app.use('/api', limiter);
 
@@ -174,6 +175,9 @@ class Server {
   private configureSocketAndKafka(): void {
     // Initialize Socket.io
     this.io = initializeSocket(this.httpServer);
+    
+    // Make io globally available for notifications
+    (global as any).io = this.io;
     
     // Initialize Kafka (optional - will fallback to direct processing if not available)
     initializeKafka(this.io).catch(error => {

@@ -285,12 +285,17 @@ class FieldController {
           closingTime: data.endTime,
           operatingDays: data.openingDays ? [data.openingDays] : [],
           amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+          // Store location object if provided
+          location: data.location || null,
+          // Also store legacy fields for backward compatibility
           address: data.streetAddress,
-          apartment: data.apartment,
+          // apartment field removed - doesn't exist in schema
           city: data.city,
           state: data.county,
           zipCode: data.postalCode,
-          country: data.country,
+          // Extract lat/lng from location object if available
+          latitude: data.location?.lat || null,
+          longitude: data.location?.lng || null,
           fieldDetailsCompleted: true
         };
       }
@@ -334,12 +339,17 @@ class FieldController {
           closingTime: data.endTime,
           operatingDays: data.openingDays ? [data.openingDays] : [],
           amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+          // Store location object if provided
+          location: data.location || null,
+          // Also store legacy fields for backward compatibility
           address: data.streetAddress,
-          apartment: data.apartment,
+          // apartment field removed - doesn't exist in schema
           city: data.city,
           state: data.county,
           zipCode: data.postalCode,
-          country: data.country,
+          // Extract lat/lng from location object if available
+          latitude: data.location?.lat || null,
+          longitude: data.location?.lng || null,
           fieldDetailsCompleted: true
         };
         break;

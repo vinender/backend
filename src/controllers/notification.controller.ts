@@ -46,16 +46,14 @@ export const notificationController = {
 
       res.json({
         success: true,
-        data: {
-          notifications,
-          pagination: {
-            page: Number(page),
-            limit: Number(limit),
-            total,
-            totalPages: Math.ceil(total / Number(limit)),
-          },
-          unreadCount,
+        data: notifications,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          totalPages: Math.ceil(total / Number(limit)),
         },
+        unreadCount,
       });
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -185,6 +183,39 @@ export const notificationController = {
       });
     }
   },
+
+  // Get unread notification count
+  async getUnreadCount(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.user?.id || req.user?._id || req.userId;
+      console.log('Getting unread count for user:', userId);
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not authenticated',
+        });
+      }
+
+      const unreadCount = await prisma.notification.count({
+        where: {
+          userId,
+          read: false,
+        },
+      });
+
+      res.json({
+        success: true,
+        count: unreadCount,
+      });
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch unread notification count',
+      });
+    }
+  },
 };
 
 // Notification creation helper (to be used in other controllers)
@@ -229,14 +260,19 @@ export async function createNotification({
     // Emit real-time notification if WebSocket is connected
     const io = (global as any).io;
     if (io) {
-      const roomName = `user-${userId}`;
-      console.log('Emitting to WebSocket room:', roomName);
+      const roomName = `user-${userId}`;  // Using user- format to match socket.ts
+      console.log('Emitting notification to WebSocket room:', roomName);
       
       // Get all sockets in the room to verify
       const sockets = await io.in(roomName).fetchSockets();
       console.log(`Found ${sockets.length} socket(s) in room ${roomName}`);
       
-      io.to(roomName).emit('notification', notification);
+      if (sockets.length > 0) {
+        io.to(roomName).emit('notification', notification);
+        console.log('Notification emitted successfully to room:', roomName);
+      } else {
+        console.log('No active sockets in room, user might be offline');
+      }
     } else {
       console.log('WebSocket server not available, notification saved to DB only');
     }

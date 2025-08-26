@@ -10,6 +10,9 @@ router.use(protect);
 // Get user notifications
 router.get('/', notificationController.getUserNotifications);
 
+// Get unread notification count
+router.get('/unread-count', notificationController.getUnreadCount);
+
 // Mark notification as read
 router.patch('/:id/read', notificationController.markAsRead);
 
