@@ -7,6 +7,7 @@ const router = Router();
 
 // Public routes (with optional auth for better data)
 router.get('/', optionalAuth, fieldController.getAllFields);
+router.get('/suggestions', fieldController.getFieldSuggestions);
 router.get('/search/location', fieldController.searchByLocation);
 
 // Field ownership claiming routes (for field owners to claim unclaimed fields)

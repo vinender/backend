@@ -38,12 +38,28 @@ class FieldController {
   // Get all fields with filters and pagination
   getAllFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const {
+      search,
+      zipCode,
+      lat,
+      lng,
       city,
       state,
       type,
       minPrice,
       maxPrice,
-      search,
+      amenities,
+      minRating,
+      maxDistance,
+      date,
+      startTime,
+      endTime,
+      numberOfDogs,
+      size,
+      terrainType,
+      fenceType,
+      instantBooking,
+      sortBy,
+      sortOrder,
       page = 1,
       limit = 10,
     } = req.query;
@@ -52,12 +68,34 @@ class FieldController {
     const limitNum = Number(limit);
     const skip = (pageNum - 1) * limitNum;
 
+    // Parse amenities if it's a comma-separated string
+    const amenitiesArray = amenities 
+      ? (amenities as string).split(',').map(a => a.trim())
+      : undefined;
+
     const result = await FieldModel.findAll({
+      search: search as string,
+      zipCode: zipCode as string,
+      lat: lat ? Number(lat) : undefined,
+      lng: lng ? Number(lng) : undefined,
       city: city as string,
       state: state as string,
       type: type as string,
       minPrice: minPrice ? Number(minPrice) : undefined,
       maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      amenities: amenitiesArray,
+      minRating: minRating ? Number(minRating) : undefined,
+      maxDistance: maxDistance ? Number(maxDistance) : undefined,
+      date: date ? new Date(date as string) : undefined,
+      startTime: startTime as string,
+      endTime: endTime as string,
+      numberOfDogs: numberOfDogs ? Number(numberOfDogs) : undefined,
+      size: size as string,
+      terrainType: terrainType as string,
+      fenceType: fenceType as string,
+      instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+      sortBy: sortBy as string,
+      sortOrder: sortOrder as 'asc' | 'desc',
       skip,
       take: limitNum,
     });
@@ -75,6 +113,25 @@ class FieldController {
         hasNextPage: pageNum < totalPages,
         hasPrevPage: pageNum > 1,
       },
+    });
+  });
+
+  // Get field suggestions for search
+  getFieldSuggestions = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { query } = req.query;
+    
+    if (!query || (query as string).length < 2) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const suggestions = await FieldModel.getSuggestions(query as string);
+    
+    res.json({
+      success: true,
+      data: suggestions,
     });
   });
 

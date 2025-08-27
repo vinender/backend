@@ -33,6 +33,7 @@ import favoriteRoutes from './routes/favorite.routes';
 import chatRoutes from './routes/chat.routes';
 import payoutRoutes from './routes/payout.routes';
 import claimRoutes from './routes/claim.routes';
+import stripeConnectRoutes from './routes/stripe-connect.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -167,6 +168,7 @@ class Server {
     this.app.use('/api/chat', chatRoutes);
     this.app.use('/api/payouts', payoutRoutes);
     this.app.use('/api/claims', claimRoutes);
+    this.app.use('/api/stripe-connect', stripeConnectRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

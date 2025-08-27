@@ -183,6 +183,25 @@ class ReviewController {
         select: { ownerId: true, name: true },
       });
 
+      // Update field's average rating and total reviews
+      const reviewStats = await prisma.fieldReview.aggregate({
+        where: { fieldId },
+        _avg: {
+          rating: true,
+        },
+        _count: {
+          rating: true,
+        },
+      });
+
+      await prisma.field.update({
+        where: { id: fieldId },
+        data: {
+          averageRating: reviewStats._avg.rating || 0,
+          totalReviews: reviewStats._count.rating,
+        },
+      });
+
       console.log('=== Review Notification Debug ===');
       console.log('- Reviewer userId:', userId);
       console.log('- Field ownerId:', field?.ownerId);
@@ -296,6 +315,25 @@ class ReviewController {
         },
       });
 
+      // Update field's average rating and total reviews
+      const reviewStats = await prisma.fieldReview.aggregate({
+        where: { fieldId: review.fieldId },
+        _avg: {
+          rating: true,
+        },
+        _count: {
+          rating: true,
+        },
+      });
+
+      await prisma.field.update({
+        where: { id: review.fieldId },
+        data: {
+          averageRating: reviewStats._avg.rating || 0,
+          totalReviews: reviewStats._count.rating,
+        },
+      });
+
       res.json({
         success: true,
         data: updatedReview,
@@ -346,6 +384,25 @@ class ReviewController {
       // Delete the review
       await prisma.fieldReview.delete({
         where: { id: reviewId },
+      });
+
+      // Update field's average rating and total reviews
+      const reviewStats = await prisma.fieldReview.aggregate({
+        where: { fieldId: review.fieldId },
+        _avg: {
+          rating: true,
+        },
+        _count: {
+          rating: true,
+        },
+      });
+
+      await prisma.field.update({
+        where: { id: review.fieldId },
+        data: {
+          averageRating: reviewStats._avg.rating || 0,
+          totalReviews: reviewStats._count.rating,
+        },
       });
 
       res.json({
