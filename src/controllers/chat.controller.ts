@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 export const getOrCreateConversation = async (req: Request, res: Response) => {
   try {
     const { receiverId, fieldId } = req.body;
-    const senderId = (req as any).user._id || (req as any).user.id;
+    const senderId = (req as any).user.id;
 
     if (!receiverId) {
       return res.status(400).json({ error: 'Receiver ID is required' });
@@ -81,7 +81,7 @@ export const getOrCreateConversation = async (req: Request, res: Response) => {
 // Get user's conversations
 export const getConversations = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user._id || (req as any).user.id;
+    const userId = (req as any).user.id;
     const { page = 1, limit = 20 } = req.query;
     
     const skip = (Number(page) - 1) * Number(limit);
@@ -186,7 +186,7 @@ export const getConversations = async (req: Request, res: Response) => {
 export const getMessages = async (req: Request, res: Response) => {
   try {
     const { conversationId } = req.params;
-    const userId = (req as any).user._id || (req as any).user.id;
+    const userId = (req as any).user.id;
     const { page = 1, limit = 50 } = req.query;
     
     const skip = (Number(page) - 1) * Number(limit);
@@ -274,7 +274,7 @@ export const getMessages = async (req: Request, res: Response) => {
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const { conversationId, content, receiverId } = req.body;
-    const senderId = (req as any).user._id || (req as any).user.id;
+    const senderId = (req as any).user.id;
 
     if (!conversationId || !content || !receiverId) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -292,6 +292,33 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     if (!conversation) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Check if users have blocked each other
+    const [senderBlockedReceiver, receiverBlockedSender] = await Promise.all([
+      prisma.userBlock.findUnique({
+        where: {
+          blockerId_blockedUserId: {
+            blockerId: senderId,
+            blockedUserId: receiverId
+          }
+        }
+      }),
+      prisma.userBlock.findUnique({
+        where: {
+          blockerId_blockedUserId: {
+            blockerId: receiverId,
+            blockedUserId: senderId
+          }
+        }
+      })
+    ]);
+
+    if (senderBlockedReceiver || receiverBlockedSender) {
+      return res.status(403).json({ 
+        error: 'Cannot send messages. One or both users have blocked each other.',
+        blocked: true 
+      });
     }
 
     // Send message to Kafka for processing
@@ -314,7 +341,7 @@ export const sendMessage = async (req: Request, res: Response) => {
 // Get unread message count
 export const getUnreadCount = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user._id || (req as any).user.id;
+    const userId = (req as any).user.id;
 
     const unreadCount = await prisma.message.count({
       where: {
@@ -327,5 +354,50 @@ export const getUnreadCount = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching unread count:', error);
     res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+};
+
+// Delete conversation
+export const deleteConversation = async (req: Request, res: Response) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = (req as any).user.id;
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'Conversation ID is required' });
+    }
+
+    // Verify user is part of the conversation
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        participants: {
+          has: userId
+        }
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // Delete all messages in the conversation
+    await prisma.message.deleteMany({
+      where: {
+        conversationId
+      }
+    });
+
+    // Delete the conversation
+    await prisma.conversation.delete({
+      where: {
+        id: conversationId
+      }
+    });
+
+    res.json({ success: true, message: 'Conversation deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting conversation:', error);
+    res.status(500).json({ error: 'Failed to delete conversation' });
   }
 };

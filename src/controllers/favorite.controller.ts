@@ -68,6 +68,32 @@ class FavoriteController {
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
+    // First, clean up any orphaned favorites (where field no longer exists)
+    // Get all favorites for the user
+    const allFavorites = await prisma.favorite.findMany({
+      where: { userId },
+      include: {
+        field: true
+      }
+    });
+
+    // Find orphaned favorites (where field is null)
+    const orphanedFavoriteIds = allFavorites
+      .filter(fav => fav.field === null)
+      .map(fav => fav.id);
+
+    // Delete orphaned favorites if any exist
+    if (orphanedFavoriteIds.length > 0) {
+      await prisma.favorite.deleteMany({
+        where: {
+          id: {
+            in: orphanedFavoriteIds
+          }
+        }
+      });
+    }
+
+    // Now get the valid favorites with pagination
     const favorites = await prisma.favorite.findMany({
       where: {
         userId
@@ -104,23 +130,29 @@ class FavoriteController {
       }
     });
 
+    // Additional safety check to filter out any null fields
+    const validFavorites = favorites.filter(fav => fav.field !== null);
+
     // Calculate average rating for each field
-    const fieldsWithRating = favorites.map(fav => {
-      const avgRating = fav.field.fieldReviews.length > 0
-        ? fav.field.fieldReviews.reduce((sum, review) => sum + review.rating, 0) / fav.field.fieldReviews.length
+    const fieldsWithRating = validFavorites.map(fav => {
+      const avgRating = fav.field!.fieldReviews.length > 0
+        ? fav.field!.fieldReviews.reduce((sum, review) => sum + review.rating, 0) / fav.field!.fieldReviews.length
         : 0;
 
       return {
-        ...fav.field,
+        ...fav.field!,
         averageRating: avgRating,
-        reviewCount: fav.field._count.fieldReviews,
-        bookingCount: fav.field._count.bookings,
+        reviewCount: fav.field!._count.fieldReviews,
+        bookingCount: fav.field!._count.bookings,
         isFavorited: true
       };
     });
 
+    // Get total count only for valid favorites (after cleanup)
     const total = await prisma.favorite.count({
-      where: { userId }
+      where: { 
+        userId
+      }
     });
 
     res.json({

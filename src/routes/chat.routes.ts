@@ -5,7 +5,8 @@ import {
   getConversations,
   getMessages,
   sendMessage,
-  getUnreadCount
+  getUnreadCount,
+  deleteConversation
 } from '../controllers/chat.controller';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.use(protect);
 // Conversation routes
 router.post('/conversations', getOrCreateConversation);
 router.get('/conversations', getConversations);
+router.delete('/conversations/:conversationId', deleteConversation);
 
 // Message routes
 router.get('/conversations/:conversationId/messages', getMessages);

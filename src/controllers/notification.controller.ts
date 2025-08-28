@@ -14,7 +14,7 @@ export const notificationController = {
   async getUserNotifications(req: AuthRequest, res: Response) {
     try {
       // Get userId from req.user (set by auth middleware) or req.userId
-      const userId = req.user?.id || req.user?._id || req.userId;
+      const userId = req.user?.id;
       console.log('Getting notifications for user:', userId);
       
       if (!userId) {
@@ -67,7 +67,7 @@ export const notificationController = {
   // Mark notification as read
   async markAsRead(req: AuthRequest, res: Response) {
     try {
-      const userId = req.user?.id || req.user?._id || req.userId;
+      const userId = req.user?.id;
       const { id } = req.params;
 
       const notification = await prisma.notification.findFirst({
@@ -105,7 +105,7 @@ export const notificationController = {
   // Mark all notifications as read
   async markAllAsRead(req: AuthRequest, res: Response) {
     try {
-      const userId = req.user?.id || req.user?._id || req.userId;
+      const userId = req.user?.id;
 
       await prisma.notification.updateMany({
         where: { userId, read: false },
@@ -131,7 +131,7 @@ export const notificationController = {
   // Delete a notification
   async deleteNotification(req: AuthRequest, res: Response) {
     try {
-      const userId = req.user?.id || req.user?._id || req.userId;
+      const userId = req.user?.id;
       const { id } = req.params;
 
       const notification = await prisma.notification.findFirst({
@@ -165,7 +165,7 @@ export const notificationController = {
   // Clear all notifications
   async clearAllNotifications(req: AuthRequest, res: Response) {
     try {
-      const userId = req.user?.id || req.user?._id || req.userId;
+      const userId = req.user?.id;
 
       await prisma.notification.deleteMany({
         where: { userId },
@@ -187,7 +187,7 @@ export const notificationController = {
   // Get unread notification count
   async getUnreadCount(req: AuthRequest, res: Response) {
     try {
-      const userId = req.user?.id || req.user?._id || req.userId;
+      const userId = req.user?.id;
       console.log('Getting unread count for user:', userId);
       
       if (!userId) {

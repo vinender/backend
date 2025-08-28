@@ -40,6 +40,7 @@ model User {
   phone         String?
   bio           String?
   provider      String    @default("general") // google, apple, or general
+  isReported    Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -63,6 +64,10 @@ model User {
   transactions  Transaction[]
   sentMessages      Message[]      @relation("SentMessages")
   receivedMessages  Message[]      @relation("ReceivedMessages")
+  reportsMade       UserReport[]   @relation("ReporterRelation")
+  reportsReceived   UserReport[]   @relation("ReportedRelation")
+  blocksMade        UserBlock[]    @relation("BlockerRelation")
+  blocksReceived    UserBlock[]    @relation("BlockedRelation")
   
   @@map("users")
 }
@@ -349,8 +354,8 @@ model Favorite {
   createdAt DateTime @default(now())
 
   // Relations
-  user      User     @relation(fields: [userId], references: [id])
-  field     Field    @relation(fields: [fieldId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
   @@unique([userId, fieldId])
   @@map("favorites")
@@ -496,4 +501,47 @@ model Payout {
   @@index([stripeAccountId])
   @@index([status])
   @@map("payouts")
+}
+
+// User Report model for tracking reports made by field owners against dog owners
+model UserReport {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  reporterId        String    @db.ObjectId // Field owner who made the report
+  reportedUserId    String    @db.ObjectId // Dog owner being reported
+  reportOption      String    // e.g., "inappropriate_behavior", "property_damage", "no_show", "harassment", "other"
+  reason            String?   // Optional detailed reason
+  status            String    @default("pending") // pending, reviewed, resolved, dismissed
+  reviewNotes       String?   // Admin notes about the report
+  reviewedAt        DateTime?
+  reviewedBy        String?   @db.ObjectId // Admin who reviewed
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  reporter          User      @relation("ReporterRelation", fields: [reporterId], references: [id])
+  reportedUser      User      @relation("ReportedRelation", fields: [reportedUserId], references: [id])
+  
+  @@index([reporterId])
+  @@index([reportedUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("user_reports")
+}
+
+// User Block model for tracking blocked users
+model UserBlock {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  blockerId         String    @db.ObjectId // User who blocked
+  blockedUserId     String    @db.ObjectId // User who was blocked
+  reason            String?   // Optional reason for blocking
+  createdAt         DateTime  @default(now())
+  
+  // Relations
+  blocker           User      @relation("BlockerRelation", fields: [blockerId], references: [id])
+  blockedUser       User      @relation("BlockedRelation", fields: [blockedUserId], references: [id])
+  
+  @@unique([blockerId, blockedUserId])
+  @@index([blockerId])
+  @@index([blockedUserId])
+  @@map("user_blocks")
 }
