@@ -5,12 +5,13 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
 import { createNotification } from './notification.controller';
+import { startOfDay, endOfDay, parseISO } from 'date-fns';
 
 class BookingController {
   // Create a new booking
   createBooking = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const dogOwnerId = (req as any).user.id;
-    const { fieldId, date, startTime, endTime, notes } = req.body;
+    const { fieldId, date, startTime, endTime, notes, numberOfDogs = 1 } = req.body;
 
     // Verify field exists and is active
     const field = await FieldModel.findById(fieldId);
@@ -20,6 +21,48 @@ class BookingController {
 
     if (!field.isActive) {
       throw new AppError('Field is not available for booking', 400);
+    }
+
+    // Check if the time slot is in the past
+    const bookingDate = new Date(date);
+    const [startHourStr, startPeriod] = startTime.split(/(?=[AP]M)/);
+    let startHour = parseInt(startHourStr.split(':')[0]);
+    if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
+    if (startPeriod === 'AM' && startHour === 12) startHour = 0;
+    
+    const slotDateTime = new Date(bookingDate);
+    slotDateTime.setHours(startHour, parseInt(startHourStr.split(':')[1] || '0'), 0, 0);
+    
+    if (slotDateTime < new Date()) {
+      throw new AppError('Cannot book a time slot in the past', 400);
+    }
+
+    // Check dog limit for this slot
+    const maxDogsPerSlot = (field as any).maxDogs || 10;
+    
+    // Get existing bookings for this slot
+    const existingBookings = await prisma.booking.findMany({
+      where: {
+        fieldId,
+        date: {
+          gte: startOfDay(bookingDate),
+          lte: endOfDay(bookingDate)
+        },
+        startTime,
+        status: {
+          notIn: ['CANCELLED']
+        }
+      }
+    });
+
+    const totalDogsBooked = existingBookings.reduce((total, booking) => total + booking.numberOfDogs, 0);
+    const availableSpots = maxDogsPerSlot - totalDogsBooked;
+
+    if (numberOfDogs > availableSpots) {
+      throw new AppError(
+        `Only ${availableSpots} spots available for this time slot. Maximum capacity is ${maxDogsPerSlot} dogs.`,
+        400
+      );
     }
 
     // Check availability
@@ -34,11 +77,12 @@ class BookingController {
       throw new AppError('This time slot is not available', 400);
     }
 
-    // Calculate total price based on duration
+    // Calculate total price based on duration and number of dogs
     const startMinutes = this.timeToMinutes(startTime);
     const endMinutes = this.timeToMinutes(endTime);
     const durationHours = (endMinutes - startMinutes) / 60;
-    const totalPrice = field.pricePerHour.toNumber() * durationHours;
+    const pricePerHour = field.pricePerHour?.toNumber() || field.price || 0;
+    const totalPrice = pricePerHour * durationHours * numberOfDogs;
 
     // Create booking
     const booking = await BookingModel.create({
@@ -48,6 +92,7 @@ class BookingController {
       startTime,
       endTime,
       totalPrice,
+      numberOfDogs, // Store number of dogs with the booking
       notes,
     });
 
@@ -534,6 +579,105 @@ class BookingController {
     res.json({
       success: true,
       data: stats,
+    });
+  });
+
+  // Get detailed slot availability with dog limits
+  getSlotAvailability = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { fieldId } = req.params;
+    const { date } = req.query;
+
+    if (!date) {
+      throw new AppError('Date is required', 400);
+    }
+
+    // Get field details with maxDogs limit
+    const field = await prisma.field.findUnique({
+      where: { id: fieldId }
+    });
+
+    if (!field) {
+      throw new AppError('Field not found', 404);
+    }
+
+    // Parse the date
+    const selectedDate = parseISO(date as string);
+    const now = new Date();
+
+    // Get all bookings for this field on the selected date (excluding cancelled)
+    const bookings = await prisma.booking.findMany({
+      where: {
+        fieldId,
+        date: {
+          gte: startOfDay(selectedDate),
+          lte: endOfDay(selectedDate)
+        },
+        status: {
+          notIn: ['CANCELLED']
+        }
+      },
+      select: {
+        startTime: true,
+        endTime: true,
+        timeSlot: true,
+        numberOfDogs: true,
+        status: true
+      }
+    });
+
+    // Generate time slots based on field's operating hours
+    const openingHour = field.openingTime ? parseInt(field.openingTime.split(':')[0]) : 6;
+    const closingHour = field.closingTime ? parseInt(field.closingTime.split(':')[0]) : 21;
+    const maxDogsPerSlot = field.maxDogs || 10; // Default to 10 if not specified
+
+    const slots = [];
+
+    for (let hour = openingHour; hour < closingHour; hour++) {
+      // Format time slot
+      const startTime = hour === 0 ? '12:00AM' : hour < 12 ? `${hour}:00AM` : hour === 12 ? '12:00PM' : `${hour - 12}:00PM`;
+      const endHour = hour + 1;
+      const endTime = endHour === 0 ? '12:00AM' : endHour < 12 ? `${endHour}:00AM` : endHour === 12 ? '12:00PM' : `${endHour - 12}:00PM`;
+      const slotTime = `${startTime} - ${endTime}`;
+
+      // Check if this slot is in the past
+      const slotDateTime = new Date(selectedDate);
+      slotDateTime.setHours(hour, 0, 0, 0);
+      const isPast = slotDateTime < now;
+
+      // Calculate total dogs booked for this time slot
+      const bookedDogs = bookings
+        .filter(booking => booking.timeSlot === slotTime || booking.startTime === startTime)
+        .reduce((total, booking) => total + booking.numberOfDogs, 0);
+
+      const availableSpots = maxDogsPerSlot - bookedDogs;
+      const isFullyBooked = availableSpots <= 0;
+
+      slots.push({
+        time: slotTime,
+        startHour: hour,
+        isPast,
+        isFullyBooked,
+        availableSpots: Math.max(0, availableSpots),
+        maxSpots: maxDogsPerSlot,
+        bookedDogs,
+        isAvailable: !isPast && !isFullyBooked
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        date: date as string,
+        fieldId,
+        fieldName: field.name,
+        maxDogsPerSlot,
+        slots,
+        operatingHours: {
+          opening: field.openingTime || '06:00',
+          closing: field.closingTime || '21:00'
+        },
+        operatingDays: field.operatingDays
+      }
     });
   });
 

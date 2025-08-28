@@ -40,6 +40,7 @@ model User {
   phone         String?
   bio           String?
   provider      String    @default("general") // google, apple, or general
+  stripeCustomerId String?  // Stripe customer ID for payment methods
   isReported    Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -58,6 +59,7 @@ model User {
   reviews       Review[]
   favorites     Favorite[]
   payments      Payment[]
+  paymentMethods PaymentMethod[]
   stripeAccount StripeAccount?
   fieldReviews  FieldReview[]
   notifications Notification[]
@@ -544,4 +546,25 @@ model UserBlock {
   @@index([blockerId])
   @@index([blockedUserId])
   @@map("user_blocks")
+}
+
+model PaymentMethod {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String    @db.ObjectId
+  stripePaymentMethodId String @unique // Stripe payment method ID
+  type              String    // card, bank_account, etc.
+  brand             String?   // visa, mastercard, etc.
+  last4             String    // Last 4 digits of the card
+  expiryMonth       Int?      // Card expiry month
+  expiryYear        Int?      // Card expiry year
+  cardholderName    String?   // Name on the card
+  isDefault         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  user              User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@map("payment_methods")
 }

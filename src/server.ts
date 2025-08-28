@@ -36,6 +36,7 @@ import claimRoutes from './routes/claim.routes';
 import stripeConnectRoutes from './routes/stripe-connect.routes';
 import userReportRoutes from './routes/user-report.routes';
 import userBlockRoutes from './routes/user-block.routes';
+import paymentMethodRoutes from './routes/payment-method.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -173,6 +174,7 @@ class Server {
     this.app.use('/api/stripe-connect', stripeConnectRoutes);
     this.app.use('/api/user-reports', userReportRoutes);
     this.app.use('/api/user-blocks', userBlockRoutes);
+    this.app.use('/api/payment-methods', paymentMethodRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

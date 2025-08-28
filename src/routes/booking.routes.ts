@@ -4,8 +4,9 @@ import { protect, restrictTo } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Public route to check availability
+// Public routes to check availability
 router.get('/availability', bookingController.checkAvailability);
+router.get('/fields/:fieldId/slot-availability', bookingController.getSlotAvailability);
 
 // All routes below require authentication
 router.use(protect);

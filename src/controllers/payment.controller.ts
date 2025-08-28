@@ -14,13 +14,23 @@ export class PaymentController {
         date,
         timeSlot,
         repeatBooking,
-        amount
+        amount,
+        paymentMethodId // Optional: use saved payment method
       } = req.body;
 
       // Validate user
       const userId = (req as any).user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      // Get user for Stripe customer
+      const user = await prisma.user.findUnique({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
       }
 
       // Validate field exists
@@ -35,13 +45,10 @@ export class PaymentController {
       // Calculate amount in cents (Stripe uses smallest currency unit)
       const amountInCents = Math.round(amount * 100);
 
-      // Create payment intent with metadata
-      const paymentIntent = await stripe.paymentIntents.create({
+      // Prepare payment intent parameters
+      const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
         amount: amountInCents,
         currency: 'usd',
-        automatic_payment_methods: {
-          enabled: true,
-        },
         metadata: {
           userId,
           fieldId,
@@ -53,13 +60,69 @@ export class PaymentController {
         },
         description: `Booking for ${field.name} on ${date} at ${timeSlot}`,
         receipt_email: (req as any).user?.email,
-      });
+      };
+
+      // If a payment method is provided, use it
+      if (paymentMethodId) {
+        // Verify the payment method belongs to this user
+        const paymentMethod = await prisma.paymentMethod.findFirst({
+          where: {
+            id: paymentMethodId,
+            userId: userId
+          }
+        });
+
+        if (!paymentMethod) {
+          return res.status(400).json({ error: 'Invalid payment method' });
+        }
+
+        // Ensure user has a Stripe customer ID
+        let customerId = user.stripeCustomerId;
+        if (!customerId) {
+          // Create customer if doesn't exist
+          const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name || undefined,
+            metadata: {
+              userId: user.id
+            }
+          });
+          customerId = customer.id;
+          
+          // Save customer ID
+          await prisma.user.update({
+            where: { id: userId },
+            data: { stripeCustomerId: customerId }
+          });
+        }
+
+        paymentIntentParams.customer = customerId;
+        paymentIntentParams.payment_method = paymentMethod.stripePaymentMethodId;
+        paymentIntentParams.confirm = true; // Auto-confirm the payment
+        paymentIntentParams.return_url = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/user/my-bookings`; // Add return URL for 3D Secure
+        // Use specific payment method configuration
+        paymentIntentParams.automatic_payment_methods = {
+          enabled: true,
+          allow_redirects: 'never' // Never allow redirect-based payment methods
+        };
+      } else {
+        // Use automatic payment methods for new card entry
+        paymentIntentParams.automatic_payment_methods = {
+          enabled: true,
+        };
+      }
+
+      // Create payment intent
+      const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
       // Parse the time slot to extract start and end times
       // Expected format: "4:00PM - 5:00PM"
       const [startTimeStr, endTimeStr] = timeSlot.split(' - ').map(t => t.trim());
       
-      // Create a pending booking record
+      // Create a booking record with appropriate status
+      const bookingStatus = paymentIntent.status === 'succeeded' ? 'CONFIRMED' : 'PENDING';
+      const paymentStatus = paymentIntent.status === 'succeeded' ? 'PAID' : 'PENDING';
+      
       const booking = await prisma.booking.create({
         data: {
           fieldId,
@@ -70,15 +133,51 @@ export class PaymentController {
           timeSlot,
           numberOfDogs: parseInt(numberOfDogs),
           totalPrice: amount,
-          status: 'PENDING',
+          status: bookingStatus,
+          paymentStatus: paymentStatus,
           paymentIntentId: paymentIntent.id,
           repeatBooking: repeatBooking || 'none'
         }
       });
 
+      // If payment was auto-confirmed with saved card, create notifications
+      if (paymentIntent.status === 'succeeded') {
+        // Create payment record
+        await prisma.payment.create({
+          data: {
+            bookingId: booking.id,
+            userId,
+            amount,
+            currency: 'USD',
+            status: 'completed',
+            paymentMethod: 'card',
+            stripePaymentId: paymentIntent.id,
+            processedAt: new Date()
+          }
+        });
+
+        // Send notifications
+        await createNotification(
+          userId,
+          'BOOKING_CONFIRMATION',
+          'Booking Confirmed',
+          `Your booking for ${field.name} on ${date} at ${timeSlot} has been confirmed.`,
+          { bookingId: booking.id, fieldId }
+        );
+
+        await createNotification(
+          field.ownerId,
+          'NEW_BOOKING',
+          'New Booking',
+          `You have a new booking for ${field.name} on ${date} at ${timeSlot}.`,
+          { bookingId: booking.id, fieldId }
+        );
+      }
+
       res.json({
         clientSecret: paymentIntent.client_secret,
         bookingId: booking.id,
+        paymentSucceeded: paymentIntent.status === 'succeeded',
         publishableKey: `pk_test_${process.env.STRIPE_SECRET_KEY?.slice(8, 40)}` // Send publishable key
       });
     } catch (error) {
