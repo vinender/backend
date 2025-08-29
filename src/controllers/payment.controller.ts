@@ -157,21 +157,23 @@ export class PaymentController {
         });
 
         // Send notifications
-        await createNotification(
+        await createNotification({
           userId,
-          'BOOKING_CONFIRMATION',
-          'Booking Confirmed',
-          `Your booking for ${field.name} on ${date} at ${timeSlot} has been confirmed.`,
-          { bookingId: booking.id, fieldId }
-        );
+          type: 'BOOKING_CONFIRMATION',
+          title: 'Booking Confirmed',
+          message: `Your booking for ${field.name} on ${date} at ${timeSlot} has been confirmed.`,
+          data: { bookingId: booking.id, fieldId }
+        });
 
-        await createNotification(
-          field.ownerId,
-          'NEW_BOOKING',
-          'New Booking',
-          `You have a new booking for ${field.name} on ${date} at ${timeSlot}.`,
-          { bookingId: booking.id, fieldId }
-        );
+        if (field.ownerId && field.ownerId !== userId) {
+          await createNotification({
+            userId: field.ownerId,
+            type: 'NEW_BOOKING',
+            title: 'New Booking',
+            message: `You have a new booking for ${field.name} on ${date} at ${timeSlot}.`,
+            data: { bookingId: booking.id, fieldId }
+          });
+        }
       }
 
       res.json({

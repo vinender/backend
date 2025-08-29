@@ -5,7 +5,6 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
 import { createNotification } from './notification.controller';
-import { startOfDay, endOfDay, parseISO } from 'date-fns';
 
 class BookingController {
   // Create a new booking
@@ -41,12 +40,18 @@ class BookingController {
     const maxDogsPerSlot = (field as any).maxDogs || 10;
     
     // Get existing bookings for this slot
+    const startOfDayDate = new Date(bookingDate);
+    startOfDayDate.setHours(0, 0, 0, 0);
+    
+    const endOfDayDate = new Date(bookingDate);
+    endOfDayDate.setHours(23, 59, 59, 999);
+    
     const existingBookings = await prisma.booking.findMany({
       where: {
         fieldId,
         date: {
-          gte: startOfDay(bookingDate),
-          lte: endOfDay(bookingDate)
+          gte: startOfDayDate,
+          lte: endOfDayDate
         },
         startTime,
         status: {
@@ -601,16 +606,23 @@ class BookingController {
     }
 
     // Parse the date
-    const selectedDate = parseISO(date as string);
+    const selectedDate = new Date(date as string);
     const now = new Date();
+
+    // Get start and end of day
+    const startOfDayDate = new Date(selectedDate);
+    startOfDayDate.setHours(0, 0, 0, 0);
+    
+    const endOfDayDate = new Date(selectedDate);
+    endOfDayDate.setHours(23, 59, 59, 999);
 
     // Get all bookings for this field on the selected date (excluding cancelled)
     const bookings = await prisma.booking.findMany({
       where: {
         fieldId,
         date: {
-          gte: startOfDay(selectedDate),
-          lte: endOfDay(selectedDate)
+          gte: startOfDayDate,
+          lte: endOfDayDate
         },
         status: {
           notIn: ['CANCELLED']
