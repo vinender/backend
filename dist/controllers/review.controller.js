@@ -117,9 +117,9 @@ class ReviewController {
                 },
             });
             if (existingReview) {
-                return res.status(400).json({
+                return res.status(409).json({
                     success: false,
-                    message: 'You have already reviewed this field',
+                    message: 'You have already reviewed this field. You can edit your existing review instead.',
                 });
             }
             // Check if user has booked this field
@@ -158,32 +158,78 @@ class ReviewController {
                     },
                 },
             });
-            // Send notification to field owner
-            console.log('Looking for field:', fieldId);
+            // Get field details for notifications
             const field = await database_1.default.field.findUnique({
                 where: { id: fieldId },
                 select: { ownerId: true, name: true },
             });
-            console.log('Field found:', field);
-            if (field?.ownerId) {
-                console.log('Sending notification to field owner:', field.ownerId);
-                const notificationResult = await (0, notification_controller_1.createNotification)({
-                    userId: field.ownerId,
-                    type: 'review_posted',
-                    title: 'New Review Posted',
-                    message: `${user?.name || 'A user'} has posted a ${rating} star review for ${field.name}`,
+            // Update field's average rating and total reviews
+            const reviewStats = await database_1.default.fieldReview.aggregate({
+                where: { fieldId },
+                _avg: {
+                    rating: true,
+                },
+                _count: {
+                    rating: true,
+                },
+            });
+            await database_1.default.field.update({
+                where: { id: fieldId },
+                data: {
+                    averageRating: reviewStats._avg.rating || 0,
+                    totalReviews: reviewStats._count.rating,
+                },
+            });
+            console.log('=== Review Notification Debug ===');
+            console.log('- Reviewer userId:', userId);
+            console.log('- Field ownerId:', field?.ownerId);
+            console.log('- Are they the same?', field?.ownerId === userId);
+            // Send notification to field owner (if not reviewing their own field)
+            if (field?.ownerId && field.ownerId !== userId) {
+                console.log('Sending "new review" notification to field owner:', field.ownerId);
+                try {
+                    await (0, notification_controller_1.createNotification)({
+                        userId: field.ownerId,
+                        type: 'new_review_received',
+                        title: "You've got a new review!",
+                        message: `See what a recent visitor had to say about their experience at ${field.name}.`,
+                        data: {
+                            reviewId: review.id,
+                            fieldId,
+                            fieldName: field.name,
+                            rating,
+                            reviewerName: user?.name,
+                            comment: comment?.substring(0, 100), // Include preview of the comment
+                        },
+                    });
+                    console.log('Field owner review notification sent successfully');
+                }
+                catch (error) {
+                    console.error('Failed to send field owner review notification:', error);
+                }
+            }
+            else {
+                console.log('Skipping field owner notification - reviewer is the field owner');
+            }
+            // Send confirmation notification to the reviewer
+            console.log('Sending "review posted" confirmation to reviewer:', userId);
+            try {
+                await (0, notification_controller_1.createNotification)({
+                    userId: userId,
+                    type: 'review_posted_success',
+                    title: 'Review Posted Successfully',
+                    message: `Your ${rating} star review for ${field?.name} has been posted successfully.`,
                     data: {
                         reviewId: review.id,
                         fieldId,
-                        fieldName: field.name,
+                        fieldName: field?.name,
                         rating,
-                        reviewerName: user?.name,
                     },
                 });
-                console.log('Notification result:', notificationResult);
+                console.log('Reviewer confirmation notification sent successfully');
             }
-            else {
-                console.log('Field owner not found or field does not have an owner');
+            catch (error) {
+                console.error('Failed to send reviewer notification:', error);
             }
             res.status(201).json({
                 success: true,
@@ -242,6 +288,23 @@ class ReviewController {
                     },
                 },
             });
+            // Update field's average rating and total reviews
+            const reviewStats = await database_1.default.fieldReview.aggregate({
+                where: { fieldId: review.fieldId },
+                _avg: {
+                    rating: true,
+                },
+                _count: {
+                    rating: true,
+                },
+            });
+            await database_1.default.field.update({
+                where: { id: review.fieldId },
+                data: {
+                    averageRating: reviewStats._avg.rating || 0,
+                    totalReviews: reviewStats._count.rating,
+                },
+            });
             res.json({
                 success: true,
                 data: updatedReview,
@@ -287,6 +350,23 @@ class ReviewController {
             // Delete the review
             await database_1.default.fieldReview.delete({
                 where: { id: reviewId },
+            });
+            // Update field's average rating and total reviews
+            const reviewStats = await database_1.default.fieldReview.aggregate({
+                where: { fieldId: review.fieldId },
+                _avg: {
+                    rating: true,
+                },
+                _count: {
+                    rating: true,
+                },
+            });
+            await database_1.default.field.update({
+                where: { id: review.fieldId },
+                data: {
+                    averageRating: reviewStats._avg.rating || 0,
+                    totalReviews: reviewStats._count.rating,
+                },
             });
             res.json({
                 success: true,

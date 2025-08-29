@@ -10,13 +10,22 @@ const auth_middleware_2 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 // Public routes (with optional auth for better data)
 router.get('/', auth_middleware_2.optionalAuth, field_controller_1.default.getAllFields);
+router.get('/suggestions', field_controller_1.default.getFieldSuggestions);
 router.get('/search/location', field_controller_1.default.searchByLocation);
+// Field ownership claiming routes (for field owners to claim unclaimed fields)
+// These are NOT for booking - they're for claiming ownership of unclaimed fields
+router.get('/unclaimed', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getFieldForClaim);
+router.post('/claim-ownership', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.claimField);
+// Public route with ID parameter (must come after specific routes)
 router.get('/:id', auth_middleware_2.optionalAuth, field_controller_1.default.getField);
-// Protected routes (require authentication)
+// All remaining routes require authentication
 router.use(auth_middleware_1.protect);
 // Field owner routes
 router.get('/owner/field', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getOwnerField);
 router.get('/owner/bookings', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getFieldBookings);
+router.get('/owner/bookings/today', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getTodayBookings);
+router.get('/owner/bookings/upcoming', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getUpcomingBookings);
+router.get('/owner/bookings/previous', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getPreviousBookings);
 router.post('/save-progress', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.saveFieldProgress);
 router.post('/submit-for-review', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.submitFieldForReview);
 router.get('/my-fields', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.getMyFields);

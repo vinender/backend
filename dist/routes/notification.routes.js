@@ -8,6 +8,8 @@ const router = (0, express_1.Router)();
 router.use(auth_middleware_1.protect);
 // Get user notifications
 router.get('/', notification_controller_1.notificationController.getUserNotifications);
+// Get unread notification count
+router.get('/unread-count', notification_controller_1.notificationController.getUnreadCount);
 // Mark notification as read
 router.patch('/:id/read', notification_controller_1.notificationController.markAsRead);
 // Mark all notifications as read

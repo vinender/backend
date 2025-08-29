@@ -14,6 +14,8 @@ const express_rate_limit_1 = require("express-rate-limit");
 const express_mongo_sanitize_1 = __importDefault(require("express-mongo-sanitize"));
 const http_1 = require("http");
 const websocket_1 = require("./utils/websocket");
+const socket_1 = require("./config/socket");
+const kafka_1 = require("./config/kafka");
 // Load environment variables
 dotenv_1.default.config();
 // Import configuration
@@ -21,18 +23,33 @@ const constants_1 = require("./config/constants");
 require("./config/database"); // Initialize database connection
 // Import routes
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const auth_otp_routes_1 = __importDefault(require("./routes/auth.otp.routes"));
 const user_routes_1 = __importDefault(require("./routes/user.routes"));
 const field_routes_1 = __importDefault(require("./routes/field.routes"));
 const booking_routes_1 = __importDefault(require("./routes/booking.routes"));
 const review_routes_1 = __importDefault(require("./routes/review.routes"));
 const notification_routes_1 = __importDefault(require("./routes/notification.routes"));
+const payment_routes_1 = __importDefault(require("./routes/payment.routes"));
+const stripe_routes_1 = __importDefault(require("./routes/stripe.routes"));
+const favorite_routes_1 = __importDefault(require("./routes/favorite.routes"));
+const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
+const payout_routes_1 = __importDefault(require("./routes/payout.routes"));
+const claim_routes_1 = __importDefault(require("./routes/claim.routes"));
+const stripe_connect_routes_1 = __importDefault(require("./routes/stripe-connect.routes"));
+const user_report_routes_1 = __importDefault(require("./routes/user-report.routes"));
+const user_block_routes_1 = __importDefault(require("./routes/user-block.routes"));
+const payment_method_routes_1 = __importDefault(require("./routes/payment-method.routes"));
 class Server {
     app;
+    httpServer;
+    io;
     constructor() {
         this.app = (0, express_1.default)();
+        this.httpServer = (0, http_1.createServer)(this.app);
         this.configureMiddleware();
         this.configureRoutes();
         this.configureErrorHandling();
+        this.configureSocketAndKafka();
     }
     configureMiddleware() {
         // CORS configuration - MUST come before other middleware
@@ -63,15 +80,19 @@ class Server {
             crossOriginResourcePolicy: { policy: "cross-origin" },
             contentSecurityPolicy: false,
         }));
-        // Rate limiting
+        // Rate limiting - more lenient in development
         const limiter = (0, express_rate_limit_1.rateLimit)({
             windowMs: 15 * 60 * 1000, // 15 minutes
-            max: 500, // limit each IP to 100 requests per windowMs
+            max: constants_1.NODE_ENV === 'development' ? 10000 : 100, // Higher limit in dev
             message: 'Too many requests from this IP, please try again later.',
+            skip: (req) => constants_1.NODE_ENV === 'development' && req.ip === '::1', // Skip for localhost in dev
         });
         this.app.use('/api', limiter);
         // Data sanitization against NoSQL query injection
         this.app.use((0, express_mongo_sanitize_1.default)());
+        // Stripe webhook endpoint (raw body needed, must be before JSON parser)
+        this.app.use('/api/stripe', express_1.default.raw({ type: 'application/json' }));
+        this.app.use('/api/payments/webhook', express_1.default.raw({ type: 'application/json' }));
         // Body parsing middleware
         this.app.use(express_1.default.json({ limit: '10mb' }));
         this.app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
@@ -115,18 +136,42 @@ class Server {
                     bookings: '/api/bookings',
                     reviews: '/api/reviews',
                     notifications: '/api/notifications',
+                    payments: '/api/payments',
+                    chat: '/api/chat',
                 },
             });
         });
+        // Stripe webhook route (must be before other routes due to raw body requirement)
+        this.app.use('/api/stripe', stripe_routes_1.default);
         // Mount API routes
         this.app.use('/api/auth', auth_routes_1.default);
+        this.app.use('/api/auth/otp', auth_otp_routes_1.default);
         this.app.use('/api/users', user_routes_1.default);
         this.app.use('/api/fields', field_routes_1.default);
         this.app.use('/api/bookings', booking_routes_1.default);
         this.app.use('/api/reviews', review_routes_1.default);
         this.app.use('/api/notifications', notification_routes_1.default);
+        this.app.use('/api/payments', payment_routes_1.default);
+        this.app.use('/api/favorites', favorite_routes_1.default);
+        this.app.use('/api/chat', chat_routes_1.default);
+        this.app.use('/api/payouts', payout_routes_1.default);
+        this.app.use('/api/claims', claim_routes_1.default);
+        this.app.use('/api/stripe-connect', stripe_connect_routes_1.default);
+        this.app.use('/api/user-reports', user_report_routes_1.default);
+        this.app.use('/api/user-blocks', user_block_routes_1.default);
+        this.app.use('/api/payment-methods', payment_method_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
+    }
+    configureSocketAndKafka() {
+        // Initialize Socket.io
+        this.io = (0, socket_1.initializeSocket)(this.httpServer);
+        // Make io globally available for notifications
+        global.io = this.io;
+        // Initialize Kafka (optional - will fallback to direct processing if not available)
+        (0, kafka_1.initializeKafka)(this.io).catch(error => {
+            console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
+        });
     }
     configureErrorHandling() {
         // Handle 404 errors
@@ -150,27 +195,26 @@ class Server {
         });
     }
     start() {
-        const httpServer = (0, http_1.createServer)(this.app);
         // Setup WebSocket
-        (0, websocket_1.setupWebSocket)(httpServer);
-        httpServer.listen(constants_1.PORT, () => {
+        (0, websocket_1.setupWebSocket)(this.httpServer);
+        this.httpServer.listen(constants_1.PORT, () => {
             console.log(`
 ╔════════════════════════════════════════════════════╗
 ║                                                    ║
 ║   🚀 Server is running successfully!               ║
 ║                                                    ║
-║   Mode: ${constants_1.NODE_ENV.padEnd(43)}║
-║   Port: ${String(constants_1.PORT).padEnd(43)}║
-║   Time: ${new Date().toLocaleString().padEnd(43)}║
+║   Mode: ${constants_1.NODE_ENV.padEnd(43)}                     ║
+║   Port: ${String(constants_1.PORT).padEnd(43)}                 ║
+║   Time: ${new Date().toLocaleString().padEnd(43)}  ║
 ║                                                    ║
-║   API: http://localhost:${constants_1.PORT}/api                    ║
-║   Health: http://localhost:${constants_1.PORT}/health              ║
-║   WebSocket: ws://localhost:${constants_1.PORT}                   ║
+║   API: http://localhost:${constants_1.PORT}/api                ║
+║   Health: http://localhost:${constants_1.PORT}/health          ║
+║   WebSocket: ws://localhost:${constants_1.PORT}                ║
 ║                                                    ║
 ╚════════════════════════════════════════════════════╝
       `);
         });
-        const server = httpServer;
+        const server = this.httpServer;
         // Graceful shutdown
         process.on('SIGTERM', () => {
             console.log('SIGTERM signal received: closing HTTP server');

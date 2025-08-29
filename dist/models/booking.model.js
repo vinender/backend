@@ -7,9 +7,11 @@ const database_1 = __importDefault(require("../config/database"));
 class BookingModel {
     // Create a new booking
     async create(data) {
+        const { dogOwnerId, ...rest } = data;
         return database_1.default.booking.create({
             data: {
-                ...data,
+                ...rest,
+                userId: dogOwnerId,
                 status: 'PENDING',
             },
             include: {
@@ -18,18 +20,16 @@ class BookingModel {
                         owner: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                name: true,
                                 email: true,
                             },
                         },
                     },
                 },
-                dogOwner: {
+                user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        name: true,
                         email: true,
                         phone: true,
                     },
@@ -47,18 +47,16 @@ class BookingModel {
                         owner: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                name: true,
                                 email: true,
                             },
                         },
                     },
                 },
-                dogOwner: {
+                user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        name: true,
                         email: true,
                         phone: true,
                     },
@@ -70,7 +68,7 @@ class BookingModel {
     async findAll(filters = {}) {
         const where = {};
         if (filters.dogOwnerId) {
-            where.dogOwnerId = filters.dogOwnerId;
+            where.userId = filters.dogOwnerId;
         }
         if (filters.fieldId) {
             where.fieldId = filters.fieldId;
@@ -107,18 +105,16 @@ class BookingModel {
                         owner: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                name: true,
                                 email: true,
                             },
                         },
                     },
                 },
-                dogOwner: {
+                user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        name: true,
                         email: true,
                         phone: true,
                     },
@@ -147,11 +143,10 @@ class BookingModel {
             },
             include: {
                 field: true,
-                dogOwner: {
+                user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        name: true,
                         email: true,
                         phone: true,
                     },
@@ -166,7 +161,7 @@ class BookingModel {
             data: { status },
             include: {
                 field: true,
-                dogOwner: true,
+                user: true,
             },
         });
     }
@@ -177,13 +172,41 @@ class BookingModel {
             data,
             include: {
                 field: true,
-                dogOwner: true,
+                user: true,
             },
         });
     }
     // Cancel booking
-    async cancel(id) {
-        return this.updateStatus(id, 'CANCELLED');
+    async cancel(id, reason) {
+        return database_1.default.booking.update({
+            where: { id },
+            data: {
+                status: 'CANCELLED',
+                cancellationReason: reason,
+                cancelledAt: new Date(),
+            },
+            include: {
+                field: {
+                    include: {
+                        owner: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                            },
+                        },
+                    },
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        phone: true,
+                    },
+                },
+            },
+        });
     }
     // Complete booking
     async complete(id) {

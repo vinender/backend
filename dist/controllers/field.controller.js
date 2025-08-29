@@ -34,16 +34,37 @@ class FieldController {
     });
     // Get all fields with filters and pagination
     getAllFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
-        const { city, state, type, minPrice, maxPrice, search, page = 1, limit = 10, } = req.query;
+        const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
         const pageNum = Number(page);
         const limitNum = Number(limit);
         const skip = (pageNum - 1) * limitNum;
+        // Parse amenities if it's a comma-separated string
+        const amenitiesArray = amenities
+            ? amenities.split(',').map(a => a.trim())
+            : undefined;
         const result = await field_model_1.default.findAll({
+            search: search,
+            zipCode: zipCode,
+            lat: lat ? Number(lat) : undefined,
+            lng: lng ? Number(lng) : undefined,
             city: city,
             state: state,
             type: type,
             minPrice: minPrice ? Number(minPrice) : undefined,
             maxPrice: maxPrice ? Number(maxPrice) : undefined,
+            amenities: amenitiesArray,
+            minRating: minRating ? Number(minRating) : undefined,
+            maxDistance: maxDistance ? Number(maxDistance) : undefined,
+            date: date ? new Date(date) : undefined,
+            startTime: startTime,
+            endTime: endTime,
+            numberOfDogs: numberOfDogs ? Number(numberOfDogs) : undefined,
+            size: size,
+            terrainType: terrainType,
+            fenceType: fenceType,
+            instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+            sortBy: sortBy,
+            sortOrder: sortOrder,
             skip,
             take: limitNum,
         });
@@ -59,6 +80,21 @@ class FieldController {
                 hasNextPage: pageNum < totalPages,
                 hasPrevPage: pageNum > 1,
             },
+        });
+    });
+    // Get field suggestions for search
+    getFieldSuggestions = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const { query } = req.query;
+        if (!query || query.length < 2) {
+            return res.json({
+                success: true,
+                data: [],
+            });
+        }
+        const suggestions = await field_model_1.default.getSuggestions(query);
+        res.json({
+            success: true,
+            data: suggestions,
         });
     });
     // Get field by ID
@@ -229,12 +265,17 @@ class FieldController {
                     closingTime: data.endTime,
                     operatingDays: data.openingDays ? [data.openingDays] : [],
                     amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+                    // Store location object if provided
+                    location: data.location || null,
+                    // Also store legacy fields for backward compatibility
                     address: data.streetAddress,
-                    apartment: data.apartment,
+                    // apartment field removed - doesn't exist in schema
                     city: data.city,
                     state: data.county,
                     zipCode: data.postalCode,
-                    country: data.country,
+                    // Extract lat/lng from location object if available
+                    latitude: data.location?.lat || null,
+                    longitude: data.location?.lng || null,
                     fieldDetailsCompleted: true
                 };
             }
@@ -275,12 +316,17 @@ class FieldController {
                     closingTime: data.endTime,
                     operatingDays: data.openingDays ? [data.openingDays] : [],
                     amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+                    // Store location object if provided
+                    location: data.location || null,
+                    // Also store legacy fields for backward compatibility
                     address: data.streetAddress,
-                    apartment: data.apartment,
+                    // apartment field removed - doesn't exist in schema
                     city: data.city,
                     state: data.county,
                     zipCode: data.postalCode,
-                    country: data.country,
+                    // Extract lat/lng from location object if available
+                    latitude: data.location?.lat || null,
+                    longitude: data.location?.lng || null,
                     fieldDetailsCompleted: true
                 };
                 break;
@@ -514,6 +560,427 @@ class FieldController {
                 }
             });
         }
+    });
+    // Get today's bookings for field owner
+    getTodayBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const ownerId = req.user.id;
+        const { page = 1, limit = 12 } = req.query;
+        try {
+            // First get the owner's field
+            const fields = await field_model_1.default.findByOwner(ownerId);
+            if (!fields || fields.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'No field found for this owner',
+                    bookings: [],
+                    stats: {
+                        todayBookings: 0,
+                        totalBookings: 0,
+                        totalEarnings: 0
+                    }
+                });
+            }
+            const fieldId = fields[0].id;
+            // Get today's date range
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const bookingFilter = {
+                fieldId,
+                date: {
+                    gte: today,
+                    lt: tomorrow
+                }
+            };
+            const pageNum = Number(page);
+            const limitNum = Number(limit);
+            const skip = (pageNum - 1) * limitNum;
+            // Fetch bookings with user details and count
+            const [bookings, totalFilteredBookings] = await Promise.all([
+                database_1.default.booking.findMany({
+                    where: bookingFilter,
+                    include: {
+                        user: true
+                    },
+                    orderBy: {
+                        date: 'asc'
+                    },
+                    skip,
+                    take: limitNum
+                }),
+                database_1.default.booking.count({ where: bookingFilter })
+            ]);
+            // Get overall stats
+            const [totalBookings, totalEarnings] = await Promise.all([
+                database_1.default.booking.count({ where: { fieldId } }),
+                database_1.default.booking.aggregate({
+                    where: {
+                        fieldId,
+                        status: 'COMPLETED'
+                    },
+                    _sum: {
+                        totalPrice: true
+                    }
+                })
+            ]);
+            // Format bookings for frontend
+            const formattedBookings = bookings.map((booking) => ({
+                id: booking.id,
+                userName: booking.user.name,
+                userAvatar: booking.user.profileImage || null,
+                userEmail: booking.user.email,
+                userPhone: booking.user.phone,
+                time: `${booking.startTime} - ${booking.endTime}`,
+                orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+                status: booking.status.toLowerCase(),
+                frequency: booking.recurring || 'NA',
+                dogs: booking.numberOfDogs || 1,
+                amount: booking.totalPrice,
+                date: booking.date.toISOString(),
+                fieldName: fields[0].name,
+                fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+                notes: booking.notes || null
+            }));
+            res.status(200).json({
+                success: true,
+                bookings: formattedBookings,
+                stats: {
+                    todayBookings: totalFilteredBookings,
+                    totalBookings,
+                    totalEarnings: totalEarnings._sum.totalPrice || 0
+                },
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total: totalFilteredBookings,
+                    totalPages: Math.ceil(totalFilteredBookings / limitNum),
+                    hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+                    hasPrevPage: pageNum > 1
+                }
+            });
+        }
+        catch (error) {
+            console.error('Error fetching today bookings:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch today bookings',
+                bookings: [],
+                stats: {
+                    todayBookings: 0,
+                    totalBookings: 0,
+                    totalEarnings: 0
+                }
+            });
+        }
+    });
+    // Get upcoming bookings for field owner
+    getUpcomingBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const ownerId = req.user.id;
+        const { page = 1, limit = 12 } = req.query;
+        try {
+            // First get the owner's field
+            const fields = await field_model_1.default.findByOwner(ownerId);
+            if (!fields || fields.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'No field found for this owner',
+                    bookings: [],
+                    stats: {
+                        todayBookings: 0,
+                        totalBookings: 0,
+                        totalEarnings: 0
+                    }
+                });
+            }
+            const fieldId = fields[0].id;
+            // Get tomorrow and beyond
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const bookingFilter = {
+                fieldId,
+                date: {
+                    gte: tomorrow
+                }
+            };
+            const pageNum = Number(page);
+            const limitNum = Number(limit);
+            const skip = (pageNum - 1) * limitNum;
+            // Fetch bookings with user details and count
+            const [bookings, totalFilteredBookings] = await Promise.all([
+                database_1.default.booking.findMany({
+                    where: bookingFilter,
+                    include: {
+                        user: true
+                    },
+                    orderBy: {
+                        date: 'asc'
+                    },
+                    skip,
+                    take: limitNum
+                }),
+                database_1.default.booking.count({ where: bookingFilter })
+            ]);
+            // Get overall stats
+            const [totalBookings, todayBookings, totalEarnings] = await Promise.all([
+                database_1.default.booking.count({ where: { fieldId } }),
+                database_1.default.booking.count({
+                    where: {
+                        fieldId,
+                        date: {
+                            gte: today,
+                            lt: tomorrow
+                        }
+                    }
+                }),
+                database_1.default.booking.aggregate({
+                    where: {
+                        fieldId,
+                        status: 'COMPLETED'
+                    },
+                    _sum: {
+                        totalPrice: true
+                    }
+                })
+            ]);
+            // Format bookings for frontend
+            const formattedBookings = bookings.map((booking) => ({
+                id: booking.id,
+                userName: booking.user.name,
+                userAvatar: booking.user.profileImage || null,
+                userEmail: booking.user.email,
+                userPhone: booking.user.phone,
+                time: `${booking.startTime} - ${booking.endTime}`,
+                orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+                status: booking.status.toLowerCase(),
+                frequency: booking.recurring || 'NA',
+                dogs: booking.numberOfDogs || 1,
+                amount: booking.totalPrice,
+                date: booking.date.toISOString(),
+                fieldName: fields[0].name,
+                fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+                notes: booking.notes || null
+            }));
+            res.status(200).json({
+                success: true,
+                bookings: formattedBookings,
+                stats: {
+                    todayBookings,
+                    totalBookings,
+                    totalEarnings: totalEarnings._sum.totalPrice || 0
+                },
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total: totalFilteredBookings,
+                    totalPages: Math.ceil(totalFilteredBookings / limitNum),
+                    hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+                    hasPrevPage: pageNum > 1
+                }
+            });
+        }
+        catch (error) {
+            console.error('Error fetching upcoming bookings:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch upcoming bookings',
+                bookings: [],
+                stats: {
+                    todayBookings: 0,
+                    totalBookings: 0,
+                    totalEarnings: 0
+                }
+            });
+        }
+    });
+    // Get previous bookings for field owner
+    getPreviousBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const ownerId = req.user.id;
+        const { page = 1, limit = 12 } = req.query;
+        try {
+            // First get the owner's field
+            const fields = await field_model_1.default.findByOwner(ownerId);
+            if (!fields || fields.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'No field found for this owner',
+                    bookings: [],
+                    stats: {
+                        todayBookings: 0,
+                        totalBookings: 0,
+                        totalEarnings: 0
+                    }
+                });
+            }
+            const fieldId = fields[0].id;
+            // Get past bookings
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const bookingFilter = {
+                fieldId,
+                date: {
+                    lt: today
+                }
+            };
+            const pageNum = Number(page);
+            const limitNum = Number(limit);
+            const skip = (pageNum - 1) * limitNum;
+            // Fetch bookings with user details and count
+            const [bookings, totalFilteredBookings] = await Promise.all([
+                database_1.default.booking.findMany({
+                    where: bookingFilter,
+                    include: {
+                        user: true
+                    },
+                    orderBy: {
+                        date: 'desc'
+                    },
+                    skip,
+                    take: limitNum
+                }),
+                database_1.default.booking.count({ where: bookingFilter })
+            ]);
+            // Get overall stats
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const [totalBookings, todayBookings, totalEarnings] = await Promise.all([
+                database_1.default.booking.count({ where: { fieldId } }),
+                database_1.default.booking.count({
+                    where: {
+                        fieldId,
+                        date: {
+                            gte: today,
+                            lt: tomorrow
+                        }
+                    }
+                }),
+                database_1.default.booking.aggregate({
+                    where: {
+                        fieldId,
+                        status: 'COMPLETED'
+                    },
+                    _sum: {
+                        totalPrice: true
+                    }
+                })
+            ]);
+            // Format bookings for frontend
+            const formattedBookings = bookings.map((booking) => ({
+                id: booking.id,
+                userName: booking.user.name,
+                userAvatar: booking.user.profileImage || null,
+                userEmail: booking.user.email,
+                userPhone: booking.user.phone,
+                time: `${booking.startTime} - ${booking.endTime}`,
+                orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+                status: booking.status.toLowerCase(),
+                frequency: booking.recurring || 'NA',
+                dogs: booking.numberOfDogs || 1,
+                amount: booking.totalPrice,
+                date: booking.date.toISOString(),
+                fieldName: fields[0].name,
+                fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+                notes: booking.notes || null
+            }));
+            res.status(200).json({
+                success: true,
+                bookings: formattedBookings,
+                stats: {
+                    todayBookings,
+                    totalBookings,
+                    totalEarnings: totalEarnings._sum.totalPrice || 0
+                },
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total: totalFilteredBookings,
+                    totalPages: Math.ceil(totalFilteredBookings / limitNum),
+                    hasNextPage: pageNum < Math.ceil(totalFilteredBookings / limitNum),
+                    hasPrevPage: pageNum > 1
+                }
+            });
+        }
+        catch (error) {
+            console.error('Error fetching previous bookings:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch previous bookings',
+                bookings: [],
+                stats: {
+                    todayBookings: 0,
+                    totalBookings: 0,
+                    totalEarnings: 0
+                }
+            });
+        }
+    });
+    // Get fields available for claiming
+    getFieldForClaim = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+        const fields = await database_1.default.field.findMany({
+            where: {
+                isClaimed: false,
+                isActive: true
+            },
+            select: {
+                id: true,
+                name: true,
+                address: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                images: true,
+                size: true,
+                pricePerHour: true
+            }
+        });
+        res.status(200).json({
+            success: true,
+            data: fields
+        });
+    });
+    // Claim a field
+    claimField = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+        const { fieldId } = req.body;
+        const userId = req.user.id;
+        if (!fieldId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Field ID is required'
+            });
+        }
+        // Check if field exists and is not already claimed
+        const field = await database_1.default.field.findUnique({
+            where: { id: fieldId }
+        });
+        if (!field) {
+            return res.status(404).json({
+                success: false,
+                message: 'Field not found'
+            });
+        }
+        if (field.isClaimed) {
+            return res.status(400).json({
+                success: false,
+                message: 'This field has already been claimed'
+            });
+        }
+        // Update field with owner information
+        const updatedField = await database_1.default.field.update({
+            where: { id: fieldId },
+            data: {
+                isClaimed: true,
+                ownerId: userId,
+                ownerName: req.user.name || req.user.email,
+                joinedOn: new Date()
+            }
+        });
+        res.status(200).json({
+            success: true,
+            message: 'Field claimed successfully',
+            data: updatedField
+        });
     });
 }
 exports.default = new FieldController();

@@ -214,7 +214,7 @@ class BookingController {
     // Check access rights
     const hasAccess = 
       userRole === 'ADMIN' ||
-      booking.dogOwnerId === userId ||
+      (booking as any).userId === userId ||
       (booking.field as any).ownerId === userId;
 
     if (!hasAccess) {
@@ -231,7 +231,7 @@ class BookingController {
   getMyBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 10, includeExpired, includeFuture } = req.query;
 
     const pageNum = Number(page);
     const limitNum = Number(limit);
@@ -268,9 +268,45 @@ class BookingController {
       throw new AppError('Invalid user role', 400);
     }
 
-    // Add status filter if provided
+    // Handle multiple statuses and date filtering
     if (status) {
-      whereClause.status = status as string;
+      const statuses = (status as string).split(',');
+      
+      // If multiple statuses, use OR condition
+      if (statuses.length > 1) {
+        const statusConditions: any[] = [];
+        const now = new Date();
+        
+        for (const s of statuses) {
+          const statusCondition: any = { status: s };
+          
+          // For CANCELLED bookings, filter by date
+          if (s === 'CANCELLED') {
+            if (includeFuture === 'true') {
+              // Upcoming tab: show cancelled bookings with future dates
+              statusCondition.date = { gte: now };
+            } else if (includeExpired === 'true') {
+              // Previous tab: show cancelled bookings with past dates
+              statusCondition.date = { lt: now };
+            }
+          }
+          
+          statusConditions.push(statusCondition);
+        }
+        
+        // For non-cancelled statuses, don't apply date filter
+        const nonCancelledStatuses = statuses.filter(s => s !== 'CANCELLED');
+        if (nonCancelledStatuses.length > 0) {
+          whereClause.OR = [
+            { status: { in: nonCancelledStatuses } },
+            ...statusConditions.filter(sc => sc.status === 'CANCELLED')
+          ];
+        } else {
+          whereClause.OR = statusConditions;
+        }
+      } else {
+        whereClause.status = status as string;
+      }
     }
 
     // Get bookings with pagination
@@ -362,7 +398,7 @@ class BookingController {
     if (status === 'CONFIRMED') {
       // Notify dog owner that booking is confirmed
       await createNotification({
-        userId: booking.dogOwnerId,
+        userId: (booking as any).userId,
         type: 'booking_confirmed',
         title: 'Booking Confirmed!',
         message: `Your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been confirmed by the field owner.`,
@@ -378,7 +414,7 @@ class BookingController {
     } else if (status === 'COMPLETED') {
       // Notify dog owner that booking is completed
       await createNotification({
-        userId: booking.dogOwnerId,
+        userId: (booking as any).userId,
         type: 'booking_completed',
         title: 'Booking Completed',
         message: `We hope you enjoyed your visit to ${field.name}. Consider leaving a review!`,
@@ -397,11 +433,38 @@ class BookingController {
     });
   });
 
-  // Cancel booking (dog owner or field owner)
-  cancelBooking = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  // Mark expired bookings (can be called by a cron job)
+  markExpiredBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const now = new Date();
+    
+    // Find all bookings that are past their date/time and not completed/cancelled/expired
+    const expiredBookings = await prisma.booking.updateMany({
+      where: {
+        status: {
+          notIn: ['COMPLETED', 'CANCELLED', 'EXPIRED'],
+        },
+        date: {
+          lt: now,
+        },
+      },
+      data: {
+        status: 'EXPIRED',
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Marked ${expiredBookings.count} bookings as expired`,
+      data: {
+        count: expiredBookings.count,
+      },
+    });
+  });
+
+  // Check refund eligibility for a booking
+  checkRefundEligibility = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const userId = (req as any).user.id;
-    const userRole = (req as any).user.role;
 
     const booking = await BookingModel.findById(id);
     if (!booking) {
@@ -409,7 +472,65 @@ class BookingController {
     }
 
     // Check authorization
-    const isDogOwner = booking.dogOwnerId === userId;
+    const isDogOwner = (booking as any).userId === userId;
+    if (!isDogOwner) {
+      throw new AppError('You are not authorized to check this booking', 403);
+    }
+
+    // Calculate refund eligibility based on booking date/time vs creation time
+    const bookingCreatedAt = new Date(booking.createdAt);
+    const bookingDate = new Date(booking.date);
+    
+    // Parse the booking start time to add to the date
+    const [startHourStr, startPeriod] = booking.startTime.split(/(?=[AP]M)/);
+    let startHour = parseInt(startHourStr.split(':')[0]);
+    const startMinute = parseInt(startHourStr.split(':')[1] || '0');
+    if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
+    if (startPeriod === 'AM' && startHour === 12) startHour = 0;
+    
+    bookingDate.setHours(startHour, startMinute, 0, 0);
+    
+    // Debug logging
+    console.log('=== Refund Eligibility Check ===');
+    console.log('Booking ID:', booking.id);
+    console.log('Created at:', bookingCreatedAt.toISOString());
+    console.log('Booking date/time:', bookingDate.toISOString());
+    console.log('Start time:', booking.startTime);
+    
+    // Calculate hours between creation and booking date/time
+    const hoursGap = (bookingDate.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
+    const isRefundEligible = hoursGap >= 24;
+    
+    console.log('Hours gap:', hoursGap);
+    console.log('Is refund eligible:', isRefundEligible);
+    console.log('=========================');
+
+    res.json({
+      success: true,
+      data: {
+        isRefundEligible,
+        hoursGap: Math.floor(hoursGap),
+        message: isRefundEligible
+          ? `This booking is eligible for a full refund. The booking date is ${Math.floor(hoursGap)} hours from when it was created.`
+          : `This booking is not eligible for a refund. Bookings must be made at least 24 hours in advance. This booking was made only ${Math.floor(hoursGap)} hours before the scheduled time.`,
+      },
+    });
+  });
+
+  // Cancel booking (dog owner or field owner)
+  cancelBooking = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+    const { reason } = req.body;
+
+    const booking = await BookingModel.findById(id);
+    if (!booking) {
+      throw new AppError('Booking not found', 404);
+    }
+
+    // Check authorization
+    const isDogOwner = (booking as any).userId === userId;
     const isFieldOwner = (booking.field as any).ownerId === userId;
     const isAdmin = userRole === 'ADMIN';
 
@@ -418,20 +539,41 @@ class BookingController {
     }
 
     // Check if booking can be cancelled
-    if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') {
+    if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED' || booking.status === 'EXPIRED') {
       throw new AppError(`Cannot cancel a ${booking.status.toLowerCase()} booking`, 400);
     }
 
-    // Check cancellation policy (e.g., 24 hours before booking)
+    // Calculate refund eligibility based on booking date/time vs creation time
+    const bookingCreatedAt = new Date(booking.createdAt);
     const bookingDate = new Date(booking.date);
-    const now = new Date();
-    const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    // Parse the booking start time to add to the date
+    const [startHourStr, startPeriod] = booking.startTime.split(/(?=[AP]M)/);
+    let startHour = parseInt(startHourStr.split(':')[0]);
+    const startMinute = parseInt(startHourStr.split(':')[1] || '0');
+    if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
+    if (startPeriod === 'AM' && startHour === 12) startHour = 0;
+    
+    bookingDate.setHours(startHour, startMinute, 0, 0);
+    
+    // Debug logging for cancellation
+    console.log('=== Cancel Booking Refund Check ===');
+    console.log('Booking ID:', booking.id);
+    console.log('Created at:', bookingCreatedAt.toISOString());
+    console.log('Booking date/time:', bookingDate.toISOString());
+    console.log('Start time:', booking.startTime);
+    
+    // Calculate hours between creation and booking date/time
+    const hoursGap = (bookingDate.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
+    
+    // Refund is eligible if booking was made at least 24 hours in advance
+    const isRefundEligible = hoursGap >= 24;
+    
+    console.log('Hours gap:', hoursGap);
+    console.log('Is refund eligible:', isRefundEligible);
+    console.log('===================================');
 
-    if (hoursUntilBooking < 24 && !isAdmin) {
-      throw new AppError('Bookings can only be cancelled 24 hours in advance', 400);
-    }
-
-    const cancelledBooking = await BookingModel.cancel(id);
+    const cancelledBooking = await BookingModel.cancel(id, reason);
 
     // Send cancellation notifications
     const field = (booking.field as any);
@@ -457,7 +599,7 @@ class BookingController {
       
       // Send confirmation to dog owner
       await createNotification({
-        userId: booking.dogOwnerId,
+        userId: (booking as any).userId,
         type: 'booking_cancelled_success',
         title: 'Booking Cancelled',
         message: `Your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled successfully.`,
@@ -470,7 +612,7 @@ class BookingController {
     } else if (isFieldOwner) {
       // Field owner cancelled - notify dog owner
       await createNotification({
-        userId: booking.dogOwnerId,
+        userId: (booking as any).userId,
         type: 'booking_cancelled_by_owner',
         title: 'Booking Cancelled by Field Owner',
         message: `Unfortunately, your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the field owner.`,
@@ -486,7 +628,13 @@ class BookingController {
     res.json({
       success: true,
       message: 'Booking cancelled successfully',
-      data: cancelledBooking,
+      data: {
+        ...cancelledBooking,
+        isRefundEligible,
+        refundMessage: isRefundEligible 
+          ? 'You are eligible for a full refund. The amount will be credited to your account within 5-7 business days.'
+          : 'This booking is not eligible for a refund as it was made less than 24 hours before the scheduled time.',
+      },
     });
   });
 
@@ -502,7 +650,7 @@ class BookingController {
     }
 
     // Only dog owner can reschedule their booking
-    if (booking.dogOwnerId !== userId) {
+    if ((booking as any).userId !== userId) {
       throw new AppError('You can only update your own bookings', 403);
     }
 

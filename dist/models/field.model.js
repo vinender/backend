@@ -26,15 +26,16 @@ class FieldModel {
                 }
             }
         }
+        // Remove apartment field as it doesn't exist in the schema
+        const { apartment, ...cleanedData } = data;
         return database_1.default.field.create({
             data: {
-                ...data,
+                ...cleanedData,
                 ownerName,
                 joinedOn,
-                country: data.country || 'UK',
-                type: data.type || 'PRIVATE',
-                maxDogs: data.maxDogs || 10,
-                instantBooking: data.instantBooking || false,
+                type: cleanedData.type || 'PRIVATE',
+                maxDogs: cleanedData.maxDogs || 10,
+                instantBooking: cleanedData.instantBooking || false,
             },
             include: {
                 owner: {
@@ -82,22 +83,93 @@ class FieldModel {
     }
     // Find all fields with filters and pagination
     async findAll(filters) {
-        const { skip = 0, take = 10, ...where } = filters;
+        const { skip = 0, take = 10, sortBy = 'createdAt', sortOrder = 'desc', ...where } = filters;
         const whereClause = {
             isActive: true,
+            isSubmitted: true,
         };
+        // Handle comprehensive search (field name, address, city, state, zipCode)
+        if (where.search) {
+            whereClause.OR = [
+                { name: { contains: where.search, mode: 'insensitive' } },
+                { description: { contains: where.search, mode: 'insensitive' } },
+                { address: { contains: where.search, mode: 'insensitive' } },
+                { city: { contains: where.search, mode: 'insensitive' } },
+                { state: { contains: where.search, mode: 'insensitive' } },
+                { zipCode: { contains: where.search, mode: 'insensitive' } },
+            ];
+        }
+        // Handle specific postal code search
+        if (where.zipCode) {
+            whereClause.zipCode = where.zipCode;
+        }
+        // Handle location-based search
+        if (where.lat && where.lng) {
+            // Simple proximity search (within ~10km radius)
+            const radius = 0.09; // ~10km in degrees
+            whereClause.latitude = {
+                gte: where.lat - radius,
+                lte: where.lat + radius,
+            };
+            whereClause.longitude = {
+                gte: where.lng - radius,
+                lte: where.lng + radius,
+            };
+        }
         if (where.city)
             whereClause.city = where.city;
         if (where.state)
             whereClause.state = where.state;
         if (where.type)
             whereClause.type = where.type;
+        // Price filter
         if (where.minPrice || where.maxPrice) {
             whereClause.pricePerHour = {};
             if (where.minPrice)
                 whereClause.pricePerHour.gte = where.minPrice;
             if (where.maxPrice)
                 whereClause.pricePerHour.lte = where.maxPrice;
+        }
+        // Amenities filter
+        if (where.amenities && where.amenities.length > 0) {
+            whereClause.amenities = {
+                hasEvery: where.amenities,
+            };
+        }
+        // Rating filter
+        if (where.minRating) {
+            whereClause.averageRating = {
+                gte: where.minRating,
+            };
+        }
+        // Number of dogs filter
+        if (where.numberOfDogs) {
+            whereClause.maxDogs = {
+                gte: where.numberOfDogs,
+            };
+        }
+        // Size filter
+        if (where.size) {
+            whereClause.size = where.size;
+        }
+        // Terrain type filter
+        if (where.terrainType) {
+            whereClause.terrainType = where.terrainType;
+        }
+        // Fence type filter
+        if (where.fenceType) {
+            whereClause.fenceType = where.fenceType;
+        }
+        // Instant booking filter
+        if (where.instantBooking !== undefined) {
+            whereClause.instantBooking = where.instantBooking;
+        }
+        // Date and time availability filter (basic implementation)
+        if (where.date) {
+            const dayOfWeek = new Date(where.date).toLocaleDateString('en-US', { weekday: 'long' });
+            whereClause.operatingDays = {
+                has: dayOfWeek,
+            };
         }
         // Get total count for pagination
         const [fields, total] = await Promise.all([
@@ -119,9 +191,7 @@ class FieldModel {
                         },
                     },
                 },
-                orderBy: {
-                    createdAt: 'desc',
-                },
+                orderBy: this.buildOrderBy(sortBy, sortOrder),
             }),
             database_1.default.field.count({ where: whereClause }),
         ]);
@@ -214,8 +284,10 @@ class FieldModel {
     }
     // Update field
     async update(id, data) {
+        // Remove apartment field as it doesn't exist in the schema
+        const { apartment, ...dataWithoutApartment } = data;
         // If updating owner, also update owner name and joined date
-        let updateData = { ...data };
+        let updateData = { ...dataWithoutApartment };
         if (data.ownerId && (!data.ownerName || !data.joinedOn)) {
             const owner = await database_1.default.user.findUnique({
                 where: { id: data.ownerId },
@@ -285,6 +357,52 @@ class FieldModel {
             data: { isActive: !field?.isActive },
         });
     }
+    // Get field suggestions for autocomplete
+    async getSuggestions(query) {
+        const whereClause = {
+            isActive: true,
+            isSubmitted: true,
+        };
+        // Comprehensive search by field name, address, city, state, or postal code
+        whereClause.OR = [
+            { name: { contains: query, mode: 'insensitive' } },
+            { address: { contains: query, mode: 'insensitive' } },
+            { city: { contains: query, mode: 'insensitive' } },
+            { state: { contains: query, mode: 'insensitive' } },
+            { zipCode: { contains: query, mode: 'insensitive' } },
+        ];
+        const fields = await database_1.default.field.findMany({
+            where: whereClause,
+            select: {
+                id: true,
+                name: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                address: true,
+                pricePerHour: true,
+                averageRating: true,
+                totalReviews: true,
+                images: true,
+            },
+            take: 6, // Limit to 6 suggestions
+            orderBy: [
+                { averageRating: 'desc' },
+                { totalReviews: 'desc' },
+            ],
+        });
+        return fields.map(field => ({
+            id: field.id,
+            name: field.name || 'Unnamed Field',
+            address: field.address || '',
+            location: `${field.city || ''}${field.city && field.state ? ', ' : ''}${field.state || ''} ${field.zipCode || ''}`.trim(),
+            fullAddress: `${field.address || ''}${field.address && (field.city || field.state) ? ', ' : ''}${field.city || ''}${field.city && field.state ? ', ' : ''}${field.state || ''} ${field.zipCode || ''}`.trim(),
+            price: field.pricePerHour,
+            rating: field.averageRating,
+            reviews: field.totalReviews,
+            image: field.images?.[0] || null,
+        }));
+    }
     // Search fields by location
     async searchByLocation(lat, lng, radius = 10) {
         // This is a simplified version. In production, you'd use PostGIS or similar
@@ -316,6 +434,18 @@ class FieldModel {
                 },
             },
         });
+    }
+    // Helper method to build orderBy clause
+    buildOrderBy(sortBy, sortOrder) {
+        const orderByOptions = {
+            price: { pricePerHour: sortOrder },
+            rating: { averageRating: sortOrder },
+            reviews: { totalReviews: sortOrder },
+            name: { name: sortOrder },
+            createdAt: { createdAt: sortOrder },
+            distance: { createdAt: sortOrder }, // Would need geospatial calculation
+        };
+        return orderByOptions[sortBy] || { createdAt: 'desc' };
     }
 }
 exports.default = new FieldModel();

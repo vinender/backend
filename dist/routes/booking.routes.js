@@ -7,8 +7,9 @@ const express_1 = require("express");
 const booking_controller_1 = __importDefault(require("../controllers/booking.controller"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
-// Public route to check availability
+// Public routes to check availability
 router.get('/availability', booking_controller_1.default.checkAvailability);
+router.get('/fields/:fieldId/slot-availability', booking_controller_1.default.getSlotAvailability);
 // All routes below require authentication
 router.use(auth_middleware_1.protect);
 // Dog owner and field owner routes
@@ -17,6 +18,7 @@ router.get('/stats', booking_controller_1.default.getBookingStats);
 router.post('/', booking_controller_1.default.createBooking);
 // Admin routes
 router.get('/', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.getAllBookings);
+router.post('/mark-expired', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.markExpiredBookings);
 // Booking specific routes
 router
     .route('/:id')
@@ -25,5 +27,6 @@ router
     .delete((0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.deleteBooking);
 // Booking status management
 router.patch('/:id/status', booking_controller_1.default.updateBookingStatus);
+router.get('/:id/refund-eligibility', booking_controller_1.default.checkRefundEligibility);
 router.patch('/:id/cancel', booking_controller_1.default.cancelBooking);
 exports.default = router;
