@@ -20,7 +20,7 @@ export const prisma = new PrismaClient()
 // Middleware
 app.use(helmet())
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: process.env.FRONTEND_URL || "http://localhost:3000" || "http://localhost:3003",
   credentials: true,
 }))
 app.use(compression())

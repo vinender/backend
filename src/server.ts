@@ -37,6 +37,7 @@ import stripeConnectRoutes from './routes/stripe-connect.routes';
 import userReportRoutes from './routes/user-report.routes';
 import userBlockRoutes from './routes/user-block.routes';
 import paymentMethodRoutes from './routes/payment-method.routes';
+import adminRoutes from './routes/admin.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -64,6 +65,7 @@ class Server {
           'http://localhost:3000',
           'http://localhost:3001', 
           'http://localhost:3002',
+          'http://localhost:3003', // Admin dashboard
           FRONTEND_URL
         ];
         
@@ -175,6 +177,7 @@ class Server {
     this.app.use('/api/user-reports', userReportRoutes);
     this.app.use('/api/user-blocks', userBlockRoutes);
     this.app.use('/api/payment-methods', paymentMethodRoutes);
+    this.app.use('/api/admin', adminRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));
