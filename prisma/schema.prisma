@@ -36,7 +36,8 @@ model User {
   emailVerified DateTime?
   name          String?
   password      String?
-  image         String?
+  image         String?   // User's uploaded profile image
+  googleImage   String?   // Google profile image URL (kept separate)
   role          UserRole  @default(DOG_OWNER)
   phone         String?
   bio           String?
