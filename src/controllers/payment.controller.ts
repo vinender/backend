@@ -76,10 +76,29 @@ export class PaymentController {
           return res.status(400).json({ error: 'Invalid payment method' });
         }
 
-        // Ensure user has a Stripe customer ID
+        // Ensure user has a valid Stripe customer ID
         let customerId = user.stripeCustomerId;
+        
+        // Verify customer exists in Stripe
+        if (customerId) {
+          try {
+            const customer = await stripe.customers.retrieve(customerId);
+            if ((customer as any).deleted) {
+              console.log(`Stripe customer ${customerId} was deleted, creating new one`);
+              customerId = null; // Force recreation
+            }
+          } catch (error: any) {
+            if (error.statusCode === 404 || error.code === 'resource_missing') {
+              console.log(`Stripe customer ${customerId} not found, creating new one`);
+              customerId = null; // Force recreation
+            } else {
+              throw error; // Re-throw other errors
+            }
+          }
+        }
+        
+        // Create customer if doesn't exist or was invalid
         if (!customerId) {
-          // Create customer if doesn't exist
           const customer = await stripe.customers.create({
             email: user.email,
             name: user.name || undefined,
@@ -93,6 +112,43 @@ export class PaymentController {
           await prisma.user.update({
             where: { id: userId },
             data: { stripeCustomerId: customerId }
+          });
+        }
+
+        try {
+          // Verify the payment method still exists in Stripe
+          const stripePaymentMethod = await stripe.paymentMethods.retrieve(
+            paymentMethod.stripePaymentMethodId
+          );
+
+          // Check if payment method is attached to the customer
+          if (stripePaymentMethod.customer !== customerId) {
+            // Attach payment method to customer if not already attached
+            await stripe.paymentMethods.attach(
+              paymentMethod.stripePaymentMethodId,
+              { customer: customerId }
+            );
+          }
+        } catch (stripeError: any) {
+          console.error('Stripe payment method error:', stripeError);
+          
+          // Payment method doesn't exist or is invalid
+          if (stripeError.code === 'resource_missing' || stripeError.statusCode === 404) {
+            // Remove invalid payment method from database
+            await prisma.paymentMethod.delete({
+              where: { id: paymentMethodId }
+            });
+            
+            return res.status(400).json({ 
+              error: 'Payment method no longer valid. Please add a new payment method.',
+              code: 'PAYMENT_METHOD_EXPIRED'
+            });
+          }
+          
+          // Other Stripe errors
+          return res.status(400).json({ 
+            error: 'Unable to process payment method. Please try again or use a different payment method.',
+            code: 'PAYMENT_METHOD_ERROR'
           });
         }
 
@@ -112,8 +168,36 @@ export class PaymentController {
         };
       }
 
-      // Create payment intent
-      const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+      // Create payment intent with error handling
+      let paymentIntent;
+      try {
+        paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+      } catch (stripeError: any) {
+        console.error('Error creating payment intent:', stripeError);
+        
+        // Handle specific Stripe errors
+        if (stripeError.type === 'StripeInvalidRequestError') {
+          if (stripeError.message.includes('No such PaymentMethod')) {
+            return res.status(400).json({ 
+              error: 'Payment method not found. Please select a different payment method.',
+              code: 'PAYMENT_METHOD_NOT_FOUND'
+            });
+          }
+          if (stripeError.message.includes('Payment method not available')) {
+            return res.status(400).json({ 
+              error: 'This payment method is not available. Please try a different payment method.',
+              code: 'PAYMENT_METHOD_UNAVAILABLE'
+            });
+          }
+        }
+        
+        // Generic payment error
+        return res.status(500).json({ 
+          error: 'Unable to process payment. Please try again.',
+          code: 'PAYMENT_PROCESSING_ERROR',
+          details: process.env.NODE_ENV === 'development' ? stripeError.message : undefined
+        });
+      }
 
       // Parse the time slot to extract start and end times
       // Expected format: "4:00PM - 5:00PM"
