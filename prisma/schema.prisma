@@ -130,6 +130,7 @@ model Field {
   surfaceType     String?   // e.g., "Soft Sand", "Grass", "Artificial Grass", "Concrete"
   pricePerHour    Float?
   pricePerDay     Float?
+  bookingDuration String?   // e.g., "30min" or "1hour"
   amenities       String[]  // e.g., ["Water bowls", "Agility equipment", "Shade areas"]
   rules           String[]  // e.g., ["Dogs must be leashed", "Clean up after your dog"]
   images          String[]
@@ -213,9 +214,13 @@ model Booking {
   timeSlot      String?       // e.g., "8:00AM - 9:00AM"
   numberOfDogs  Int           @default(1)
   totalPrice    Float
+  platformCommission Float?    // Platform commission amount (20%)
+  fieldOwnerAmount Float?      // Amount to be paid to field owner (80%)
   status        BookingStatus @default(PENDING)
   paymentStatus String?       // e.g., "PENDING", "PAID", "FAILED"
   paymentIntentId String?     // Stripe payment intent ID
+  payoutStatus  String?       // e.g., "PENDING", "PROCESSING", "COMPLETED", "FAILED"
+  payoutId      String?       @db.ObjectId // Reference to Payout record
   repeatBooking String?       // e.g., "none", "weekly", "monthly"
   notes         String?
   cancellationReason String?

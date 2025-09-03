@@ -15,9 +15,30 @@ exports.paymentMethodController = {
         if (!user) {
             throw new Error('User not found');
         }
-        // If user already has a Stripe customer ID, return it
+        // If user already has a Stripe customer ID, verify it still exists
         if (user.stripeCustomerId) {
-            return user.stripeCustomerId;
+            try {
+                // Try to retrieve the customer from Stripe
+                const customer = await stripe_config_1.stripe.customers.retrieve(user.stripeCustomerId);
+                // Check if customer is deleted
+                if (customer.deleted) {
+                    console.log(`Stripe customer ${user.stripeCustomerId} was deleted, creating new one`);
+                }
+                else {
+                    // Customer exists and is valid
+                    return user.stripeCustomerId;
+                }
+            }
+            catch (error) {
+                // Customer doesn't exist in Stripe (404 error)
+                if (error.statusCode === 404 || error.code === 'resource_missing') {
+                    console.log(`Stripe customer ${user.stripeCustomerId} not found, creating new one`);
+                }
+                else {
+                    // Some other error occurred, throw it
+                    throw error;
+                }
+            }
         }
         // Create a new Stripe customer
         const customer = await stripe_config_1.stripe.customers.create({
@@ -174,12 +195,18 @@ exports.paymentMethodController = {
                 data: { isDefault: true }
             });
             // Also set it as default in Stripe
-            const customerId = await exports.paymentMethodController.getOrCreateStripeCustomer(userId);
-            await stripe_config_1.stripe.customers.update(customerId, {
-                invoice_settings: {
-                    default_payment_method: paymentMethod.stripePaymentMethodId
-                }
-            });
+            try {
+                const customerId = await exports.paymentMethodController.getOrCreateStripeCustomer(userId);
+                await stripe_config_1.stripe.customers.update(customerId, {
+                    invoice_settings: {
+                        default_payment_method: paymentMethod.stripePaymentMethodId
+                    }
+                });
+            }
+            catch (stripeError) {
+                console.error('Error setting default payment method in Stripe:', stripeError);
+                // Continue even if Stripe update fails - local DB is already updated
+            }
             res.json({
                 success: true,
                 paymentMethod: updatedMethod

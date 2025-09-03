@@ -44,19 +44,28 @@ export class PaymentController {
 
       // Calculate amount in cents (Stripe uses smallest currency unit)
       const amountInCents = Math.round(amount * 100);
+      
+      // Calculate platform commission (20% for admin)
+      const PLATFORM_COMMISSION_RATE = 0.20; // 20% commission
+      const platformCommission = Math.round(amount * PLATFORM_COMMISSION_RATE * 100) / 100;
+      const fieldOwnerAmount = amount - platformCommission;
 
       // Prepare payment intent parameters
+      // Payment goes to platform account (admin) first
       const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
         amount: amountInCents,
         currency: 'usd',
         metadata: {
           userId,
           fieldId,
+          fieldOwnerId: field.ownerId || '',
           numberOfDogs: numberOfDogs.toString(),
           date,
           timeSlot,
           repeatBooking: repeatBooking || 'none',
-          type: 'field_booking'
+          type: 'field_booking',
+          platformCommission: platformCommission.toString(),
+          fieldOwnerAmount: fieldOwnerAmount.toString()
         },
         description: `Booking for ${field.name} on ${date} at ${timeSlot}`,
         receipt_email: (req as any).user?.email,
@@ -217,9 +226,12 @@ export class PaymentController {
           timeSlot,
           numberOfDogs: parseInt(numberOfDogs),
           totalPrice: amount,
+          platformCommission,
+          fieldOwnerAmount,
           status: bookingStatus,
           paymentStatus: paymentStatus,
           paymentIntentId: paymentIntent.id,
+          payoutStatus: 'PENDING', // Payout pending until booking is completed
           repeatBooking: repeatBooking || 'none'
         }
       });

@@ -266,7 +266,7 @@ class BookingModel {
             cancelled: bookings.filter(b => b.status === 'CANCELLED').length,
             totalRevenue: bookings
                 .filter(b => b.status === 'COMPLETED')
-                .reduce((sum, b) => sum + b.totalPrice.toNumber(), 0),
+                .reduce((sum, b) => sum + b.totalPrice, 0),
         };
         return stats;
     }
@@ -280,7 +280,7 @@ class BookingModel {
             cancelled: bookings.filter(b => b.status === 'CANCELLED').length,
             totalSpent: bookings
                 .filter(b => b.status === 'COMPLETED')
-                .reduce((sum, b) => sum + b.totalPrice.toNumber(), 0),
+                .reduce((sum, b) => sum + b.totalPrice, 0),
         };
         return stats;
     }

@@ -14,7 +14,7 @@ export interface CreateFieldInput {
   size?: string;
   terrainType?: string;
   pricePerHour?: number;
-  pricePerDay?: number;
+  bookingDuration?: string;
   amenities?: string[];
   rules?: string[];
   images?: string[];

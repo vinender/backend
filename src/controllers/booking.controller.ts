@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
 import { createNotification } from './notification.controller';
+import { payoutService } from '../services/payout.service';
 
 class BookingController {
   // Create a new booking
@@ -36,17 +37,14 @@ class BookingController {
       throw new AppError('Cannot book a time slot in the past', 400);
     }
 
-    // Check dog limit for this slot
-    const maxDogsPerSlot = (field as any).maxDogs || 10;
-    
-    // Get existing bookings for this slot
+    // Check if slot is already booked (private booking system)
     const startOfDayDate = new Date(bookingDate);
     startOfDayDate.setHours(0, 0, 0, 0);
     
     const endOfDayDate = new Date(bookingDate);
     endOfDayDate.setHours(23, 59, 59, 999);
     
-    const existingBookings = await prisma.booking.findMany({
+    const existingBooking = await prisma.booking.findFirst({
       where: {
         fieldId,
         date: {
@@ -60,12 +58,9 @@ class BookingController {
       }
     });
 
-    const totalDogsBooked = existingBookings.reduce((total, booking) => total + booking.numberOfDogs, 0);
-    const availableSpots = maxDogsPerSlot - totalDogsBooked;
-
-    if (numberOfDogs > availableSpots) {
+    if (existingBooking) {
       throw new AppError(
-        `Only ${availableSpots} spots available for this time slot. Maximum capacity is ${maxDogsPerSlot} dogs.`,
+        'This time slot is already booked. Once booked, a slot becomes private for that dog owner.',
         400
       );
     }
@@ -86,8 +81,27 @@ class BookingController {
     const startMinutes = this.timeToMinutes(startTime);
     const endMinutes = this.timeToMinutes(endTime);
     const durationHours = (endMinutes - startMinutes) / 60;
-    const pricePerHour = field.pricePerHour?.toNumber() || field.price || 0;
-    const totalPrice = pricePerHour * durationHours * numberOfDogs;
+    const pricePerUnit = field.pricePerHour || 0;
+    
+    let totalPrice = 0;
+    if (field.bookingDuration === '30min') {
+      // For 30-minute slots, the price is per 30 minutes
+      const duration30MinBlocks = durationHours * 2; // Convert hours to 30-min blocks
+      totalPrice = pricePerUnit * duration30MinBlocks * numberOfDogs;
+    } else {
+      // For hourly slots, price is per hour
+      totalPrice = pricePerUnit * durationHours * numberOfDogs;
+    }
+    
+    // Log for debugging
+    console.log('Create booking price calculation:', {
+      fieldId: field.id,
+      pricePerUnit,
+      durationHours,
+      numberOfDogs,
+      bookingDuration: field.bookingDuration,
+      totalPrice
+    });
 
     // Create booking
     const booking = await BookingModel.create({
@@ -96,8 +110,9 @@ class BookingController {
       date: new Date(date),
       startTime,
       endTime,
+      timeSlot: `${startTime} - ${endTime}`, // Set timeSlot to match startTime and endTime
       totalPrice,
-      numberOfDogs, // Store number of dogs with the booking
+      numberOfDogs, // Store for pricing and info, but slot is now private
       notes,
     });
 
@@ -424,6 +439,32 @@ class BookingController {
           fieldName: field.name,
         },
       });
+
+      // Trigger automatic payout to field owner
+      try {
+        console.log(`Triggering automatic payout for completed booking ${id}`);
+        await payoutService.processBookingPayout(id);
+        console.log(`Payout processed successfully for booking ${id}`);
+      } catch (payoutError) {
+        console.error(`Failed to process payout for booking ${id}:`, payoutError);
+        // Don't throw error - payout can be retried later
+        // Notify admin about the failed payout
+        const adminUsers = await prisma.user.findMany({
+          where: { role: 'ADMIN' }
+        });
+        for (const admin of adminUsers) {
+          await createNotification({
+            userId: admin.id,
+            type: 'PAYOUT_FAILED',
+            title: 'Automatic Payout Failed',
+            message: `Failed to process automatic payout for booking ${id}`,
+            data: {
+              bookingId: id,
+              error: payoutError instanceof Error ? payoutError.message : 'Unknown error'
+            }
+          });
+        }
+      }
     }
 
     res.json({
@@ -477,8 +518,8 @@ class BookingController {
       throw new AppError('You are not authorized to check this booking', 403);
     }
 
-    // Calculate refund eligibility based on booking date/time vs creation time
-    const bookingCreatedAt = new Date(booking.createdAt);
+    // Calculate time until booking from current time
+    const now = new Date();
     const bookingDate = new Date(booking.date);
     
     // Parse the booking start time to add to the date
@@ -493,15 +534,15 @@ class BookingController {
     // Debug logging
     console.log('=== Refund Eligibility Check ===');
     console.log('Booking ID:', booking.id);
-    console.log('Created at:', bookingCreatedAt.toISOString());
+    console.log('Current time:', now.toISOString());
     console.log('Booking date/time:', bookingDate.toISOString());
     console.log('Start time:', booking.startTime);
     
-    // Calculate hours between creation and booking date/time
-    const hoursGap = (bookingDate.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
-    const isRefundEligible = hoursGap >= 24;
+    // Calculate hours until booking from now
+    const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const isRefundEligible = hoursUntilBooking >= 24;
     
-    console.log('Hours gap:', hoursGap);
+    console.log('Hours until booking:', hoursUntilBooking);
     console.log('Is refund eligible:', isRefundEligible);
     console.log('=========================');
 
@@ -509,10 +550,11 @@ class BookingController {
       success: true,
       data: {
         isRefundEligible,
-        hoursGap: Math.floor(hoursGap),
+        hoursUntilBooking: Math.floor(hoursUntilBooking),
+        canCancel: hoursUntilBooking >= 24,
         message: isRefundEligible
-          ? `This booking is eligible for a full refund. The booking date is ${Math.floor(hoursGap)} hours from when it was created.`
-          : `This booking is not eligible for a refund. Bookings must be made at least 24 hours in advance. This booking was made only ${Math.floor(hoursGap)} hours before the scheduled time.`,
+          ? `This booking can be cancelled with a full refund. There are ${Math.floor(hoursUntilBooking)} hours until the booking time.`
+          : `This booking cannot be cancelled with a refund. Cancellations must be made at least 24 hours before the booking time. Only ${Math.floor(hoursUntilBooking)} hours remain.`,
       },
     });
   });
@@ -543,8 +585,8 @@ class BookingController {
       throw new AppError(`Cannot cancel a ${booking.status.toLowerCase()} booking`, 400);
     }
 
-    // Calculate refund eligibility based on booking date/time vs creation time
-    const bookingCreatedAt = new Date(booking.createdAt);
+    // Calculate time until booking from current time
+    const now = new Date();
     const bookingDate = new Date(booking.date);
     
     // Parse the booking start time to add to the date
@@ -557,19 +599,24 @@ class BookingController {
     bookingDate.setHours(startHour, startMinute, 0, 0);
     
     // Debug logging for cancellation
-    console.log('=== Cancel Booking Refund Check ===');
+    console.log('=== Cancel Booking Check ===');
     console.log('Booking ID:', booking.id);
-    console.log('Created at:', bookingCreatedAt.toISOString());
+    console.log('Current time:', now.toISOString());
     console.log('Booking date/time:', bookingDate.toISOString());
     console.log('Start time:', booking.startTime);
     
-    // Calculate hours between creation and booking date/time
-    const hoursGap = (bookingDate.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
+    // Calculate hours until booking from now
+    const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
     
-    // Refund is eligible if booking was made at least 24 hours in advance
-    const isRefundEligible = hoursGap >= 24;
+    // Check if cancellation is allowed (at least 24 hours before booking)
+    if (hoursUntilBooking < 24 && !isAdmin) {
+      throw new AppError('Cancellation not allowed. Bookings must be cancelled at least 24 hours in advance.', 400);
+    }
     
-    console.log('Hours gap:', hoursGap);
+    // Refund is eligible if cancelled at least 24 hours before booking
+    const isRefundEligible = hoursUntilBooking >= 24;
+    
+    console.log('Hours until booking:', hoursUntilBooking);
     console.log('Is refund eligible:', isRefundEligible);
     console.log('===================================');
 
@@ -659,7 +706,7 @@ class BookingController {
       throw new AppError('Only pending or confirmed bookings can be rescheduled', 400);
     }
 
-    // If changing time/date, check availability
+    // If changing time/date, check availability and recalculate price
     if (date || startTime || endTime) {
       const newDate = date ? new Date(date) : booking.date;
       const newStartTime = startTime || booking.startTime;
@@ -677,17 +724,65 @@ class BookingController {
         throw new AppError('The new time slot is not available', 400);
       }
 
-      // Recalculate price if time changed
-      if (startTime || endTime) {
-        const field = await FieldModel.findById(booking.fieldId);
-        const startMinutes = this.timeToMinutes(newStartTime);
-        const endMinutes = this.timeToMinutes(newEndTime);
-        const durationHours = (endMinutes - startMinutes) / 60;
-        const totalPrice = field!.pricePerHour.toNumber() * durationHours;
+      // Always recalculate price when rescheduling with the original numberOfDogs
+      const field = await FieldModel.findById(booking.fieldId);
+      if (!field) {
+        throw new AppError('Field not found', 404);
+      }
+      
+      const startMinutes = this.timeToMinutes(newStartTime);
+      const endMinutes = this.timeToMinutes(newEndTime);
+      const durationHours = (endMinutes - startMinutes) / 60;
+      const dogsCount = booking.numberOfDogs || 1; // Always use the original numberOfDogs from booking
+      
+      // Calculate price based on field's booking duration setting
+      let pricePerUnit = field.pricePerHour || 0;
+      let totalPrice = 0;
+      
+      if (field.bookingDuration === '30min') {
+        // For 30-minute slots, the price is per 30 minutes
+        const duration30MinBlocks = durationHours * 2; // Convert hours to 30-min blocks
+        totalPrice = pricePerUnit * duration30MinBlocks * dogsCount;
+      } else {
+        // For hourly slots, price is per hour
+        totalPrice = pricePerUnit * durationHours * dogsCount;
+      }
+      
+      // Ensure totalPrice is a valid number
+      if (isNaN(totalPrice) || totalPrice < 0) {
+        console.error('Invalid totalPrice calculation:', {
+          pricePerUnit,
+          durationHours,
+          numberOfDogs: dogsCount,
+          bookingDuration: field.bookingDuration,
+          totalPrice
+        });
+        totalPrice = 0;
+      }
+      
+      // Log for debugging
+      console.log('Reschedule price calculation:', {
+        pricePerUnit,
+        durationHours,
+        numberOfDogs: dogsCount,
+        bookingDuration: field.bookingDuration,
+        totalPrice
+      });
 
-        req.body.totalPrice = totalPrice;
+      // Ensure totalPrice is set in the update data
+      req.body.totalPrice = totalPrice;
+      
+      // Update timeSlot to match the new startTime and endTime
+      req.body.timeSlot = `${newStartTime} - ${newEndTime}`;
+      
+      // Convert date string to full DateTime if provided
+      if (date) {
+        req.body.date = new Date(date);
       }
     }
+
+    // Log the final update data
+    console.log('Final update data for booking:', req.body);
 
     const updatedBooking = await BookingModel.update(id, req.body);
 
@@ -735,7 +830,7 @@ class BookingController {
     });
   });
 
-  // Get detailed slot availability with dog limits
+  // Get slot availability (private booking system - slot is either available or booked)
   getSlotAvailability = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { fieldId } = req.params;
     const { date } = req.query;
@@ -744,7 +839,7 @@ class BookingController {
       throw new AppError('Date is required', 400);
     }
 
-    // Get field details with maxDogs limit
+    // Get field details
     const field = await prisma.field.findUnique({
       where: { id: fieldId }
     });
@@ -780,7 +875,6 @@ class BookingController {
         startTime: true,
         endTime: true,
         timeSlot: true,
-        numberOfDogs: true,
         status: true
       }
     });
@@ -788,7 +882,6 @@ class BookingController {
     // Generate time slots based on field's operating hours
     const openingHour = field.openingTime ? parseInt(field.openingTime.split(':')[0]) : 6;
     const closingHour = field.closingTime ? parseInt(field.closingTime.split(':')[0]) : 21;
-    const maxDogsPerSlot = field.maxDogs || 10; // Default to 10 if not specified
 
     const slots = [];
 
@@ -804,23 +897,17 @@ class BookingController {
       slotDateTime.setHours(hour, 0, 0, 0);
       const isPast = slotDateTime < now;
 
-      // Calculate total dogs booked for this time slot
-      const bookedDogs = bookings
-        .filter(booking => booking.timeSlot === slotTime || booking.startTime === startTime)
-        .reduce((total, booking) => total + booking.numberOfDogs, 0);
-
-      const availableSpots = maxDogsPerSlot - bookedDogs;
-      const isFullyBooked = availableSpots <= 0;
+      // Check if slot is booked (private booking system)
+      const isBooked = bookings.some(
+        booking => booking.timeSlot === slotTime || booking.startTime === startTime
+      );
 
       slots.push({
         time: slotTime,
         startHour: hour,
         isPast,
-        isFullyBooked,
-        availableSpots: Math.max(0, availableSpots),
-        maxSpots: maxDogsPerSlot,
-        bookedDogs,
-        isAvailable: !isPast && !isFullyBooked
+        isBooked,
+        isAvailable: !isPast && !isBooked
       });
     }
 
@@ -830,7 +917,6 @@ class BookingController {
         date: date as string,
         fieldId,
         fieldName: field.name,
-        maxDogsPerSlot,
         slots,
         operatingHours: {
           opening: field.openingTime || '06:00',

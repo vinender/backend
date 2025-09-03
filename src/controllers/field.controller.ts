@@ -435,14 +435,14 @@ class FieldController {
             name: 'Untitled Field',
             type: 'PRIVATE',
             pricePerHour: parseFloat(data.pricePerHour) || 0,
-            pricePerDay: data.weekendPrice ? parseFloat(data.weekendPrice) : null,
+            bookingDuration: data.bookingDuration || '1hour',
             instantBooking: data.instantBooking || false,
             pricingAvailabilityCompleted: true
           };
         } else {
           updateData = {
             pricePerHour: parseFloat(data.pricePerHour) || 0,
-            pricePerDay: data.weekendPrice ? parseFloat(data.weekendPrice) : null,
+            bookingDuration: data.bookingDuration || '1hour',
             instantBooking: data.instantBooking || false,
             pricingAvailabilityCompleted: true
           };

@@ -39,6 +39,7 @@ const stripe_connect_routes_1 = __importDefault(require("./routes/stripe-connect
 const user_report_routes_1 = __importDefault(require("./routes/user-report.routes"));
 const user_block_routes_1 = __importDefault(require("./routes/user-block.routes"));
 const payment_method_routes_1 = __importDefault(require("./routes/payment-method.routes"));
+const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 class Server {
     app;
     httpServer;
@@ -60,6 +61,7 @@ class Server {
                     'http://localhost:3000',
                     'http://localhost:3001',
                     'http://localhost:3002',
+                    'http://localhost:3003', // Admin dashboard
                     constants_1.FRONTEND_URL
                 ];
                 // Allow requests with no origin (like mobile apps or Postman)
@@ -160,6 +162,7 @@ class Server {
         this.app.use('/api/user-reports', user_report_routes_1.default);
         this.app.use('/api/user-blocks', user_block_routes_1.default);
         this.app.use('/api/payment-methods', payment_method_routes_1.default);
+        this.app.use('/api/admin', admin_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }

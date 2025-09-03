@@ -22,7 +22,7 @@ exports.prisma = new client_1.PrismaClient();
 // Middleware
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: process.env.FRONTEND_URL || "http://localhost:3000" || "http://localhost:3003",
     credentials: true,
 }));
 app.use((0, compression_1.default)());

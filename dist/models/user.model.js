@@ -24,6 +24,8 @@ class UserModel {
                 role: true,
                 phone: true,
                 provider: true,
+                image: true,
+                googleImage: true,
                 createdAt: true,
                 updatedAt: true,
             },
@@ -64,6 +66,7 @@ class UserModel {
                 phone: true,
                 bio: true,
                 image: true,
+                googleImage: true,
                 provider: true,
                 emailVerified: true,
                 createdAt: true,
@@ -84,6 +87,7 @@ class UserModel {
                 phone: true,
                 bio: true,
                 image: true,
+                googleImage: true,
                 provider: true,
                 createdAt: true,
                 updatedAt: true,
@@ -126,6 +130,8 @@ class UserModel {
                 name: true,
                 role: true,
                 phone: true,
+                image: true,
+                googleImage: true,
                 createdAt: true,
                 updatedAt: true,
             },
@@ -143,10 +149,19 @@ class UserModel {
             // Update existing user with social login info
             const updateData = {
                 name: data.name || existingUser.name,
-                image: data.image || existingUser.image,
+                // Keep user's uploaded image, store Google image separately
+                image: existingUser.image, // Keep existing uploaded image
                 emailVerified: new Date(), // Social logins are verified
                 provider: data.provider, // Update provider to track social login
             };
+            // Store Google image separately if provider is Google
+            if (data.provider === 'google' && data.image) {
+                updateData.googleImage = data.image;
+                // Only use Google image as primary if user has no uploaded image
+                if (!existingUser.image) {
+                    updateData.image = data.image;
+                }
+            }
             return database_1.default.user.update({
                 where: { id: existingUser.id },
                 data: updateData,
@@ -158,21 +173,27 @@ class UserModel {
                     phone: true,
                     provider: true,
                     image: true,
+                    googleImage: true,
                     createdAt: true,
                     updatedAt: true,
                 },
             });
         }
         // Create new user from social login with specific role
+        const createData = {
+            email: data.email,
+            name: data.name || data.email.split('@')[0],
+            image: data.image,
+            role: userRole,
+            provider: data.provider,
+            emailVerified: new Date(), // Social logins are verified
+        };
+        // Store Google image separately if provider is Google
+        if (data.provider === 'google' && data.image) {
+            createData.googleImage = data.image;
+        }
         return database_1.default.user.create({
-            data: {
-                email: data.email,
-                name: data.name || data.email.split('@')[0],
-                image: data.image,
-                role: userRole,
-                provider: data.provider,
-                emailVerified: new Date(), // Social logins are verified
-            },
+            data: createData,
             select: {
                 id: true,
                 email: true,
@@ -181,6 +202,7 @@ class UserModel {
                 phone: true,
                 provider: true,
                 image: true,
+                googleImage: true,
                 createdAt: true,
                 updatedAt: true,
             },
@@ -199,6 +221,7 @@ class UserModel {
                 phone: true,
                 provider: true,
                 image: true,
+                googleImage: true,
                 createdAt: true,
                 updatedAt: true,
             },

@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTransactionDetails = exports.getEarningsSummary = exports.getEarningsHistory = void 0;
+exports.triggerBookingPayout = exports.getPayoutHistory = exports.processPendingPayouts = exports.getTransactionDetails = exports.getEarningsSummary = exports.getEarningsHistory = void 0;
 const client_1 = require("@prisma/client");
+const payout_service_1 = require("../services/payout.service");
 const prisma = new client_1.PrismaClient();
 // Get field owner's earnings history with pagination
 const getEarningsHistory = async (req, res) => {
@@ -303,3 +304,79 @@ const getTransactionDetails = async (req, res) => {
     }
 };
 exports.getTransactionDetails = getTransactionDetails;
+// Process pending payouts for field owner (after Stripe account setup)
+const processPendingPayouts = async (req, res) => {
+    try {
+        const userId = req.user._id || req.user.id;
+        const userRole = req.user.role;
+        // Only field owners can process their payouts
+        if (userRole !== 'FIELD_OWNER') {
+            return res.status(403).json({ error: 'Only field owners can process payouts' });
+        }
+        const results = await payout_service_1.payoutService.processPendingPayouts(userId);
+        const successCount = results.filter(r => r.success).length;
+        const failedCount = results.filter(r => !r.success).length;
+        res.json({
+            success: true,
+            message: `Processed ${successCount} payouts successfully, ${failedCount} failed`,
+            data: {
+                processed: successCount,
+                failed: failedCount,
+                results
+            }
+        });
+    }
+    catch (error) {
+        console.error('Error processing pending payouts:', error);
+        res.status(500).json({
+            error: 'Failed to process pending payouts',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+};
+exports.processPendingPayouts = processPendingPayouts;
+// Get payout history for field owner
+const getPayoutHistory = async (req, res) => {
+    try {
+        const userId = req.user._id || req.user.id;
+        const { page = 1, limit = 10 } = req.query;
+        const payouts = await payout_service_1.payoutService.getPayoutHistory(userId, Number(page), Number(limit));
+        res.json({
+            success: true,
+            data: payouts
+        });
+    }
+    catch (error) {
+        console.error('Error fetching payout history:', error);
+        res.status(500).json({
+            error: 'Failed to fetch payout history',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+};
+exports.getPayoutHistory = getPayoutHistory;
+// Manually trigger payout for a specific booking (Admin only)
+const triggerBookingPayout = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const userRole = req.user.role;
+        // Only admins can manually trigger payouts
+        if (userRole !== 'ADMIN') {
+            return res.status(403).json({ error: 'Only admins can manually trigger payouts' });
+        }
+        const payout = await payout_service_1.payoutService.processBookingPayout(bookingId);
+        res.json({
+            success: true,
+            message: 'Payout triggered successfully',
+            data: payout
+        });
+    }
+    catch (error) {
+        console.error('Error triggering payout:', error);
+        res.status(500).json({
+            error: 'Failed to trigger payout',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+};
+exports.triggerBookingPayout = triggerBookingPayout;

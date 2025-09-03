@@ -3,6 +3,7 @@ import prisma from '../config/database';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import Stripe from 'stripe';
+import { payoutService } from '../services/payout.service';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -153,6 +154,10 @@ class StripeConnectController {
     // Get updated account info from Stripe
     const account = await stripe.accounts.retrieve(stripeAccount.stripeAccountId);
 
+    // Check if account just became fully enabled
+    const wasNotEnabled = !stripeAccount.chargesEnabled || !stripeAccount.payoutsEnabled;
+    const isNowEnabled = account.charges_enabled && account.payouts_enabled;
+    
     // Update database with latest info
     await prisma.stripeAccount.update({
       where: { id: stripeAccount.id },
@@ -165,6 +170,18 @@ class StripeConnectController {
         requirementsEventuallyDue: account.requirements?.eventually_due || []
       }
     });
+    
+    // If account just became fully enabled, process pending payouts
+    if (wasNotEnabled && isNowEnabled) {
+      console.log(`Stripe account for user ${userId} is now fully enabled. Processing pending payouts...`);
+      try {
+        const results = await payoutService.processPendingPayouts(userId);
+        console.log(`Processed pending payouts for user ${userId}:`, results);
+      } catch (error) {
+        console.error(`Failed to process pending payouts for user ${userId}:`, error);
+        // Don't throw - continue with response
+      }
+    }
 
     res.json({
       success: true,
