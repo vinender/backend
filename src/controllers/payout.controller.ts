@@ -41,9 +41,16 @@ export const getEarningsHistory = async (req: Request, res: Response) => {
       });
     }
 
-    // Get bookings for these fields
+    // Get bookings for these fields including cancelled ones with transfers
     const bookingWhere: any = {
-      fieldId: { in: fieldIds }
+      fieldId: { in: fieldIds },
+      OR: [
+        { status: 'COMPLETED' },
+        { 
+          status: 'CANCELLED',
+          payoutStatus: { not: null } // Include cancelled bookings that have payouts
+        }
+      ]
     };
 
     // Get transactions for these bookings

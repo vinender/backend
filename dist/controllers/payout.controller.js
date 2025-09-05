@@ -35,9 +35,16 @@ const getEarningsHistory = async (req, res) => {
                 }
             });
         }
-        // Get bookings for these fields
+        // Get bookings for these fields including cancelled ones with transfers
         const bookingWhere = {
-            fieldId: { in: fieldIds }
+            fieldId: { in: fieldIds },
+            OR: [
+                { status: 'COMPLETED' },
+                {
+                    status: 'CANCELLED',
+                    payoutStatus: { not: null } // Include cancelled bookings that have payouts
+                }
+            ]
         };
         // Get transactions for these bookings
         const bookings = await prisma.booking.findMany({

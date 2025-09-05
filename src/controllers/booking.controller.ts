@@ -6,6 +6,7 @@ import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
 import { createNotification } from './notification.controller';
 import { payoutService } from '../services/payout.service';
+import refundService from '../services/refund.service';
 
 class BookingController {
   // Create a new booking
@@ -359,9 +360,32 @@ class BookingController {
 
     const totalPages = Math.ceil(total / limitNum);
 
+    // Automatically mark past CONFIRMED bookings as COMPLETED
+    const now = new Date();
+    const processedBookings = bookings.map((booking) => {
+      // Check if booking is past and still CONFIRMED
+      if (booking.status === 'CONFIRMED' && new Date(booking.date) < now) {
+        // Parse the booking end time to check if the session has ended
+        const bookingDate = new Date(booking.date);
+        const [endHourStr, endPeriod] = booking.endTime.split(/(?=[AP]M)/);
+        let endHour = parseInt(endHourStr.split(':')[0]);
+        const endMinute = parseInt(endHourStr.split(':')[1] || '0');
+        if (endPeriod === 'PM' && endHour !== 12) endHour += 12;
+        if (endPeriod === 'AM' && endHour === 12) endHour = 0;
+        
+        bookingDate.setHours(endHour, endMinute, 0, 0);
+        
+        // If the booking end time has passed, treat it as completed
+        if (bookingDate < now) {
+          return { ...booking, status: 'COMPLETED' };
+        }
+      }
+      return booking;
+    });
+
     res.json({
       success: true,
-      data: bookings,
+      data: processedBookings,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -474,30 +498,30 @@ class BookingController {
     });
   });
 
-  // Mark expired bookings (can be called by a cron job)
-  markExpiredBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  // Mark past bookings as completed (can be called by a cron job)
+  markPastBookingsAsCompleted = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const now = new Date();
     
-    // Find all bookings that are past their date/time and not completed/cancelled/expired
-    const expiredBookings = await prisma.booking.updateMany({
+    // Find all bookings that are past their date/time and not already completed or cancelled
+    const completedBookings = await prisma.booking.updateMany({
       where: {
         status: {
-          notIn: ['COMPLETED', 'CANCELLED', 'EXPIRED'],
+          notIn: ['COMPLETED', 'CANCELLED'],
         },
         date: {
           lt: now,
         },
       },
       data: {
-        status: 'EXPIRED',
+        status: 'COMPLETED',
       },
     });
 
     res.json({
       success: true,
-      message: `Marked ${expiredBookings.count} bookings as expired`,
+      message: `Marked ${completedBookings.count} bookings as completed`,
       data: {
-        count: expiredBookings.count,
+        count: completedBookings.count,
       },
     });
   });
@@ -581,7 +605,7 @@ class BookingController {
     }
 
     // Check if booking can be cancelled
-    if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED' || booking.status === 'EXPIRED') {
+    if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') {
       throw new AppError(`Cannot cancel a ${booking.status.toLowerCase()} booking`, 400);
     }
 
@@ -621,6 +645,24 @@ class BookingController {
     console.log('===================================');
 
     const cancelledBooking = await BookingModel.cancel(id, reason);
+
+    // Process immediate refund if eligible
+    let refundResult = null;
+    if (isRefundEligible && isDogOwner) {
+      try {
+        refundResult = await refundService.processRefund(id, reason);
+      } catch (refundError: any) {
+        console.error('Refund processing error:', refundError);
+        // Continue with cancellation even if refund fails
+      }
+    } else if (!isRefundEligible && isDogOwner) {
+      // If not eligible for refund, transfer full amount to field owner after cancellation period
+      try {
+        await refundService.processFieldOwnerPayout(booking, 0);
+      } catch (payoutError: any) {
+        console.error('Payout processing error:', payoutError);
+      }
+    }
 
     // Send cancellation notifications
     const field = (booking.field as any);
@@ -678,9 +720,12 @@ class BookingController {
       data: {
         ...cancelledBooking,
         isRefundEligible,
-        refundMessage: isRefundEligible 
-          ? 'You are eligible for a full refund. The amount will be credited to your account within 5-7 business days.'
-          : 'This booking is not eligible for a refund as it was made less than 24 hours before the scheduled time.',
+        refundResult,
+        refundMessage: refundResult?.success 
+          ? `Refund of $${refundResult.refundAmount?.toFixed(2) || '0.00'} has been initiated and will be credited to your account within 5-7 business days.`
+          : isRefundEligible
+            ? 'You are eligible for a refund. The amount will be credited to your account within 5-7 business days.'
+            : 'This booking is not eligible for a refund as it was cancelled less than 24 hours before the scheduled time.',
       },
     });
   });

@@ -34,12 +34,18 @@ import authRoutes from "./routes/auth.routes"
 import userRoutes from "./routes/user.routes"
 import fieldRoutes from "./routes/field.routes"
 import bookingRoutes from "./routes/booking.routes"
+import earningsRoutes from "./routes/earnings.routes"
+import stripeConnectRoutes from "./routes/stripe-connect.routes"
+import payoutRoutes from "./routes/payout.routes"
 
 // Routes
 app.use("/api/auth", authRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/fields", fieldRoutes)
 app.use("/api/bookings", bookingRoutes)
+app.use("/api/earnings", earningsRoutes)
+app.use("/api/stripe-connect", stripeConnectRoutes)
+app.use("/api/payouts", payoutRoutes)
 
 // Health check endpoint
 app.get("/health", (req, res) => {

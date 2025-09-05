@@ -18,7 +18,7 @@ router.get('/stats', booking_controller_1.default.getBookingStats);
 router.post('/', booking_controller_1.default.createBooking);
 // Admin routes
 router.get('/', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.getAllBookings);
-router.post('/mark-expired', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.markExpiredBookings);
+router.post('/mark-completed', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.markPastBookingsAsCompleted);
 // Booking specific routes
 router
     .route('/:id')

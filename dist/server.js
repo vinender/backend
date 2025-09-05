@@ -40,6 +40,9 @@ const user_report_routes_1 = __importDefault(require("./routes/user-report.route
 const user_block_routes_1 = __importDefault(require("./routes/user-block.routes"));
 const payment_method_routes_1 = __importDefault(require("./routes/payment-method.routes"));
 const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
+const admin_payout_routes_1 = __importDefault(require("./routes/admin-payout.routes"));
+// Import scheduled jobs
+const payout_job_1 = require("./jobs/payout.job");
 class Server {
     app;
     httpServer;
@@ -163,6 +166,7 @@ class Server {
         this.app.use('/api/user-blocks', user_block_routes_1.default);
         this.app.use('/api/payment-methods', payment_method_routes_1.default);
         this.app.use('/api/admin', admin_routes_1.default);
+        this.app.use('/api/admin/payouts', admin_payout_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }
@@ -200,6 +204,9 @@ class Server {
     start() {
         // Setup WebSocket
         (0, websocket_1.setupWebSocket)(this.httpServer);
+        // Initialize scheduled jobs
+        (0, payout_job_1.initPayoutJobs)();
+        console.log('✅ Scheduled jobs initialized');
         this.httpServer.listen(constants_1.PORT, () => {
             console.log(`
 ╔════════════════════════════════════════════════════╗
