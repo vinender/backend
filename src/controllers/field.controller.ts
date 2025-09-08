@@ -740,6 +740,7 @@ class FieldController {
       // Format bookings for frontend
       const formattedBookings = bookings.map((booking: any) => ({
         id: booking.id,
+        userId: booking.user.id,
         userName: booking.user.name,
         userAvatar: booking.user.profileImage || null,
         userEmail: booking.user.email,
@@ -871,6 +872,7 @@ class FieldController {
       // Format bookings for frontend
       const formattedBookings = bookings.map((booking: any) => ({
         id: booking.id,
+        userId: booking.user.id,
         userName: booking.user.name,
         userAvatar: booking.user.profileImage || null,
         userEmail: booking.user.email,
@@ -1003,6 +1005,7 @@ class FieldController {
       // Format bookings for frontend
       const formattedBookings = bookings.map((booking: any) => ({
         id: booking.id,
+        userId: booking.user.id,
         userName: booking.user.name,
         userAvatar: booking.user.profileImage || null,
         userEmail: booking.user.email,

@@ -9,6 +9,61 @@ import { automaticPayoutService } from '../services/auto-payout.service';
  * Runs every hour to check for bookings that have passed their cancellation period
  */
 export const initPayoutJobs = () => {
+  // Run every 30 minutes to mark past bookings as completed
+  cron.schedule('*/30 * * * *', async () => {
+    console.log('📋 Marking past bookings as completed...');
+    
+    try {
+      const now = new Date();
+      
+      // Find all bookings that are past their date/time and not already completed or cancelled
+      const completedBookings = await prisma.booking.updateMany({
+        where: {
+          status: 'CONFIRMED',
+          paymentStatus: 'PAID',
+          date: {
+            lt: now,
+          },
+        },
+        data: {
+          status: 'COMPLETED',
+        },
+      });
+      
+      console.log(`✅ Marked ${completedBookings.count} bookings as completed`);
+      
+      // Now trigger payouts for newly completed bookings
+      if (completedBookings.count > 0) {
+        // Get the bookings that were just marked as completed
+        const newlyCompletedBookings = await prisma.booking.findMany({
+          where: {
+            status: 'COMPLETED',
+            payoutStatus: null,
+            paymentStatus: 'PAID',
+            updatedAt: {
+              gte: new Date(Date.now() - 5 * 60 * 1000) // Updated in last 5 minutes
+            }
+          }
+        });
+        
+        // Import payout service
+        const { payoutService } = await import('../services/payout.service');
+        
+        // Process payouts for each booking
+        for (const booking of newlyCompletedBookings) {
+          try {
+            await payoutService.processBookingPayout(booking.id);
+            console.log(`💰 Payout processed for booking ${booking.id}`);
+          } catch (error) {
+            console.error(`Failed to process payout for booking ${booking.id}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error marking bookings as completed:', error);
+    }
+  });
+  
   // Run every hour at minute 0
   cron.schedule('0 * * * *', async () => {
     console.log('🏦 Running scheduled automatic payout job...');
