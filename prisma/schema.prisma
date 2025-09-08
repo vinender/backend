@@ -43,6 +43,7 @@ model User {
   provider      String    @default("general") // google, apple, or general
   stripeCustomerId String?  // Stripe customer ID for payment methods
   isReported    Boolean   @default(false)
+  commissionRate Float?    // Custom commission rate for field owners (0-100)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -574,4 +575,13 @@ model PaymentMethod {
   
   @@index([userId])
   @@map("payment_methods")
+}
+
+model SystemSettings {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  defaultCommissionRate Float @default(20) // Default commission rate (0-100), default 20%
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("system_settings")
 }

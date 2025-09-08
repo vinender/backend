@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
 import { createNotification } from '../controllers/notification.controller';
+import { calculatePayoutAmounts } from '../utils/commission.utils';
 
 const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -104,8 +105,11 @@ export class PayoutService {
         return;
       }
 
-      // Calculate payout amount (field owner's portion)
-      const payoutAmount = booking.fieldOwnerAmount || (booking.totalPrice * 0.8);
+      // Calculate payout amount using commission rates
+      const { fieldOwnerAmount, platformFeeAmount, commissionRate } = 
+        await calculatePayoutAmounts(booking.totalPrice, fieldOwner.id);
+      
+      const payoutAmount = booking.fieldOwnerAmount || fieldOwnerAmount;
       const payoutAmountInCents = Math.round(payoutAmount * 100);
 
       // Update booking to processing
@@ -145,12 +149,14 @@ export class PayoutService {
           }
         });
 
-        // Update booking with payout details
+        // Update booking with payout details and commission amounts
         await prisma.booking.update({
           where: { id: bookingId },
           data: {
             payoutStatus: 'COMPLETED',
-            payoutId: payout.id
+            payoutId: payout.id,
+            fieldOwnerAmount: payoutAmount,
+            platformFeeAmount: platformFeeAmount
           }
         });
 
