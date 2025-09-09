@@ -56,17 +56,45 @@ class EarningsController {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfYear = new Date(now.getFullYear(), 0, 1);
 
-    // Get all bookings for earnings calculation
+    // Get Stripe account first to fetch payouts
+    const stripeAccount = await prisma.stripeAccount.findUnique({
+      where: { userId }
+    });
+
+    // Get successful payouts for total earnings calculation
+    let totalEarningsFromPayouts = 0;
+    let allSuccessfulPayouts: any[] = [];
+    let todayPayouts: any[] = [];
+    let weekPayouts: any[] = [];
+    let monthPayouts: any[] = [];
+    let yearPayouts: any[] = [];
+    
+    if (stripeAccount) {
+      // Get all successful payouts
+      allSuccessfulPayouts = await prisma.payout.findMany({
+        where: {
+          stripeAccountId: stripeAccount.id,
+          status: { in: ['paid', 'PAID', 'completed', 'COMPLETED'] }
+        }
+      });
+      
+      // Calculate total earnings from successful payouts
+      totalEarningsFromPayouts = allSuccessfulPayouts.reduce((sum, payout) => sum + payout.amount, 0);
+      
+      // Filter payouts by date ranges
+      todayPayouts = allSuccessfulPayouts.filter(p => new Date(p.createdAt) >= startOfDay);
+      weekPayouts = allSuccessfulPayouts.filter(p => new Date(p.createdAt) >= startOfWeek);
+      monthPayouts = allSuccessfulPayouts.filter(p => new Date(p.createdAt) >= startOfMonth);
+      yearPayouts = allSuccessfulPayouts.filter(p => new Date(p.createdAt) >= startOfYear);
+    }
+
+    // Get all bookings for other calculations
     const [
       allBookings,
-      todayBookings,
-      weekBookings,
-      monthBookings,
-      yearBookings,
-      completedPayouts,
+      completedPayoutBookings,
       pendingPayoutBookings
     ] = await Promise.all([
-      // All confirmed bookings
+      // All confirmed bookings (for field earnings breakdown)
       prisma.booking.findMany({
         where: {
           fieldId: { in: fieldIds },
@@ -79,47 +107,7 @@ class EarningsController {
         }
       }),
       
-      // Today's bookings
-      prisma.booking.findMany({
-        where: {
-          fieldId: { in: fieldIds },
-          date: { gte: startOfDay },
-          status: { in: ['CONFIRMED', 'COMPLETED'] },
-          paymentStatus: 'PAID'
-        }
-      }),
-      
-      // This week's bookings
-      prisma.booking.findMany({
-        where: {
-          fieldId: { in: fieldIds },
-          date: { gte: startOfWeek },
-          status: { in: ['CONFIRMED', 'COMPLETED'] },
-          paymentStatus: 'PAID'
-        }
-      }),
-      
-      // This month's bookings
-      prisma.booking.findMany({
-        where: {
-          fieldId: { in: fieldIds },
-          date: { gte: startOfMonth },
-          status: { in: ['CONFIRMED', 'COMPLETED'] },
-          paymentStatus: 'PAID'
-        }
-      }),
-      
-      // This year's bookings
-      prisma.booking.findMany({
-        where: {
-          fieldId: { in: fieldIds },
-          date: { gte: startOfYear },
-          status: { in: ['CONFIRMED', 'COMPLETED'] },
-          paymentStatus: 'PAID'
-        }
-      }),
-      
-      // Completed payouts
+      // Bookings with completed payouts
       prisma.booking.findMany({
         where: {
           fieldId: { in: fieldIds },
@@ -145,26 +133,23 @@ class EarningsController {
       })
     ]);
 
-    // Calculate earnings
-    const calculateEarnings = (bookings: any[]) => {
+    // Calculate earnings from bookings (for pending amounts)
+    const calculateBookingEarnings = (bookings: any[]) => {
       return bookings.reduce((sum, b) => sum + (b.fieldOwnerAmount || b.totalPrice * 0.8), 0);
     };
 
-    const totalEarnings = calculateEarnings(allBookings);
-    const todayEarnings = calculateEarnings(todayBookings);
-    const weekEarnings = calculateEarnings(weekBookings);
-    const monthEarnings = calculateEarnings(monthBookings);
-    const yearEarnings = calculateEarnings(yearBookings);
-    const completedPayoutAmount = calculateEarnings(completedPayouts);
+    // Use payout amounts for period earnings
+    const totalEarnings = totalEarningsFromPayouts;
+    const todayEarnings = todayPayouts.reduce((sum, p) => sum + p.amount, 0);
+    const weekEarnings = weekPayouts.reduce((sum, p) => sum + p.amount, 0);
+    const monthEarnings = monthPayouts.reduce((sum, p) => sum + p.amount, 0);
+    const yearEarnings = yearPayouts.reduce((sum, p) => sum + p.amount, 0);
+    const completedPayoutAmount = calculateBookingEarnings(completedPayoutBookings);
     
     // Get payout summary
     const payoutSummary = await automaticPayoutService.getPayoutSummary(userId);
     
     // Get recent payouts
-    const stripeAccount = await prisma.stripeAccount.findUnique({
-      where: { userId }
-    });
-    
     let recentPayouts: any[] = [];
     if (stripeAccount) {
       const payouts = await prisma.payout.findMany({
@@ -202,20 +187,59 @@ class EarningsController {
       );
     }
     
-    // Calculate earnings by field
-    const fieldEarnings = userFields.map(field => {
-      const fieldBookings = allBookings.filter(b => b.fieldId === field.id);
-      const earnings = calculateEarnings(fieldBookings);
-      const bookingCount = fieldBookings.length;
-      
-      return {
-        fieldId: field.id,
-        fieldName: field.name,
-        totalEarnings: earnings,
-        totalBookings: bookingCount,
-        averageEarning: bookingCount > 0 ? earnings / bookingCount : 0
-      };
-    });
+    // Calculate earnings by field (based on successful payouts)
+    const fieldEarnings = await Promise.all(
+      userFields.map(async field => {
+        const fieldBookings = allBookings.filter(b => b.fieldId === field.id);
+        const bookingCount = fieldBookings.length;
+        
+        // Get successful payouts for this specific field
+        let fieldPayoutTotal = 0;
+        if (stripeAccount) {
+          // Get booking IDs for this field that have completed payouts
+          const completedFieldBookings = await prisma.booking.findMany({
+            where: {
+              fieldId: field.id,
+              payoutStatus: 'COMPLETED'
+            },
+            select: { id: true }
+          });
+          
+          const completedBookingIds = completedFieldBookings.map(b => b.id);
+          
+          // Get payouts that include these bookings
+          const fieldPayouts = await prisma.payout.findMany({
+            where: {
+              stripeAccountId: stripeAccount.id,
+              status: { in: ['paid', 'PAID', 'completed', 'COMPLETED'] },
+              bookingIds: {
+                hasSome: completedBookingIds
+              }
+            }
+          });
+          
+          // Sum up the payout amounts for this field
+          // Note: This is approximate as payouts can contain multiple bookings
+          fieldPayoutTotal = fieldPayouts.reduce((sum, payout) => {
+            // Calculate portion of payout for this field
+            const payoutBookingCount = payout.bookingIds.length;
+            const fieldBookingCount = payout.bookingIds.filter(id => 
+              completedBookingIds.includes(id)
+            ).length;
+            const portion = payoutBookingCount > 0 ? (fieldBookingCount / payoutBookingCount) : 0;
+            return sum + (payout.amount * portion);
+          }, 0);
+        }
+        
+        return {
+          fieldId: field.id,
+          fieldName: field.name,
+          totalEarnings: fieldPayoutTotal,
+          totalBookings: bookingCount,
+          averageEarning: bookingCount > 0 ? fieldPayoutTotal / bookingCount : 0
+        };
+      })
+    );
     
     // Get upcoming earnings (bookings in cancellation window)
     const upcomingEarnings = payoutSummary.bookingsInCancellationWindow.map(b => ({
