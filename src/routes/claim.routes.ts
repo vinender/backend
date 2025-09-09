@@ -4,7 +4,8 @@ import {
   getAllClaims,
   getClaimById,
   updateClaimStatus,
-  getFieldClaims
+  getFieldClaims,
+  checkClaimEligibility
 } from '../controllers/claim.controller';
 import { protect, restrictTo } from '../middleware/auth.middleware';
 
@@ -12,6 +13,7 @@ const router = express.Router();
 
 // Public routes
 router.post('/submit', submitFieldClaim);
+router.get('/check-eligibility/:fieldId', checkClaimEligibility);
 
 // Protected routes
 router.use(protect);

@@ -131,6 +131,377 @@ const getOtpEmailTemplate = (otp: string, name?: string) => {
   `;
 };
 
+const getFieldClaimStatusTemplate = (statusData: {
+  fullName: string;
+  fieldName: string;
+  fieldAddress: string;
+  status: 'APPROVED' | 'REJECTED';
+  reviewNotes?: string;
+  documents?: string[];
+}) => {
+  const isApproved = statusData.status === 'APPROVED';
+  const statusColor = isApproved ? '#4CAF50' : '#f44336';
+  const statusText = isApproved ? 'Approved' : 'Rejected';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Field Claim ${statusText}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid ${statusColor};
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .status-badge {
+            display: inline-block;
+            background-color: ${statusColor};
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 18px;
+            margin: 20px 0;
+          }
+          .info-box {
+            background-color: ${isApproved ? '#f0f8f0' : '#fff5f5'};
+            border-left: 4px solid ${statusColor};
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .next-steps {
+            background-color: #fff7e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .next-steps h3 {
+            color: #ff8c00;
+            margin-top: 0;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+          .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: ${statusColor};
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            margin-top: 20px;
+            font-weight: bold;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h1>Field Claim ${statusText}</h1>
+            <p>Dear ${statusData.fullName},</p>
+            
+            ${isApproved ? `
+              <p>Great news! Your claim for the field has been <strong>approved</strong>. You can now manage your field listing on Fieldsy.</p>
+            ` : `
+              <p>We regret to inform you that your claim for the field has been <strong>rejected</strong> after careful review.</p>
+            `}
+            
+            <div class="status-badge">Status: ${statusText}</div>
+            
+            <div class="info-box">
+              <h3>Field Details:</h3>
+              <p><strong>Field Name:</strong> ${statusData.fieldName}</p>
+              <p><strong>Location:</strong> ${statusData.fieldAddress}</p>
+              ${statusData.reviewNotes ? `
+                <p><strong>Review Notes:</strong> ${statusData.reviewNotes}</p>
+              ` : ''}
+            </div>
+            
+            ${statusData.documents && statusData.documents.length > 0 && isApproved ? `
+            <div class="info-box">
+              <h3>Your Submitted Documents:</h3>
+              <p style="margin-bottom: 10px; color: #666;">For your reference, these were the documents you submitted:</p>
+              <ul style="margin: 10px 0; padding-left: 20px;">
+                ${statusData.documents.map((doc, index) => {
+                  const fileName = doc.split('/').pop() || `Document ${index + 1}`;
+                  const isFullUrl = doc.startsWith('http://') || doc.startsWith('https://');
+                  return `
+                    <li style="margin: 8px 0;">
+                      ${isFullUrl ? 
+                        `<a href="${doc}" style="color: #4CAF50; text-decoration: none; font-weight: 500;" target="_blank">${fileName}</a>` :
+                        `<span style="color: #555;">${fileName}</span>`
+                      }
+                    </li>
+                  `;
+                }).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            
+            ${isApproved ? `
+              <div class="next-steps">
+                <h3>🎉 What's Next?</h3>
+                <ul>
+                  <li>Log in to your Fieldsy account to manage your field</li>
+                  <li>Update your field details and pricing</li>
+                  <li>Add high-quality photos to attract more bookings</li>
+                  <li>Set your availability and booking rules</li>
+                  <li>Start receiving bookings from dog owners!</li>
+                </ul>
+              </div>
+              
+              <p>Congratulations on becoming a Fieldsy field owner! We're excited to have you as part of our community.</p>
+            ` : `
+              <div class="next-steps">
+                <h3>📋 What Can You Do?</h3>
+                <ul>
+                  <li>Review the rejection reason provided above</li>
+                  <li>Gather additional documentation if needed</li>
+                  <li>Contact our support team for clarification</li>
+                  <li>Submit a new claim with updated information</li>
+                </ul>
+              </div>
+              
+              <p>If you believe this decision was made in error or have additional documentation to provide, please contact our support team.</p>
+            `}
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+const getFieldClaimTemplate = (claimData: {
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  fieldName: string;
+  fieldAddress: string;
+  isLegalOwner: boolean;
+  submittedAt: Date;
+  documents?: string[];
+}) => {
+  const formattedDate = new Date(claimData.submittedAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Field Claim Confirmation</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .status-badge {
+            display: inline-block;
+            background-color: #FFA500;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 15px 0;
+          }
+          .info-box {
+            background-color: #f0f8f0;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .info-item {
+            margin: 10px 0;
+          }
+          .info-label {
+            font-weight: bold;
+            color: #555;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+          .next-steps {
+            background-color: #fff7e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .next-steps h3 {
+            color: #ff8c00;
+            margin-top: 0;
+          }
+          .next-steps ul {
+            margin: 10px 0;
+            padding-left: 20px;
+          }
+          .next-steps li {
+            margin: 8px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h1>Field Claim Submission Received</h1>
+            <p>Dear ${claimData.fullName},</p>
+            <p>Thank you for submitting your claim for the field. We have successfully received your submission and our team will review it shortly.</p>
+            
+            <div class="status-badge">Status: Under Review</div>
+            
+            <div class="info-box">
+              <h3>Claim Details:</h3>
+              <div class="info-item">
+                <span class="info-label">Field Name:</span> ${claimData.fieldName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Field Location:</span> ${claimData.fieldAddress}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Submitted By:</span> ${claimData.fullName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Contact Email:</span> ${claimData.email}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Phone Number:</span> ${claimData.phoneNumber}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Legal Owner:</span> ${claimData.isLegalOwner ? 'Yes' : 'No'}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Submission Date:</span> ${formattedDate}
+              </div>
+            </div>
+            
+            ${claimData.documents && claimData.documents.length > 0 ? `
+            <div class="info-box">
+              <h3>Submitted Documents:</h3>
+              <p style="margin-bottom: 10px; color: #666;">The following ownership documents were submitted with your claim:</p>
+              <ul style="margin: 10px 0; padding-left: 20px;">
+                ${claimData.documents.map((doc, index) => {
+                  // Extract filename from URL or path
+                  const fileName = doc.split('/').pop() || `Document ${index + 1}`;
+                  // Check if it's a full URL or just a path
+                  const isFullUrl = doc.startsWith('http://') || doc.startsWith('https://');
+                  return `
+                    <li style="margin: 8px 0;">
+                      ${isFullUrl ? 
+                        `<a href="${doc}" style="color: #4CAF50; text-decoration: none; font-weight: 500;" target="_blank">${fileName}</a>` :
+                        `<span style="color: #555;">${fileName}</span>`
+                      }
+                    </li>
+                  `;
+                }).join('')}
+              </ul>
+              <p style="margin-top: 10px; font-size: 12px; color: #888;">
+                <em>Note: These documents are securely stored and will be reviewed by our verification team.</em>
+              </p>
+            </div>
+            ` : ''}
+            
+            <div class="next-steps">
+              <h3>📋 What Happens Next?</h3>
+              <ul>
+                <li>Our verification team will review your submitted documents</li>
+                <li>We may contact you if additional information is needed</li>
+                <li>You will receive an email notification once your claim is approved or if we need more information</li>
+                <li>The typical review process takes 2-3 business days</li>
+              </ul>
+            </div>
+            
+            <p><strong>Important:</strong> Please ensure your submitted ownership documents are valid and up-to-date. If we cannot verify your ownership, we may need to request additional documentation.</p>
+            
+            <p>If you have any questions about your claim or need to provide additional information, please don't hesitate to contact our support team.</p>
+            
+            <p>Thank you for choosing Fieldsy to list your field!</p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+            <p>This is an automated confirmation email. Please do not reply directly to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 const getPasswordResetTemplate = (otp: string, name?: string) => {
   return `
     <!DOCTYPE html>
@@ -256,6 +627,61 @@ class EmailService {
     }
 
     return this.sendMail(email, subject, html);
+  }
+
+  async sendFieldClaimEmail(claimData: {
+    fullName: string;
+    email: string;
+    phoneNumber: string;
+    fieldName: string;
+    fieldAddress: string;
+    isLegalOwner: boolean;
+    submittedAt: Date;
+    documents?: string[];
+  }): Promise<boolean> {
+    const subject = 'Field Claim Submitted - Fieldsy';
+    const html = getFieldClaimTemplate(claimData);
+    
+    try {
+      const result = await this.sendMail(claimData.email, subject, html);
+      console.log(`✅ Field claim confirmation email sent to ${claimData.email}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to send field claim email to ${claimData.email}:`, error);
+      // Don't throw error to prevent claim submission from failing
+      return false;
+    }
+  }
+
+  async sendFieldClaimStatusEmail(statusData: {
+    email: string;
+    fullName: string;
+    fieldName: string;
+    fieldAddress: string;
+    status: 'APPROVED' | 'REJECTED';
+    reviewNotes?: string;
+    documents?: string[];
+  }): Promise<boolean> {
+    const statusText = statusData.status === 'APPROVED' ? 'Approved' : 'Rejected';
+    const subject = `Field Claim ${statusText} - Fieldsy`;
+    const html = getFieldClaimStatusTemplate({
+      fullName: statusData.fullName,
+      fieldName: statusData.fieldName,
+      fieldAddress: statusData.fieldAddress,
+      status: statusData.status,
+      reviewNotes: statusData.reviewNotes,
+      documents: statusData.documents
+    });
+    
+    try {
+      const result = await this.sendMail(statusData.email, subject, html);
+      console.log(`✅ Field claim ${statusText.toLowerCase()} email sent to ${statusData.email}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to send field claim status email to ${statusData.email}:`, error);
+      // Don't throw error to prevent status update from failing
+      return false;
+    }
   }
 }
 
