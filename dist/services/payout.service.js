@@ -7,6 +7,7 @@ exports.payoutService = exports.PayoutService = void 0;
 const client_1 = require("@prisma/client");
 const stripe_1 = __importDefault(require("stripe"));
 const notification_controller_1 = require("../controllers/notification.controller");
+const commission_utils_1 = require("../utils/commission.utils");
 const prisma = new client_1.PrismaClient();
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
     apiVersion: '2024-11-20.acacia'
@@ -93,8 +94,9 @@ class PayoutService {
                 });
                 return;
             }
-            // Calculate payout amount (field owner's portion)
-            const payoutAmount = booking.fieldOwnerAmount || (booking.totalPrice * 0.8);
+            // Calculate payout amount using commission rates
+            const { fieldOwnerAmount, platformFeeAmount, commissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, fieldOwner.id);
+            const payoutAmount = booking.fieldOwnerAmount || fieldOwnerAmount;
             const payoutAmountInCents = Math.round(payoutAmount * 100);
             // Update booking to processing
             await prisma.booking.update({
@@ -130,12 +132,14 @@ class PayoutService {
                         arrivalDate: new Date() // Transfers are typically instant to connected accounts
                     }
                 });
-                // Update booking with payout details
+                // Update booking with payout details and commission amounts
                 await prisma.booking.update({
                     where: { id: bookingId },
                     data: {
                         payoutStatus: 'COMPLETED',
-                        payoutId: payout.id
+                        payoutId: payout.id,
+                        fieldOwnerAmount: payoutAmount,
+                        platformFeeAmount: platformFeeAmount
                     }
                 });
                 // Send notification to field owner

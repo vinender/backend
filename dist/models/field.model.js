@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const database_1 = __importDefault(require("../config/database"));
+const postcode_utils_1 = require("../utils/postcode.utils");
 class FieldModel {
     // Create a new field
     async create(data) {
@@ -90,18 +91,75 @@ class FieldModel {
         };
         // Handle comprehensive search (field name, address, city, state, zipCode)
         if (where.search) {
-            whereClause.OR = [
-                { name: { contains: where.search, mode: 'insensitive' } },
-                { description: { contains: where.search, mode: 'insensitive' } },
-                { address: { contains: where.search, mode: 'insensitive' } },
-                { city: { contains: where.search, mode: 'insensitive' } },
-                { state: { contains: where.search, mode: 'insensitive' } },
-                { zipCode: { contains: where.search, mode: 'insensitive' } },
-            ];
+            // Check if search term might be a UK postcode
+            const isPostcode = (0, postcode_utils_1.isValidUKPostcode)(where.search) || (0, postcode_utils_1.isPartialPostcode)(where.search);
+            if (isPostcode) {
+                // If it's a postcode, search for matching postcodes
+                const formattedPostcode = (0, postcode_utils_1.formatUKPostcode)(where.search);
+                const searchConditions = [];
+                // Search for exact match (formatted)
+                if (formattedPostcode) {
+                    searchConditions.push({ zipCode: formattedPostcode });
+                    searchConditions.push({ zipCode: formattedPostcode.replace(' ', '') });
+                }
+                // Search for partial matches (outward code, district, area)
+                if ((0, postcode_utils_1.isPartialPostcode)(where.search)) {
+                    const searchUpper = where.search.toUpperCase().trim();
+                    // Starts with partial postcode
+                    searchConditions.push({
+                        zipCode: {
+                            startsWith: searchUpper,
+                            mode: 'insensitive'
+                        }
+                    });
+                    // Contains partial postcode (for formatted postcodes with space)
+                    searchConditions.push({
+                        zipCode: {
+                            contains: searchUpper,
+                            mode: 'insensitive'
+                        }
+                    });
+                }
+                whereClause.OR = searchConditions;
+            }
+            else {
+                // Regular search for non-postcode terms
+                whereClause.OR = [
+                    { name: { contains: where.search, mode: 'insensitive' } },
+                    { description: { contains: where.search, mode: 'insensitive' } },
+                    { address: { contains: where.search, mode: 'insensitive' } },
+                    { city: { contains: where.search, mode: 'insensitive' } },
+                    { state: { contains: where.search, mode: 'insensitive' } },
+                    { zipCode: { contains: where.search, mode: 'insensitive' } },
+                ];
+            }
         }
         // Handle specific postal code search
         if (where.zipCode) {
-            whereClause.zipCode = where.zipCode;
+            // Check if it's a UK postcode format
+            const isUKPostcode = (0, postcode_utils_1.isValidUKPostcode)(where.zipCode) || (0, postcode_utils_1.isPartialPostcode)(where.zipCode);
+            if (isUKPostcode) {
+                const formattedPostcode = (0, postcode_utils_1.formatUKPostcode)(where.zipCode);
+                if (formattedPostcode) {
+                    // Search for exact match (both with and without space)
+                    whereClause.OR = [
+                        { zipCode: formattedPostcode },
+                        { zipCode: formattedPostcode.replace(' ', '') }
+                    ];
+                }
+                else if ((0, postcode_utils_1.isPartialPostcode)(where.zipCode)) {
+                    // For partial postcodes, search for fields that start with this pattern
+                    const searchUpper = where.zipCode.toUpperCase().trim();
+                    whereClause.zipCode = {
+                        startsWith: searchUpper,
+                        mode: 'insensitive'
+                    };
+                }
+            }
+            else {
+                // Regular zipCode search for non-UK formats
+                whereClause.zipCode = where.zipCode;
+            }
         }
         // Handle location-based search
         if (where.lat && where.lng) {
@@ -363,14 +421,37 @@ class FieldModel {
             isActive: true,
             isSubmitted: true,
         };
-        // Comprehensive search by field name, address, city, state, or postal code
-        whereClause.OR = [
-            { name: { contains: query, mode: 'insensitive' } },
-            { address: { contains: query, mode: 'insensitive' } },
-            { city: { contains: query, mode: 'insensitive' } },
-            { state: { contains: query, mode: 'insensitive' } },
-            { zipCode: { contains: query, mode: 'insensitive' } },
-        ];
+        // Check if query might be a UK postcode
+        const isPostcode = (0, postcode_utils_1.isValidUKPostcode)(query) || (0, postcode_utils_1.isPartialPostcode)(query);
+        if (isPostcode) {
+            // For postcode searches, look for matching postcodes
+            const formattedPostcode = (0, postcode_utils_1.formatUKPostcode)(query);
+            const searchConditions = [];
+            if (formattedPostcode) {
+                searchConditions.push({ zipCode: formattedPostcode });
+                searchConditions.push({ zipCode: formattedPostcode.replace(' ', '') });
+            }
+            if ((0, postcode_utils_1.isPartialPostcode)(query)) {
+                const searchUpper = query.toUpperCase().trim();
+                searchConditions.push({
+                    zipCode: {
+                        startsWith: searchUpper,
+                        mode: 'insensitive'
+                    }
+                });
+            }
+            whereClause.OR = searchConditions;
+        }
+        else {
+            // Comprehensive search by field name, address, city, state, or postal code
+            whereClause.OR = [
+                { name: { contains: query, mode: 'insensitive' } },
+                { address: { contains: query, mode: 'insensitive' } },
+                { city: { contains: query, mode: 'insensitive' } },
+                { state: { contains: query, mode: 'insensitive' } },
+                { zipCode: { contains: query, mode: 'insensitive' } },
+            ];
+        }
         const fields = await database_1.default.field.findMany({
             where: whereClause,
             select: {

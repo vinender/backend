@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -9,23 +42,96 @@ const node_cron_1 = __importDefault(require("node-cron"));
 const refund_service_1 = __importDefault(require("../services/refund.service"));
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("../controllers/notification.controller");
+const auto_payout_service_1 = require("../services/auto-payout.service");
 /**
  * Scheduled job to process payouts for completed bookings
  * Runs every hour to check for bookings that have passed their cancellation period
  */
 const initPayoutJobs = () => {
+    // Run every 30 minutes to mark past bookings as completed
+    node_cron_1.default.schedule('*/30 * * * *', async () => {
+        console.log('📋 Marking past bookings as completed...');
+        try {
+            const now = new Date();
+            // Find all bookings that are past their date/time and not already completed or cancelled
+            const completedBookings = await database_1.default.booking.updateMany({
+                where: {
+                    status: 'CONFIRMED',
+                    paymentStatus: 'PAID',
+                    date: {
+                        lt: now,
+                    },
+                },
+                data: {
+                    status: 'COMPLETED',
+                },
+            });
+            console.log(`✅ Marked ${completedBookings.count} bookings as completed`);
+            // Now trigger payouts for newly completed bookings
+            if (completedBookings.count > 0) {
+                // Get the bookings that were just marked as completed
+                const newlyCompletedBookings = await database_1.default.booking.findMany({
+                    where: {
+                        status: 'COMPLETED',
+                        payoutStatus: null,
+                        paymentStatus: 'PAID',
+                        updatedAt: {
+                            gte: new Date(Date.now() - 5 * 60 * 1000) // Updated in last 5 minutes
+                        }
+                    }
+                });
+                // Import payout service
+                const { payoutService } = await Promise.resolve().then(() => __importStar(require('../services/payout.service')));
+                // Process payouts for each booking
+                for (const booking of newlyCompletedBookings) {
+                    try {
+                        await payoutService.processBookingPayout(booking.id);
+                        console.log(`💰 Payout processed for booking ${booking.id}`);
+                    }
+                    catch (error) {
+                        console.error(`Failed to process payout for booking ${booking.id}:`, error);
+                    }
+                }
+            }
+        }
+        catch (error) {
+            console.error('Error marking bookings as completed:', error);
+        }
+    });
     // Run every hour at minute 0
     node_cron_1.default.schedule('0 * * * *', async () => {
-        console.log('Running scheduled payout job...');
+        console.log('🏦 Running scheduled automatic payout job...');
         try {
-            // Process payouts for completed bookings past cancellation period
+            // Process automatic payouts for bookings past cancellation window
+            const results = await auto_payout_service_1.automaticPayoutService.processEligiblePayouts();
+            console.log(`✅ Automatic payouts processed:`);
+            console.log(`   - Processed: ${results.processed}`);
+            console.log(`   - Skipped: ${results.skipped}`);
+            console.log(`   - Failed: ${results.failed}`);
+            // Process payouts for completed bookings past cancellation period (legacy)
             await refund_service_1.default.processCompletedBookingPayouts();
             // Also check for any failed payouts to retry
             await retryFailedPayouts();
-            console.log('Payout job completed successfully');
+            console.log('✅ Payout job completed successfully');
         }
         catch (error) {
-            console.error('Payout job error:', error);
+            console.error('❌ Payout job error:', error);
+            // Notify admins of job failure
+            const adminUsers = await database_1.default.user.findMany({
+                where: { role: 'ADMIN' }
+            });
+            for (const admin of adminUsers) {
+                await (0, notification_controller_1.createNotification)({
+                    userId: admin.id,
+                    type: 'PAYOUT_JOB_ERROR',
+                    title: 'Scheduled Payout Job Failed',
+                    message: `The automatic payout job encountered an error: ${error.message}`,
+                    data: {
+                        error: error.message,
+                        timestamp: new Date()
+                    }
+                });
+            }
         }
     });
     // Run daily at midnight to calculate and update field owner earnings

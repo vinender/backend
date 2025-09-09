@@ -102,11 +102,13 @@ router.get('/verify', authenticateAdmin, async (req, res) => {
 router.get('/stats', authenticateAdmin, async (req, res) => {
   try {
     // Get statistics
+    const now = new Date();
     const [
       totalUsers,
       totalFields,
       totalBookings,
       totalRevenue,
+      upcomingBookings,
       recentBookings,
       dogOwners,
       fieldOwners
@@ -114,9 +116,15 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
       prisma.user.count(),
       prisma.field.count(),
       prisma.booking.count(),
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: { status: 'COMPLETED' }
+      prisma.booking.aggregate({
+        _sum: { totalPrice: true },
+        where: { paymentStatus: 'PAID' }
+      }),
+      prisma.booking.count({
+        where: {
+          date: { gte: now },
+          status: { in: ['PENDING', 'CONFIRMED'] }
+        }
       }),
       prisma.booking.findMany({
         take: 5,
@@ -136,7 +144,8 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
         totalUsers,
         totalFields,
         totalBookings,
-        totalRevenue: totalRevenue._sum.amount || 0,
+        totalRevenue: totalRevenue._sum.totalPrice || 0,
+        upcomingBookings,
         dogOwners,
         fieldOwners,
         recentBookings
@@ -145,6 +154,24 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
 
   } catch (error) {
     console.error('Stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get total revenue
+router.get('/revenue/total', authenticateAdmin, async (req, res) => {
+  try {
+    const totalRevenue = await prisma.booking.aggregate({
+      _sum: { totalPrice: true },
+      where: { paymentStatus: 'PAID' }
+    });
+
+    res.json({
+      success: true,
+      totalRevenue: totalRevenue._sum.totalPrice || 0
+    });
+  } catch (error) {
+    console.error('Revenue error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
