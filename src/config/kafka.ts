@@ -82,6 +82,12 @@ export const initializeKafka = async (io: SocketIOServer) => {
 // Process message (used by both Kafka and direct processing)
 async function processMessage(chatMessage: ChatMessage, io: SocketIOServer) {
   try {
+    console.log('[ProcessMessage] Processing message:', {
+      conversationId: chatMessage.conversationId,
+      senderId: chatMessage.senderId,
+      receiverId: chatMessage.receiverId
+    });
+    
     // Save message to database
     const savedMessage = await prisma.message.create({
       data: {
@@ -112,15 +118,36 @@ async function processMessage(chatMessage: ChatMessage, io: SocketIOServer) {
     });
 
     // Emit to Socket.io rooms
-    io.to(`conversation:${chatMessage.conversationId}`).emit('new-message', savedMessage);
+    const conversationRoom = `conversation:${chatMessage.conversationId}`;
+    const receiverRoom = `user-${chatMessage.receiverId}`;
     
-    // Notify receiver if not in conversation room
-    io.to(`user:${chatMessage.receiverId}`).emit('new-message-notification', {
+    console.log('[ProcessMessage] Emitting to rooms:', {
+      conversationRoom,
+      receiverRoom
+    });
+    
+    // Check if anyone is in these rooms
+    const conversationSockets = await io.in(conversationRoom).fetchSockets();
+    const receiverSockets = await io.in(receiverRoom).fetchSockets();
+    
+    console.log('[ProcessMessage] Room status:', {
+      conversationRoom: `${conversationSockets.length} sockets`,
+      receiverRoom: `${receiverSockets.length} sockets`
+    });
+    
+    // Emit to conversation room
+    io.to(conversationRoom).emit('new-message', savedMessage);
+    
+    // Notify receiver if not in conversation room - use hyphen for consistency
+    io.to(receiverRoom).emit('new-message-notification', {
       conversationId: chatMessage.conversationId,
       message: savedMessage,
     });
+    
+    // Also emit to the receiver's room with the standard 'new-message' event
+    io.to(receiverRoom).emit('new-message', savedMessage);
 
-    console.log(`Message processed: ${savedMessage.id}`);
+    console.log(`[ProcessMessage] Message processed and emitted: ${savedMessage.id}`);
     return savedMessage;
   } catch (error) {
     console.error('Error processing message:', error);

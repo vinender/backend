@@ -61,7 +61,7 @@ export function setupWebSocket(server: HTTPServer) {
     const userRole = (socket as any).userRole;
     const userEmail = (socket as any).user?.email;
     
-    console.log('=== WebSocket Connection ===');
+    console.log('=== WebSocket Connection (websocket.ts) ===');
     console.log(`User connected:`);
     console.log(`  - ID (ObjectId): ${userId}`);
     console.log(`  - Email: ${userEmail}`);
@@ -80,6 +80,28 @@ export function setupWebSocket(server: HTTPServer) {
     const userRoom = `user-${userId}`;
     socket.join(userRoom);
     console.log(`  - Joined room: ${userRoom}`);
+    
+    // Auto-join all conversation rooms for this user
+    try {
+      const conversations = await prisma.conversation.findMany({
+        where: {
+          participants: {
+            has: userId
+          }
+        },
+        select: { id: true }
+      });
+
+      conversations.forEach(conv => {
+        const convRoom = `conversation:${conv.id}`;
+        socket.join(convRoom);
+        console.log(`  - Auto-joined conversation: ${convRoom}`);
+      });
+      
+      console.log(`  - Total conversations joined: ${conversations.length}`);
+    } catch (error) {
+      console.error('Error auto-joining conversations:', error);
+    }
     
     // Verify room membership
     const roomsAfterJoin = Array.from(socket.rooms);

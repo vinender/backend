@@ -9,7 +9,6 @@ import { rateLimit } from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 import { createServer } from 'http';
 import { setupWebSocket } from './utils/websocket';
-import { initializeSocket } from './config/socket';
 import { initializeKafka } from './config/kafka';
 
 // Load environment variables
@@ -193,16 +192,8 @@ class Server {
   }
 
   private configureSocketAndKafka(): void {
-    // Initialize Socket.io
-    this.io = initializeSocket(this.httpServer);
-    
-    // Make io globally available for notifications
-    (global as any).io = this.io;
-    
-    // Initialize Kafka (optional - will fallback to direct processing if not available)
-    initializeKafka(this.io).catch(error => {
-      console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
-    });
+    // Socket.io is initialized in start() method via setupWebSocket
+    // We'll get the io instance from there
   }
 
   private configureErrorHandling(): void {
@@ -230,8 +221,17 @@ class Server {
   }
 
   public start(): void {
-    // Setup WebSocket
-    setupWebSocket(this.httpServer);
+    // Setup WebSocket and get io instance
+    const io = setupWebSocket(this.httpServer);
+    this.io = io;
+    
+    // Make io globally available for notifications and Kafka
+    (global as any).io = io;
+    
+    // Initialize Kafka with the io instance
+    initializeKafka(io).catch(error => {
+      console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
+    });
     
     // Initialize scheduled jobs
     initPayoutJobs();

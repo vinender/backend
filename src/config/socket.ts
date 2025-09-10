@@ -85,7 +85,29 @@ export const initializeSocket = (server: HTTPServer) => {
     const socketsInRoom = await io.in(userRoom).fetchSockets();
     console.log(`  - Total sockets in ${userRoom}: ${socketsInRoom.length}`);
 
-    // Join conversation rooms
+    // Automatically join all conversation rooms for this user
+    try {
+      const conversations = await prisma.conversation.findMany({
+        where: {
+          participants: {
+            has: socket.userId
+          }
+        },
+        select: { id: true }
+      });
+
+      conversations.forEach(conv => {
+        const convRoom = `conversation:${conv.id}`;
+        socket.join(convRoom);
+        console.log(`  - Auto-joined conversation room: ${convRoom}`);
+      });
+      
+      console.log(`  - Total conversation rooms joined: ${conversations.length}`);
+    } catch (error) {
+      console.error('Error auto-joining conversations:', error);
+    }
+
+    // Also handle explicit join-conversations event
     socket.on('join-conversations', async () => {
       try {
         const conversations = await prisma.conversation.findMany({
@@ -100,6 +122,8 @@ export const initializeSocket = (server: HTTPServer) => {
         conversations.forEach(conv => {
           socket.join(`conversation:${conv.id}`);
         });
+        
+        console.log(`[join-conversations] User ${socket.userId} joined ${conversations.length} conversation rooms`);
       } catch (error) {
         console.error('Error joining conversations:', error);
       }

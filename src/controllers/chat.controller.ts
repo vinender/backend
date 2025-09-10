@@ -322,6 +322,8 @@ export const sendMessage = async (req: Request, res: Response) => {
     }
 
     // Send message to Kafka for processing
+    console.log('[Chat] Sending message:', { conversationId, senderId, receiverId, contentLength: content.length });
+    
     const savedMessage = await sendMessageToKafka({
       conversationId,
       senderId,
@@ -330,6 +332,8 @@ export const sendMessage = async (req: Request, res: Response) => {
       timestamp: new Date()
     });
 
+    console.log('[Chat] Message sent successfully:', savedMessage?.id);
+    
     // Return the saved message
     res.json(savedMessage || { success: true, message: 'Message queued for delivery' });
   } catch (error) {
