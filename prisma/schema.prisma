@@ -176,32 +176,12 @@ model Field {
   reviews         Review[]
   fieldReviews    FieldReview[]
   favorites       Favorite[]
-  availability    FieldAvailability[]
   conversations   Conversation[]
   claims          FieldClaim[]
 
   @@index([city, state])
   @@index([ownerId])
   @@map("fields")
-}
-
-model FieldAvailability {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  fieldId    String   @db.ObjectId
-  date       DateTime
-  startTime  String   // e.g., "09:00"
-  endTime    String   // e.g., "17:00"
-  isBlocked  Boolean  @default(false)
-  reason     String?  // Reason for blocking
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  field      Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  @@unique([fieldId, date, startTime, endTime])
-  @@index([fieldId, date])
-  @@map("field_availability")
 }
 
 model Booking {
@@ -238,6 +218,7 @@ model Booking {
   @@index([userId])
   @@index([fieldId])
   @@index([date, status])
+  @@unique([userId, fieldId, date, timeSlot, status], name: "unique_active_booking")
   @@map("bookings")
 }
 

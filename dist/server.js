@@ -14,7 +14,6 @@ const express_rate_limit_1 = require("express-rate-limit");
 const express_mongo_sanitize_1 = __importDefault(require("express-mongo-sanitize"));
 const http_1 = require("http");
 const websocket_1 = require("./utils/websocket");
-const socket_1 = require("./config/socket");
 const kafka_1 = require("./config/kafka");
 // Load environment variables
 dotenv_1.default.config();
@@ -175,14 +174,8 @@ class Server {
         // this.app.use('/uploads', express.static('uploads'));
     }
     configureSocketAndKafka() {
-        // Initialize Socket.io
-        this.io = (0, socket_1.initializeSocket)(this.httpServer);
-        // Make io globally available for notifications
-        global.io = this.io;
-        // Initialize Kafka (optional - will fallback to direct processing if not available)
-        (0, kafka_1.initializeKafka)(this.io).catch(error => {
-            console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
-        });
+        // Socket.io is initialized in start() method via setupWebSocket
+        // We'll get the io instance from there
     }
     configureErrorHandling() {
         // Handle 404 errors
@@ -206,8 +199,15 @@ class Server {
         });
     }
     start() {
-        // Setup WebSocket
-        (0, websocket_1.setupWebSocket)(this.httpServer);
+        // Setup WebSocket and get io instance
+        const io = (0, websocket_1.setupWebSocket)(this.httpServer);
+        this.io = io;
+        // Make io globally available for notifications and Kafka
+        global.io = io;
+        // Initialize Kafka with the io instance
+        (0, kafka_1.initializeKafka)(io).catch(error => {
+            console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
+        });
         // Initialize scheduled jobs
         (0, payout_job_1.initPayoutJobs)();
         console.log('✅ Scheduled jobs initialized');

@@ -18,6 +18,36 @@ class PaymentController {
             if (!userId) {
                 return res.status(401).json({ error: 'User not authenticated' });
             }
+            // Create idempotency key to prevent duplicate bookings
+            const idempotencyKey = `booking_${userId}_${fieldId}_${date}_${timeSlot}`.replace(/[\s:]/g, '_');
+            // Check if a booking already exists for this exact combination
+            const existingBooking = await database_1.default.booking.findFirst({
+                where: {
+                    userId,
+                    fieldId,
+                    date: new Date(date),
+                    timeSlot,
+                    status: {
+                        notIn: ['CANCELLED']
+                    }
+                }
+            });
+            if (existingBooking) {
+                console.log('Duplicate booking attempt detected:', {
+                    userId,
+                    fieldId,
+                    date,
+                    timeSlot,
+                    existingBookingId: existingBooking.id
+                });
+                // Return existing booking info instead of creating duplicate
+                return res.status(200).json({
+                    paymentSucceeded: true,
+                    bookingId: existingBooking.id,
+                    message: 'Booking already exists',
+                    isDuplicate: true
+                });
+            }
             // Get user for Stripe customer
             const user = await database_1.default.user.findUnique({
                 where: { id: userId }
@@ -151,10 +181,12 @@ class PaymentController {
                     enabled: true,
                 };
             }
-            // Create payment intent with error handling
+            // Create payment intent with error handling and idempotency
             let paymentIntent;
             try {
-                paymentIntent = await stripe_config_1.stripe.paymentIntents.create(paymentIntentParams);
+                paymentIntent = await stripe_config_1.stripe.paymentIntents.create(paymentIntentParams, {
+                    idempotencyKey: idempotencyKey
+                });
             }
             catch (stripeError) {
                 console.error('Error creating payment intent:', stripeError);
@@ -369,30 +401,111 @@ class PaymentController {
             switch (event.type) {
                 case 'payment_intent.succeeded':
                     const paymentIntent = event.data.object;
-                    // Update booking based on payment intent ID
-                    const booking = await database_1.default.booking.findFirst({
-                        where: { paymentIntentId: paymentIntent.id }
+                    // Use transaction to prevent duplicate booking updates
+                    await database_1.default.$transaction(async (tx) => {
+                        // Check if booking exists
+                        const booking = await tx.booking.findFirst({
+                            where: { paymentIntentId: paymentIntent.id }
+                        });
+                        if (!booking) {
+                            // If no booking exists with this payment intent ID, check metadata
+                            // This handles edge cases where webhook arrives before booking creation
+                            const metadata = paymentIntent.metadata;
+                            if (metadata.userId && metadata.fieldId && metadata.date && metadata.timeSlot) {
+                                // Check if a booking already exists for this exact combination
+                                const existingBooking = await tx.booking.findFirst({
+                                    where: {
+                                        userId: metadata.userId,
+                                        fieldId: metadata.fieldId,
+                                        date: new Date(metadata.date),
+                                        timeSlot: metadata.timeSlot,
+                                        status: {
+                                            notIn: ['CANCELLED']
+                                        }
+                                    }
+                                });
+                                if (existingBooking) {
+                                    console.log('Webhook: Duplicate booking prevented for payment intent:', paymentIntent.id);
+                                    // Update existing booking's payment intent if needed
+                                    if (!existingBooking.paymentIntentId) {
+                                        await tx.booking.update({
+                                            where: { id: existingBooking.id },
+                                            data: {
+                                                paymentIntentId: paymentIntent.id,
+                                                status: 'CONFIRMED',
+                                                paymentStatus: 'PAID'
+                                            }
+                                        });
+                                    }
+                                    return; // Exit early to prevent duplicate
+                                }
+                                // Create new booking from webhook if it doesn't exist
+                                const [startTimeStr, endTimeStr] = metadata.timeSlot.split(' - ').map((t) => t.trim());
+                                const platformCommission = parseFloat(metadata.platformCommission || '0');
+                                const fieldOwnerAmount = parseFloat(metadata.fieldOwnerAmount || '0');
+                                const newBooking = await tx.booking.create({
+                                    data: {
+                                        fieldId: metadata.fieldId,
+                                        userId: metadata.userId,
+                                        date: new Date(metadata.date),
+                                        startTime: startTimeStr,
+                                        endTime: endTimeStr,
+                                        timeSlot: metadata.timeSlot,
+                                        numberOfDogs: parseInt(metadata.numberOfDogs || '1'),
+                                        totalPrice: paymentIntent.amount / 100, // Convert from cents
+                                        platformCommission,
+                                        fieldOwnerAmount,
+                                        status: 'CONFIRMED',
+                                        paymentStatus: 'PAID',
+                                        paymentIntentId: paymentIntent.id,
+                                        payoutStatus: 'PENDING',
+                                        repeatBooking: metadata.repeatBooking || 'none'
+                                    }
+                                });
+                                // Create transaction record
+                                await tx.transaction.create({
+                                    data: {
+                                        bookingId: newBooking.id,
+                                        userId: metadata.userId,
+                                        amount: paymentIntent.amount / 100,
+                                        type: 'PAYMENT',
+                                        status: 'COMPLETED',
+                                        stripePaymentIntentId: paymentIntent.id
+                                    }
+                                });
+                                console.log('Webhook: Created new booking from payment intent:', newBooking.id);
+                            }
+                        }
+                        else if (booking.status !== 'CONFIRMED' || booking.paymentStatus !== 'PAID') {
+                            // Update existing booking status
+                            await tx.booking.update({
+                                where: { id: booking.id },
+                                data: {
+                                    status: 'CONFIRMED',
+                                    paymentStatus: 'PAID'
+                                }
+                            });
+                            // Check if transaction already exists
+                            const existingTransaction = await tx.transaction.findFirst({
+                                where: {
+                                    stripePaymentIntentId: paymentIntent.id
+                                }
+                            });
+                            if (!existingTransaction) {
+                                // Create transaction record
+                                await tx.transaction.create({
+                                    data: {
+                                        bookingId: booking.id,
+                                        userId: booking.userId,
+                                        amount: booking.totalPrice,
+                                        type: 'PAYMENT',
+                                        status: 'COMPLETED',
+                                        stripePaymentIntentId: paymentIntent.id
+                                    }
+                                });
+                            }
+                        }
                     });
-                    if (booking) {
-                        await database_1.default.booking.update({
-                            where: { id: booking.id },
-                            data: {
-                                status: 'CONFIRMED',
-                                paymentStatus: 'PAID'
-                            }
-                        });
-                        // Create transaction record
-                        await database_1.default.transaction.create({
-                            data: {
-                                bookingId: booking.id,
-                                userId: booking.userId,
-                                amount: booking.totalPrice,
-                                type: 'PAYMENT',
-                                status: 'COMPLETED',
-                                stripePaymentIntentId: paymentIntent.id
-                            }
-                        });
-                    }
                     break;
                 case 'payment_intent.payment_failed':
                     const failedPayment = event.data.object;

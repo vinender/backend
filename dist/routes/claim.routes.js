@@ -9,6 +9,7 @@ const auth_middleware_1 = require("../middleware/auth.middleware");
 const router = express_1.default.Router();
 // Public routes
 router.post('/submit', claim_controller_1.submitFieldClaim);
+router.get('/check-eligibility/:fieldId', claim_controller_1.checkClaimEligibility);
 // Protected routes
 router.use(auth_middleware_1.protect);
 // Get claims for a specific field

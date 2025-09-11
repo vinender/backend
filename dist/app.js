@@ -22,7 +22,31 @@ exports.prisma = new client_1.PrismaClient();
 // Middleware
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000" || "http://localhost:3003",
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin)
+            return callback(null, true);
+        // List of allowed origins
+        const allowedOrigins = [
+            process.env.FRONTEND_URL || "http://localhost:3000",
+            "http://localhost:3003",
+            "http://localhost:8081", // Expo web
+            "http://localhost:19006", // Expo web alternate port
+            "exp://localhost:8081", // Expo development
+        ];
+        // Check if the origin is in the allowed list or is a local development URL
+        if (allowedOrigins.includes(origin) ||
+            origin.includes('localhost') ||
+            origin.includes('127.0.0.1') ||
+            origin.includes('192.168.') || // Local network IPs for physical devices
+            origin.includes('10.0.') // Local network IPs
+        ) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
 }));
 app.use((0, compression_1.default)());

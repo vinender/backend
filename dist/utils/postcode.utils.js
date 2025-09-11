@@ -117,7 +117,7 @@ function generatePostcodeSearchPatterns(input) {
     if (isPartialPostcode(cleaned) && !patterns.includes(cleaned)) {
         patterns.push(cleaned);
     }
-    return [...new Set(patterns)]; // Remove duplicates
+    return Array.from(new Set(patterns)); // Remove duplicates
 }
 /**
  * Determines if a field's postcode matches a search postcode
