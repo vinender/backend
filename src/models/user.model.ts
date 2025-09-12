@@ -23,13 +23,23 @@ class UserModel {
   // Create a new user
   async create(data: CreateUserInput) {
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+    const role = data.role || 'DOG_OWNER';
+    
+    // Get default commission rate from system settings for field owners
+    let commissionRate: number | undefined = undefined;
+    if (role === 'FIELD_OWNER') {
+      // Get system settings for default commission rate
+      const settings = await prisma.systemSettings.findFirst();
+      commissionRate = settings?.defaultCommissionRate || 15.0; // Use 15% as fallback
+    }
     
     return prisma.user.create({
       data: {
         ...data,
         password: hashedPassword,
-        role: data.role || 'DOG_OWNER',
+        role,
         provider: data.provider || 'general',
+        commissionRate,
       },
       select: {
         id: true,
@@ -40,6 +50,7 @@ class UserModel {
         provider: true,
         image: true,
         googleImage: true,
+        commissionRate: true,
         createdAt: true,
         updatedAt: true,
       },

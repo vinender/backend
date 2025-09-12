@@ -3,6 +3,7 @@ import { stripe } from '../config/stripe.config';
 import prisma from '../config/database';
 import Stripe from 'stripe';
 import { createNotification } from './notification.controller';
+import { calculatePayoutAmounts } from '../utils/commission.utils';
 
 export class PaymentController {
   // Create a payment intent for booking a field
@@ -345,23 +346,32 @@ export class PaymentController {
           }
         });
 
-        // Create transaction record
+        // Get field owner details first
+        const field = await prisma.field.findUnique({
+          where: { id: booking.fieldId },
+          include: {
+            owner: true
+          }
+        });
+
+        // Calculate commission amounts
+        const { fieldOwnerAmount, platformFeeAmount, commissionRate } = await calculatePayoutAmounts(
+          booking.totalPrice,
+          field?.ownerId || ''
+        );
+
+        // Create transaction record with commission details
         await prisma.transaction.create({
           data: {
             bookingId: booking.id,
             userId: booking.userId,
             amount: booking.totalPrice,
+            netAmount: fieldOwnerAmount,
+            platformFee: platformFeeAmount,
+            commissionRate: commissionRate,
             type: 'PAYMENT',
             status: 'COMPLETED',
             stripePaymentIntentId: paymentIntentId
-          }
-        });
-
-        // Get field owner details
-        const field = await prisma.field.findUnique({
-          where: { id: booking.fieldId },
-          include: {
-            owner: true
           }
         });
 
@@ -520,12 +530,27 @@ export class PaymentController {
                   }
                 });
 
-                // Create transaction record
+                // Get field owner for commission calculation
+                const field = await tx.field.findUnique({
+                  where: { id: metadata.fieldId },
+                  select: { ownerId: true }
+                });
+
+                // Calculate commission amounts
+                const payoutAmounts = await calculatePayoutAmounts(
+                  paymentIntent.amount / 100,
+                  field?.ownerId || ''
+                );
+
+                // Create transaction record with commission details
                 await tx.transaction.create({
                   data: {
                     bookingId: newBooking.id,
                     userId: metadata.userId,
                     amount: paymentIntent.amount / 100,
+                    netAmount: payoutAmounts.fieldOwnerAmount,
+                    platformFee: payoutAmounts.platformFeeAmount,
+                    commissionRate: payoutAmounts.commissionRate,
                     type: 'PAYMENT',
                     status: 'COMPLETED',
                     stripePaymentIntentId: paymentIntent.id
@@ -552,12 +577,27 @@ export class PaymentController {
               });
 
               if (!existingTransaction) {
-                // Create transaction record
+                // Get field for commission calculation
+                const field = await tx.field.findUnique({
+                  where: { id: booking.fieldId },
+                  select: { ownerId: true }
+                });
+
+                // Calculate commission amounts
+                const payoutAmounts = await calculatePayoutAmounts(
+                  booking.totalPrice,
+                  field?.ownerId || ''
+                );
+
+                // Create transaction record with commission details
                 await tx.transaction.create({
                   data: {
                     bookingId: booking.id,
                     userId: booking.userId,
                     amount: booking.totalPrice,
+                    netAmount: payoutAmounts.fieldOwnerAmount,
+                    platformFee: payoutAmounts.platformFeeAmount,
+                    commissionRate: payoutAmounts.commissionRate,
                     type: 'PAYMENT',
                     status: 'COMPLETED',
                     stripePaymentIntentId: paymentIntent.id

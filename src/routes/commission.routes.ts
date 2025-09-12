@@ -1,19 +1,38 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
-import { authMiddleware } from '../middleware/auth';
+import jwt from 'jsonwebtoken';
 
 const router = Router();
 
-// Get system commission settings
-router.get('/settings', authMiddleware, async (req, res) => {
+// Admin authentication middleware
+const authenticateAdmin = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Check if user is admin
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    const admin = await prisma.user.findUnique({
+      where: { id: decoded.userId }
+    });
+
+    if (!admin || admin.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    (req as any).user = admin;
+    (req as any).userId = admin.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Get system commission settings
+router.get('/settings', authenticateAdmin, async (req, res) => {
+  try {
 
     // Get or create system settings
     let settings = await prisma.systemSettings.findFirst();
@@ -40,15 +59,8 @@ router.get('/settings', authMiddleware, async (req, res) => {
 });
 
 // Update default commission rate
-router.put('/settings', authMiddleware, async (req, res) => {
+router.put('/settings', authenticateAdmin, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
 
     const { defaultCommissionRate } = req.body;
 
@@ -89,15 +101,8 @@ router.put('/settings', authMiddleware, async (req, res) => {
 });
 
 // Get field owner commission rate
-router.get('/field-owner/:userId', authMiddleware, async (req, res) => {
+router.get('/field-owner/:userId', authenticateAdmin, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
 
     const { userId } = req.params;
 
@@ -145,15 +150,8 @@ router.get('/field-owner/:userId', authMiddleware, async (req, res) => {
 });
 
 // Update field owner commission rate
-router.put('/field-owner/:userId', authMiddleware, async (req, res) => {
+router.put('/field-owner/:userId', authenticateAdmin, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
 
     const { userId } = req.params;
     const { commissionRate, useDefault } = req.body;
@@ -200,15 +198,8 @@ router.put('/field-owner/:userId', authMiddleware, async (req, res) => {
 });
 
 // Get all field owners with commission rates
-router.get('/field-owners', authMiddleware, async (req, res) => {
+router.get('/field-owners', authenticateAdmin, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
 
     const { page = 1, limit = 10, search = '' } = req.query;
     const skip = (Number(page) - 1) * Number(limit);

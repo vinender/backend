@@ -218,7 +218,6 @@ model Booking {
   @@index([userId])
   @@index([fieldId])
   @@index([date, status])
-  @@unique([userId, fieldId, date, timeSlot, status], name: "unique_active_booking")
   @@map("bookings")
 }
 
@@ -377,6 +376,9 @@ model Transaction {
   bookingId             String   @db.ObjectId
   userId                String   @db.ObjectId
   amount                Float
+  netAmount             Float?   // Amount after platform fee (for field owner)
+  platformFee           Float?   // Platform commission amount
+  commissionRate        Float?   // Commission rate used for this transaction
   type                  String   // e.g., "PAYMENT", "REFUND"
   status                String   // e.g., "PENDING", "COMPLETED", "FAILED"
   stripePaymentIntentId String?
