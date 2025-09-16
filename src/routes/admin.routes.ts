@@ -244,6 +244,66 @@ router.get('/bookings/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
+// Get user details with bookings
+router.get('/users/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        phone: true,
+        image: true,
+        googleImage: true,
+        emailVerified: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            bookings: true,
+            ownedFields: true
+          }
+        },
+        bookings: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            date: true,
+            startTime: true,
+            endTime: true,
+            numberOfDogs: true,
+            totalPrice: true,
+            status: true,
+            paymentStatus: true,
+            createdAt: true,
+            field: {
+              select: {
+                name: true,
+                location: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      user
+    });
+
+  } catch (error) {
+    console.error('Get user details error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all users for admin
 router.get('/users', authenticateAdmin, async (req, res) => {
   try {
@@ -322,6 +382,130 @@ router.get('/fields', authenticateAdmin, async (req, res) => {
 
   } catch (error) {
     console.error('Get fields error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all notifications for admin (including both dog owner and field owner notifications)
+router.get('/notifications', authenticateAdmin, async (req, res) => {
+  try {
+    const { page = '1', limit = '20' } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    // Get admin user ID to also show admin-specific notifications
+    const adminId = (req as any).userId;
+
+    // Get all notifications (system-wide) with user details
+    const [notifications, total, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        skip,
+        take: parseInt(limit as string),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          }
+        }
+      }),
+      prisma.notification.count(),
+      // Count unread admin notifications
+      prisma.notification.count({
+        where: {
+          OR: [
+            { userId: adminId }, // Admin's own notifications
+            { type: { in: ['user_registered', 'field_added', 'payment_received', 'booking_received'] } } // System-wide events
+          ],
+          read: false
+        }
+      })
+    ]);
+
+    res.json({
+      success: true,
+      notifications,
+      total,
+      unreadCount,
+      pages: Math.ceil(total / parseInt(limit as string))
+    });
+
+  } catch (error) {
+    console.error('Get admin notifications error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark notification as read for admin
+router.patch('/notifications/:id/read', authenticateAdmin, async (req, res) => {
+  try {
+    const notification = await prisma.notification.update({
+      where: { id: req.params.id },
+      data: {
+        read: true,
+        readAt: new Date()
+      }
+    });
+
+    res.json({
+      success: true,
+      notification
+    });
+
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark all admin notifications as read
+router.patch('/notifications/read-all', authenticateAdmin, async (req, res) => {
+  try {
+    const adminId = (req as any).userId;
+
+    // Mark all system-wide notifications as read
+    await prisma.notification.updateMany({
+      where: {
+        OR: [
+          { userId: adminId },
+          { type: { in: ['user_registered', 'field_added', 'payment_received', 'booking_received'] } }
+        ],
+        read: false
+      },
+      data: {
+        read: true,
+        readAt: new Date()
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'All notifications marked as read'
+    });
+
+  } catch (error) {
+    console.error('Mark all notifications as read error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete notification for admin
+router.delete('/notifications/:id', authenticateAdmin, async (req, res) => {
+  try {
+    await prisma.notification.delete({
+      where: { id: req.params.id }
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification deleted'
+    });
+
+  } catch (error) {
+    console.error('Delete notification error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
