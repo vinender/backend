@@ -82,7 +82,7 @@ class BookingController {
     const startMinutes = this.timeToMinutes(startTime);
     const endMinutes = this.timeToMinutes(endTime);
     const durationHours = (endMinutes - startMinutes) / 60;
-    const pricePerUnit = field.pricePerHour || 0;
+    const pricePerUnit = field.price || 0;
     
     let totalPrice = 0;
     if (field.bookingDuration === '30min') {
@@ -531,6 +531,10 @@ class BookingController {
     const { id } = req.params;
     const userId = (req as any).user.id;
 
+    // Get cancellation window from settings
+    const settings = await prisma.systemSettings.findFirst();
+    const cancellationWindowHours = settings?.cancellationWindowHours || 24;
+
     const booking = await BookingModel.findById(id);
     if (!booking) {
       throw new AppError('Booking not found', 404);
@@ -564,7 +568,7 @@ class BookingController {
     
     // Calculate hours until booking from now
     const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    const isRefundEligible = hoursUntilBooking >= 24;
+    const isRefundEligible = hoursUntilBooking >= cancellationWindowHours;
     
     console.log('Hours until booking:', hoursUntilBooking);
     console.log('Is refund eligible:', isRefundEligible);
@@ -575,10 +579,10 @@ class BookingController {
       data: {
         isRefundEligible,
         hoursUntilBooking: Math.floor(hoursUntilBooking),
-        canCancel: hoursUntilBooking >= 24,
+        canCancel: hoursUntilBooking >= cancellationWindowHours,
         message: isRefundEligible
           ? `This booking can be cancelled with a full refund. There are ${Math.floor(hoursUntilBooking)} hours until the booking time.`
-          : `This booking cannot be cancelled with a refund. Cancellations must be made at least 24 hours before the booking time. Only ${Math.floor(hoursUntilBooking)} hours remain.`,
+          : `This booking cannot be cancelled with a refund. Cancellations must be made at least ${cancellationWindowHours} hours before the booking time. Only ${Math.floor(hoursUntilBooking)} hours remain.`,
       },
     });
   });
@@ -589,6 +593,10 @@ class BookingController {
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
     const { reason } = req.body;
+
+    // Get cancellation window from settings
+    const settings = await prisma.systemSettings.findFirst();
+    const cancellationWindowHours = settings?.cancellationWindowHours || 24;
 
     const booking = await BookingModel.findById(id);
     if (!booking) {
@@ -632,13 +640,13 @@ class BookingController {
     // Calculate hours until booking from now
     const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
     
-    // Check if cancellation is allowed (at least 24 hours before booking)
-    if (hoursUntilBooking < 24 && !isAdmin) {
-      throw new AppError('Cancellation not allowed. Bookings must be cancelled at least 24 hours in advance.', 400);
+    // Check if cancellation is allowed (at least cancellationWindowHours before booking)
+    if (hoursUntilBooking < cancellationWindowHours && !isAdmin) {
+      throw new AppError(`Cancellation not allowed. Bookings must be cancelled at least ${cancellationWindowHours} hours in advance.`, 400);
     }
     
     // Refund is eligible if cancelled at least 24 hours before booking
-    const isRefundEligible = hoursUntilBooking >= 24;
+    const isRefundEligible = hoursUntilBooking >= cancellationWindowHours;
     
     console.log('Hours until booking:', hoursUntilBooking);
     console.log('Is refund eligible:', isRefundEligible);
@@ -725,7 +733,7 @@ class BookingController {
           ? `Refund of $${refundResult.refundAmount?.toFixed(2) || '0.00'} has been initiated and will be credited to your account within 5-7 business days.`
           : isRefundEligible
             ? 'You are eligible for a refund. The amount will be credited to your account within 5-7 business days.'
-            : 'This booking is not eligible for a refund as it was cancelled less than 24 hours before the scheduled time.',
+            : `This booking is not eligible for a refund as it was cancelled less than ${cancellationWindowHours} hours before the scheduled time.`,
       },
     });
   });
@@ -781,7 +789,7 @@ class BookingController {
       const dogsCount = booking.numberOfDogs || 1; // Always use the original numberOfDogs from booking
       
       // Calculate price based on field's booking duration setting
-      let pricePerUnit = field.pricePerHour || 0;
+      let pricePerUnit = field.price || 0;
       let totalPrice = 0;
       
       if (field.bookingDuration === '30min') {

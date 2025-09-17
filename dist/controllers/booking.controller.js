@@ -67,7 +67,7 @@ class BookingController {
         const startMinutes = this.timeToMinutes(startTime);
         const endMinutes = this.timeToMinutes(endTime);
         const durationHours = (endMinutes - startMinutes) / 60;
-        const pricePerUnit = field.pricePerHour || 0;
+        const pricePerUnit = field.price || 0;
         let totalPrice = 0;
         if (field.bookingDuration === '30min') {
             // For 30-minute slots, the price is per 30 minutes
@@ -685,7 +685,7 @@ class BookingController {
             const durationHours = (endMinutes - startMinutes) / 60;
             const dogsCount = booking.numberOfDogs || 1; // Always use the original numberOfDogs from booking
             // Calculate price based on field's booking duration setting
-            let pricePerUnit = field.pricePerHour || 0;
+            let pricePerUnit = field.price || 0;
             let totalPrice = 0;
             if (field.bookingDuration === '30min') {
                 // For 30-minute slots, the price is per 30 minutes

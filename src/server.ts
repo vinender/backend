@@ -41,6 +41,8 @@ import adminPayoutRoutes from './routes/admin-payout.routes';
 import autoPayoutRoutes from './routes/auto-payout.routes';
 import earningsRoutes from './routes/earnings.routes';
 import commissionRoutes from './routes/commission.routes';
+import settingsRoutes from './routes/settings.routes';
+import faqRoutes from './routes/faq.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -188,6 +190,8 @@ class Server {
     this.app.use('/api/auto-payouts', autoPayoutRoutes);
     this.app.use('/api/earnings', earningsRoutes);
     this.app.use('/api/commission', commissionRoutes);
+    this.app.use('/api/settings', settingsRoutes);
+    this.app.use('/api/faqs', faqRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

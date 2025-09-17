@@ -42,6 +42,7 @@ const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const admin_payout_routes_1 = __importDefault(require("./routes/admin-payout.routes"));
 const auto_payout_routes_1 = __importDefault(require("./routes/auto-payout.routes"));
 const earnings_routes_1 = __importDefault(require("./routes/earnings.routes"));
+const commission_routes_1 = __importDefault(require("./routes/commission.routes"));
 // Import scheduled jobs
 const payout_job_1 = require("./jobs/payout.job");
 class Server {
@@ -170,6 +171,7 @@ class Server {
         this.app.use('/api/admin/payouts', admin_payout_routes_1.default);
         this.app.use('/api/auto-payouts', auto_payout_routes_1.default);
         this.app.use('/api/earnings', earnings_routes_1.default);
+        this.app.use('/api/commission', commission_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }

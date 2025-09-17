@@ -10,12 +10,21 @@ class UserModel {
     // Create a new user
     async create(data) {
         const hashedPassword = await bcryptjs_1.default.hash(data.password, constants_1.BCRYPT_ROUNDS);
+        const role = data.role || 'DOG_OWNER';
+        // Get default commission rate from system settings for field owners
+        let commissionRate = undefined;
+        if (role === 'FIELD_OWNER') {
+            // Get system settings for default commission rate
+            const settings = await database_1.default.systemSettings.findFirst();
+            commissionRate = settings?.defaultCommissionRate || 15.0; // Use 15% as fallback
+        }
         return database_1.default.user.create({
             data: {
                 ...data,
                 password: hashedPassword,
-                role: data.role || 'DOG_OWNER',
+                role,
                 provider: data.provider || 'general',
+                commissionRate,
             },
             select: {
                 id: true,
@@ -26,6 +35,7 @@ class UserModel {
                 provider: true,
                 image: true,
                 googleImage: true,
+                commissionRate: true,
                 createdAt: true,
                 updatedAt: true,
             },

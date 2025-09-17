@@ -128,9 +128,9 @@ model Field {
   fenceType       String?   // e.g., "Wooden", "Metal", "Mesh", "Electric"
   fenceSize       String?   // e.g., "3ft", "4ft", "5ft", "6ft", "6ft+"
   surfaceType     String?   // e.g., "Soft Sand", "Grass", "Artificial Grass", "Concrete"
-  pricePerHour    Float?
+  price           Float?    // Price for the duration specified in bookingDuration
   pricePerDay     Float?
-  bookingDuration String?   // e.g., "30min" or "1hour"
+  bookingDuration String?   // e.g., "30min" or "1hour" - defines what the price is for
   amenities       String[]  // e.g., ["Water bowls", "Agility equipment", "Shade areas"]
   rules           String[]  // e.g., ["Dogs must be leashed", "Clean up after your dog"]
   images          String[]
@@ -561,10 +561,35 @@ model PaymentMethod {
 }
 
 model SystemSettings {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  defaultCommissionRate Float @default(20) // Default commission rate (0-100), default 20%
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
+  defaultCommissionRate Float     @default(20) // Default commission rate (0-100), default 20%
+  cancellationWindowHours Int     @default(24) // Hours before booking when cancellation with refund is allowed
+  maxBookingsPerUser    Int?      @default(10) // Maximum number of active bookings per user
+  siteName             String?    @default("Fieldsy")
+  siteUrl              String?    @default("https://fieldsy.com")
+  supportEmail         String?    @default("support@fieldsy.com")
+  maintenanceMode      Boolean   @default(false)
+  enableNotifications  Boolean   @default(true)
+  enableEmailNotifications Boolean @default(true)
+  enableSmsNotifications Boolean @default(false)
+  bannerText           String?    @default("Find Safe, private dog walking fields") // Hero banner main text
+  highlightedText      String?    @default("near you") // Text to highlight in the banner
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
   
   @@map("system_settings")
+}
+
+model FAQ {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  question   String
+  answer     String
+  category   String?   @default("general") // general, dog-owners, field-owners, booking, payment
+  order      Int       @default(0) // Display order
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([category, order])
+  @@map("faqs")
 }

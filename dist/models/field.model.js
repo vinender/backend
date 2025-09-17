@@ -182,11 +182,11 @@ class FieldModel {
             whereClause.type = where.type;
         // Price filter
         if (where.minPrice || where.maxPrice) {
-            whereClause.pricePerHour = {};
+            whereClause.price = {};
             if (where.minPrice)
-                whereClause.pricePerHour.gte = where.minPrice;
+                whereClause.price.gte = where.minPrice;
             if (where.maxPrice)
-                whereClause.pricePerHour.lte = where.maxPrice;
+                whereClause.price.lte = where.maxPrice;
         }
         // Amenities filter
         if (where.amenities && where.amenities.length > 0) {
@@ -272,11 +272,11 @@ class FieldModel {
         if (where.type)
             whereClause.type = where.type;
         if (where.minPrice || where.maxPrice) {
-            whereClause.pricePerHour = {};
+            whereClause.price = {};
             if (where.minPrice)
-                whereClause.pricePerHour.gte = where.minPrice;
+                whereClause.price.gte = where.minPrice;
             if (where.maxPrice)
-                whereClause.pricePerHour.lte = where.maxPrice;
+                whereClause.price.lte = where.maxPrice;
         }
         return database_1.default.field.findMany({
             where: whereClause,
@@ -461,7 +461,8 @@ class FieldModel {
                 state: true,
                 zipCode: true,
                 address: true,
-                pricePerHour: true,
+                price: true,
+                bookingDuration: true,
                 averageRating: true,
                 totalReviews: true,
                 images: true,
@@ -478,7 +479,7 @@ class FieldModel {
             address: field.address || '',
             location: `${field.city || ''}${field.city && field.state ? ', ' : ''}${field.state || ''} ${field.zipCode || ''}`.trim(),
             fullAddress: `${field.address || ''}${field.address && (field.city || field.state) ? ', ' : ''}${field.city || ''}${field.city && field.state ? ', ' : ''}${field.state || ''} ${field.zipCode || ''}`.trim(),
-            price: field.pricePerHour,
+            price: field.price,
             rating: field.averageRating,
             reviews: field.totalReviews,
             image: field.images?.[0] || null,
@@ -519,7 +520,7 @@ class FieldModel {
     // Helper method to build orderBy clause
     buildOrderBy(sortBy, sortOrder) {
         const orderByOptions = {
-            price: { pricePerHour: sortOrder },
+            price: { price: sortOrder },
             rating: { averageRating: sortOrder },
             reviews: { totalReviews: sortOrder },
             name: { name: sortOrder },

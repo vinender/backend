@@ -353,7 +353,7 @@ class FieldController {
                     updateData = {
                         name: 'Untitled Field',
                         type: 'PRIVATE',
-                        pricePerHour: parseFloat(data.pricePerHour) || 0,
+                        price: parseFloat(data.price || data.pricePerHour) || 0,
                         bookingDuration: data.bookingDuration || '1hour',
                         instantBooking: data.instantBooking || false,
                         pricingAvailabilityCompleted: true
@@ -361,7 +361,7 @@ class FieldController {
                 }
                 else {
                     updateData = {
-                        pricePerHour: parseFloat(data.pricePerHour) || 0,
+                        price: parseFloat(data.price || data.pricePerHour) || 0,
                         bookingDuration: data.bookingDuration || '1hour',
                         instantBooking: data.instantBooking || false,
                         pricingAvailabilityCompleted: true
@@ -935,7 +935,8 @@ class FieldController {
                 zipCode: true,
                 images: true,
                 size: true,
-                pricePerHour: true
+                price: true,
+                bookingDuration: true
             }
         });
         res.status(200).json({

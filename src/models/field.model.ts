@@ -21,7 +21,7 @@ export interface CreateFieldInput {
   type?: 'PRIVATE' | 'PUBLIC' | 'TRAINING';
   size?: string;
   terrainType?: string;
-  pricePerHour?: number;
+  price?: number;
   bookingDuration?: string;
   amenities?: string[];
   rules?: string[];
@@ -261,9 +261,9 @@ class FieldModel {
     
     // Price filter
     if (where.minPrice || where.maxPrice) {
-      whereClause.pricePerHour = {};
-      if (where.minPrice) whereClause.pricePerHour.gte = where.minPrice;
-      if (where.maxPrice) whereClause.pricePerHour.lte = where.maxPrice;
+      whereClause.price = {};
+      if (where.minPrice) whereClause.price.gte = where.minPrice;
+      if (where.maxPrice) whereClause.price.lte = where.maxPrice;
     }
 
     // Amenities filter
@@ -367,9 +367,9 @@ class FieldModel {
     if (where.state) whereClause.state = where.state;
     if (where.type) whereClause.type = where.type;
     if (where.minPrice || where.maxPrice) {
-      whereClause.pricePerHour = {};
-      if (where.minPrice) whereClause.pricePerHour.gte = where.minPrice;
-      if (where.maxPrice) whereClause.pricePerHour.lte = where.maxPrice;
+      whereClause.price = {};
+      if (where.minPrice) whereClause.price.gte = where.minPrice;
+      if (where.maxPrice) whereClause.price.lte = where.maxPrice;
     }
 
     return prisma.field.findMany({
@@ -573,7 +573,8 @@ class FieldModel {
         state: true,
         zipCode: true,
         address: true,
-        pricePerHour: true,
+        price: true,
+        bookingDuration: true,
         averageRating: true,
         totalReviews: true,
         images: true,
@@ -591,7 +592,7 @@ class FieldModel {
       address: field.address || '',
       location: `${field.city || ''}${field.city && field.state ? ', ' : ''}${field.state || ''} ${field.zipCode || ''}`.trim(),
       fullAddress: `${field.address || ''}${field.address && (field.city || field.state) ? ', ' : ''}${field.city || ''}${field.city && field.state ? ', ' : ''}${field.state || ''} ${field.zipCode || ''}`.trim(),
-      price: field.pricePerHour,
+      price: field.price,
       rating: field.averageRating,
       reviews: field.totalReviews,
       image: field.images?.[0] || null,
@@ -634,7 +635,7 @@ class FieldModel {
   // Helper method to build orderBy clause
   private buildOrderBy(sortBy: string, sortOrder: 'asc' | 'desc') {
     const orderByOptions: Record<string, any> = {
-      price: { pricePerHour: sortOrder },
+      price: { price: sortOrder },
       rating: { averageRating: sortOrder },
       reviews: { totalReviews: sortOrder },
       name: { name: sortOrder },

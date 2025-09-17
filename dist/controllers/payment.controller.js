@@ -7,6 +7,7 @@ exports.PaymentController = void 0;
 const stripe_config_1 = require("../config/stripe.config");
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("./notification.controller");
+const commission_utils_1 = require("../utils/commission.utils");
 class PaymentController {
     // Create a payment intent for booking a field
     async createPaymentIntent(req, res) {
@@ -304,22 +305,27 @@ class PaymentController {
                         user: true
                     }
                 });
-                // Create transaction record
+                // Get field owner details first
+                const field = await database_1.default.field.findUnique({
+                    where: { id: booking.fieldId },
+                    include: {
+                        owner: true
+                    }
+                });
+                // Calculate commission amounts
+                const { fieldOwnerAmount, platformFeeAmount, commissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, field?.ownerId || '');
+                // Create transaction record with commission details
                 await database_1.default.transaction.create({
                     data: {
                         bookingId: booking.id,
                         userId: booking.userId,
                         amount: booking.totalPrice,
+                        netAmount: fieldOwnerAmount,
+                        platformFee: platformFeeAmount,
+                        commissionRate: commissionRate,
                         type: 'PAYMENT',
                         status: 'COMPLETED',
                         stripePaymentIntentId: paymentIntentId
-                    }
-                });
-                // Get field owner details
-                const field = await database_1.default.field.findUnique({
-                    where: { id: booking.fieldId },
-                    include: {
-                        owner: true
                     }
                 });
                 // Send notification to field owner about new booking
@@ -462,12 +468,22 @@ class PaymentController {
                                         repeatBooking: metadata.repeatBooking || 'none'
                                     }
                                 });
-                                // Create transaction record
+                                // Get field owner for commission calculation
+                                const field = await tx.field.findUnique({
+                                    where: { id: metadata.fieldId },
+                                    select: { ownerId: true }
+                                });
+                                // Calculate commission amounts
+                                const payoutAmounts = await (0, commission_utils_1.calculatePayoutAmounts)(paymentIntent.amount / 100, field?.ownerId || '');
+                                // Create transaction record with commission details
                                 await tx.transaction.create({
                                     data: {
                                         bookingId: newBooking.id,
                                         userId: metadata.userId,
                                         amount: paymentIntent.amount / 100,
+                                        netAmount: payoutAmounts.fieldOwnerAmount,
+                                        platformFee: payoutAmounts.platformFeeAmount,
+                                        commissionRate: payoutAmounts.commissionRate,
                                         type: 'PAYMENT',
                                         status: 'COMPLETED',
                                         stripePaymentIntentId: paymentIntent.id
@@ -492,12 +508,22 @@ class PaymentController {
                                 }
                             });
                             if (!existingTransaction) {
-                                // Create transaction record
+                                // Get field for commission calculation
+                                const field = await tx.field.findUnique({
+                                    where: { id: booking.fieldId },
+                                    select: { ownerId: true }
+                                });
+                                // Calculate commission amounts
+                                const payoutAmounts = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, field?.ownerId || '');
+                                // Create transaction record with commission details
                                 await tx.transaction.create({
                                     data: {
                                         bookingId: booking.id,
                                         userId: booking.userId,
                                         amount: booking.totalPrice,
+                                        netAmount: payoutAmounts.fieldOwnerAmount,
+                                        platformFee: payoutAmounts.platformFeeAmount,
+                                        commissionRate: payoutAmounts.commissionRate,
                                         type: 'PAYMENT',
                                         status: 'COMPLETED',
                                         stripePaymentIntentId: paymentIntent.id

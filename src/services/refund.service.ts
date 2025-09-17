@@ -4,10 +4,20 @@ import { createNotification } from '../controllers/notification.controller';
 
 export class RefundService {
   /**
+   * Get cancellation window hours from system settings
+   */
+  private async getCancellationWindowHours(): Promise<number> {
+    const settings = await prisma.systemSettings.findFirst();
+    return settings?.cancellationWindowHours || 24; // Default to 24 hours if not set
+  }
+
+  /**
    * Process immediate refund for cancelled booking
    */
   async processRefund(bookingId: string, reason: string = 'requested_by_customer'): Promise<any> {
     try {
+      // Get cancellation window from settings
+      const cancellationWindowHours = await this.getCancellationWindowHours();
       // Get booking with payment details
       const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
@@ -57,16 +67,16 @@ export class RefundService {
       let refundAmount = 0;
       let refundPercentage = 0;
       
-      if (hoursUntilBooking >= 24) {
-        // Full refund if cancelled at least 24 hours before
+      if (hoursUntilBooking >= cancellationWindowHours) {
+        // Full refund if cancelled at least cancellationWindowHours before
         refundAmount = booking.payment.amount;
         refundPercentage = 100;
-      } else if (hoursUntilBooking >= 12) {
-        // 50% refund if cancelled 12-24 hours before
+      } else if (hoursUntilBooking >= cancellationWindowHours / 2) {
+        // 50% refund if cancelled between half and full cancellation window
         refundAmount = booking.payment.amount * 0.5;
         refundPercentage = 50;
       } else {
-        // No refund if cancelled less than 12 hours before
+        // No refund if cancelled less than half the cancellation window
         refundAmount = 0;
         refundPercentage = 0;
       }
