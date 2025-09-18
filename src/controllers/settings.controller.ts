@@ -57,7 +57,11 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
       enableEmailNotifications,
       enableSmsNotifications,
       bannerText,
-      highlightedText
+      highlightedText,
+      aboutTitle,
+      aboutDogImage,
+      aboutFamilyImage,
+      aboutDogIcons
     } = req.body;
 
     // Get existing settings or create if not exists
@@ -78,7 +82,11 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
           enableEmailNotifications: enableEmailNotifications ?? true,
           enableSmsNotifications: enableSmsNotifications ?? false,
           bannerText: bannerText || 'Find Safe, private dog walking fields',
-          highlightedText: highlightedText || 'near you'
+          highlightedText: highlightedText || 'near you',
+          aboutTitle: aboutTitle || 'At Fieldsy, we believe every dog deserves the freedom to run, sniff, and play safely.',
+          aboutDogImage: aboutDogImage || '',
+          aboutFamilyImage: aboutFamilyImage || '',
+          aboutDogIcons: aboutDogIcons || []
         }
       });
     } else {
@@ -97,7 +105,11 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
           ...(enableEmailNotifications !== undefined && { enableEmailNotifications }),
           ...(enableSmsNotifications !== undefined && { enableSmsNotifications }),
           ...(bannerText !== undefined && { bannerText }),
-          ...(highlightedText !== undefined && { highlightedText })
+          ...(highlightedText !== undefined && { highlightedText }),
+          ...(aboutTitle !== undefined && { aboutTitle }),
+          ...(aboutDogImage !== undefined && { aboutDogImage }),
+          ...(aboutFamilyImage !== undefined && { aboutFamilyImage }),
+          ...(aboutDogIcons !== undefined && { aboutDogIcons })
         }
       });
     }
@@ -128,7 +140,11 @@ export const getPublicSettings = async (req: Request, res: Response) => {
         supportEmail: true,
         maintenanceMode: true,
         bannerText: true,
-        highlightedText: true
+        highlightedText: true,
+        aboutTitle: true,
+        aboutDogImage: true,
+        aboutFamilyImage: true,
+        aboutDogIcons: true
       }
     });
     
@@ -142,7 +158,11 @@ export const getPublicSettings = async (req: Request, res: Response) => {
         supportEmail: 'support@fieldsy.com',
         maintenanceMode: false,
         bannerText: 'Find Safe, private dog walking fields',
-        highlightedText: 'near you'
+        highlightedText: 'near you',
+        aboutTitle: 'At Fieldsy, we believe every dog deserves the freedom to run, sniff, and play safely.',
+        aboutDogImage: '',
+        aboutFamilyImage: '',
+        aboutDogIcons: []
       };
     }
 
