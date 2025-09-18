@@ -109,7 +109,11 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
           ...(aboutTitle !== undefined && { aboutTitle }),
           ...(aboutDogImage !== undefined && { aboutDogImage }),
           ...(aboutFamilyImage !== undefined && { aboutFamilyImage }),
-          ...(aboutDogIcons !== undefined && { aboutDogIcons })
+          ...(aboutDogIcons !== undefined && { aboutDogIcons }),
+          ...(req.body.platformDogOwnersImage !== undefined && { platformDogOwnersImage: req.body.platformDogOwnersImage }),
+          ...(req.body.platformFieldOwnersImage !== undefined && { platformFieldOwnersImage: req.body.platformFieldOwnersImage }),
+          ...(req.body.platformWaveImage !== undefined && { platformWaveImage: req.body.platformWaveImage }),
+          ...(req.body.platformHoverImage !== undefined && { platformHoverImage: req.body.platformHoverImage })
         }
       });
     }
@@ -124,6 +128,93 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update system settings'
+    });
+  }
+};
+
+// Update platform section (Admin only)
+export const updatePlatformImages = async (req: Request, res: Response) => {
+  try {
+    const {
+      platformDogOwnersImage,
+      platformFieldOwnersImage,
+      platformTitle,
+      platformDogOwnersSubtitle,
+      platformDogOwnersTitle,
+      platformDogOwnersBullets,
+      platformFieldOwnersSubtitle,
+      platformFieldOwnersTitle,
+      platformFieldOwnersBullets
+    } = req.body;
+
+    // Get existing settings or create if not exists
+    let settings = await prisma.systemSettings.findFirst();
+    
+    if (!settings) {
+      // Create with provided values
+      settings = await prisma.systemSettings.create({
+        data: {
+          defaultCommissionRate: 20,
+          cancellationWindowHours: 24,
+          maxBookingsPerUser: 10,
+          siteName: 'Fieldsy',
+          siteUrl: 'https://fieldsy.com',
+          supportEmail: 'support@fieldsy.com',
+          maintenanceMode: false,
+          enableNotifications: true,
+          enableEmailNotifications: true,
+          enableSmsNotifications: false,
+          bannerText: 'Find Safe, private dog walking fields',
+          highlightedText: 'near you',
+          platformDogOwnersImage: platformDogOwnersImage || '',
+          platformFieldOwnersImage: platformFieldOwnersImage || '',
+          platformTitle: platformTitle || 'One Platform, Two Tail-Wagging Experiences',
+          platformDogOwnersSubtitle: platformDogOwnersSubtitle || 'For Dog Owners:',
+          platformDogOwnersTitle: platformDogOwnersTitle || 'Find & Book Private Dog Walking Fields in Seconds',
+          platformDogOwnersBullets: platformDogOwnersBullets || ["Stress-free walks for reactive or energetic dogs", "Fully fenced, secure spaces", "GPS-powered search", "Instant hourly bookings"],
+          platformFieldOwnersSubtitle: platformFieldOwnersSubtitle || 'For Field Owners:',
+          platformFieldOwnersTitle: platformFieldOwnersTitle || "Turn Your Land into a Dog's Dream & Earn",
+          platformFieldOwnersBullets: platformFieldOwnersBullets || ["Earn passive income while helping pets", "Host dog owners with full control", "Set your availability and pricing", "List your field for free"]
+        }
+      });
+    } else {
+      // Update existing settings
+      settings = await prisma.systemSettings.update({
+        where: { id: settings.id },
+        data: {
+          ...(platformDogOwnersImage !== undefined && { platformDogOwnersImage }),
+          ...(platformFieldOwnersImage !== undefined && { platformFieldOwnersImage }),
+          ...(platformTitle !== undefined && { platformTitle }),
+          ...(platformDogOwnersSubtitle !== undefined && { platformDogOwnersSubtitle }),
+          ...(platformDogOwnersTitle !== undefined && { platformDogOwnersTitle }),
+          ...(platformDogOwnersBullets !== undefined && { platformDogOwnersBullets }),
+          ...(platformFieldOwnersSubtitle !== undefined && { platformFieldOwnersSubtitle }),
+          ...(platformFieldOwnersTitle !== undefined && { platformFieldOwnersTitle }),
+          ...(platformFieldOwnersBullets !== undefined && { platformFieldOwnersBullets })
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        platformDogOwnersImage: settings.platformDogOwnersImage,
+        platformFieldOwnersImage: settings.platformFieldOwnersImage,
+        platformTitle: settings.platformTitle,
+        platformDogOwnersSubtitle: settings.platformDogOwnersSubtitle,
+        platformDogOwnersTitle: settings.platformDogOwnersTitle,
+        platformDogOwnersBullets: settings.platformDogOwnersBullets,
+        platformFieldOwnersSubtitle: settings.platformFieldOwnersSubtitle,
+        platformFieldOwnersTitle: settings.platformFieldOwnersTitle,
+        platformFieldOwnersBullets: settings.platformFieldOwnersBullets
+      },
+      message: 'Platform section updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating platform section:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update platform section'
     });
   }
 };
@@ -144,7 +235,16 @@ export const getPublicSettings = async (req: Request, res: Response) => {
         aboutTitle: true,
         aboutDogImage: true,
         aboutFamilyImage: true,
-        aboutDogIcons: true
+        aboutDogIcons: true,
+        platformDogOwnersImage: true,
+        platformFieldOwnersImage: true,
+        platformTitle: true,
+        platformDogOwnersSubtitle: true,
+        platformDogOwnersTitle: true,
+        platformDogOwnersBullets: true,
+        platformFieldOwnersSubtitle: true,
+        platformFieldOwnersTitle: true,
+        platformFieldOwnersBullets: true
       }
     });
     

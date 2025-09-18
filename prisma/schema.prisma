@@ -581,6 +581,17 @@ model SystemSettings {
   aboutFamilyImage     String?    // Family/trusted section image URL
   aboutDogIcons        String[]   @default([]) // Array of small dog icon URLs
   
+  // Platform Section Settings
+  platformDogOwnersImage   String?    // Dog owners card image
+  platformFieldOwnersImage String?    // Field owners card image
+  platformTitle            String?    @default("One Platform, Two Tail-Wagging Experiences") // Main platform section title
+  platformDogOwnersSubtitle String?   @default("For Dog Owners:") // Dog owners card subtitle
+  platformDogOwnersTitle   String?    @default("Find & Book Private Dog Walking Fields in Seconds") // Dog owners card title
+  platformDogOwnersBullets String[]   @default(["Stress-free walks for reactive or energetic dogs", "Fully fenced, secure spaces", "GPS-powered search", "Instant hourly bookings"]) // Dog owners card bullet points
+  platformFieldOwnersSubtitle String? @default("For Field Owners:") // Field owners card subtitle
+  platformFieldOwnersTitle String?    @default("Turn Your Land into a Dog's Dream & Earn") // Field owners card title
+  platformFieldOwnersBullets String[] @default(["Earn passive income while helping pets", "Host dog owners with full control", "Set your availability and pricing", "List your field for free"]) // Field owners card bullet points
+  
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   

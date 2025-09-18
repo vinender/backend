@@ -1,16 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { 
-  getSystemSettings, 
-  updateSystemSettings,
-  getPublicSettings,
-  updatePlatformImages
-} from '../controllers/settings.controller';
+import { uploadDirect, uploadMultiple, upload } from '../controllers/upload.controller';
 import { protect } from '../middleware/auth.middleware';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
-const router = Router();
 const prisma = new PrismaClient();
+const router = Router();
 
 // Custom admin authentication middleware
 const authenticateAdmin = async (req: Request, res: Response, next: NextFunction) => {
@@ -34,19 +29,36 @@ const authenticateAdmin = async (req: Request, res: Response, next: NextFunction
     (req as any).admin = admin;
     next();
   } catch (error) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
 };
 
-// Public route - get settings needed for frontend (no auth required)
-router.get('/public', getPublicSettings);
+// Upload single file - for regular users
+router.post('/direct', 
+  protect, 
+  upload.single('file'), 
+  uploadDirect
+);
 
-// Admin routes
-router.get('/admin', authenticateAdmin, getSystemSettings);
-router.put('/admin', authenticateAdmin, updateSystemSettings);
-router.put('/admin/platform-images', authenticateAdmin, updatePlatformImages);
+// Upload single file - for admin users
+router.post('/admin/direct', 
+  authenticateAdmin, 
+  upload.single('file'), 
+  uploadDirect
+);
 
-// Authenticated route for logged-in users to get certain settings
-router.get('/user', protect, getPublicSettings);
+// Upload multiple files - for regular users
+router.post('/multiple', 
+  protect, 
+  upload.array('files', 10), // Max 10 files at once
+  uploadMultiple
+);
+
+// Upload multiple files - for admin users
+router.post('/admin/multiple', 
+  authenticateAdmin, 
+  upload.array('files', 10), // Max 10 files at once
+  uploadMultiple
+);
 
 export default router;
