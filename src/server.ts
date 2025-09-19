@@ -44,6 +44,7 @@ import commissionRoutes from './routes/commission.routes';
 import settingsRoutes from './routes/settings.routes';
 import faqRoutes from './routes/faq.routes';
 import uploadRoutes from './routes/upload.routes';
+import aboutPageRoutes from './routes/about-page.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -194,6 +195,7 @@ class Server {
     this.app.use('/api/settings', settingsRoutes);
     this.app.use('/api/faqs', faqRoutes);
     this.app.use('/api/upload', uploadRoutes);
+    this.app.use('/api/about-page', aboutPageRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));
@@ -245,15 +247,30 @@ class Server {
     initPayoutJobs();
     console.log('✅ Scheduled jobs initialized');
     
+    // Enhanced error handling for port conflicts
+    this.httpServer.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use!`);
+        console.log(`💡 Please try one of the following:`);
+        console.log(`   1. Run: kill -9 $(lsof -ti:${PORT})`);
+        console.log(`   2. Use a different port: PORT=5001 npm run dev`);
+        console.log(`   3. Wait a moment for the port to be released`);
+        process.exit(1);
+      } else {
+        console.error('Server error:', error);
+        process.exit(1);
+      }
+    });
+    
     this.httpServer.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════════════════╗
 ║                                                    ║
 ║   🚀 Server is running successfully!               ║
 ║                                                    ║
-║   Mode: ${NODE_ENV.padEnd(43)}                     ║
-║   Port: ${String(PORT).padEnd(43)}                 ║
-║   Time: ${new Date().toLocaleString().padEnd(43)}  ║
+║   Mode: ${NODE_ENV.padEnd(43)}║
+║   Port: ${String(PORT).padEnd(43)}║
+║   Time: ${new Date().toLocaleString().padEnd(43)}║
 ║                                                    ║
 ║   API: http://localhost:${PORT}/api                ║
 ║   Health: http://localhost:${PORT}/health          ║

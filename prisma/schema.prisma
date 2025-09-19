@@ -611,3 +611,52 @@ model FAQ {
   @@index([category, order])
   @@map("faqs")
 }
+
+model AboutPage {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  
+  // Hero Section
+  heroSectionTitle       String?
+  heroMainTitle          String?
+  heroSubtitle           String?
+  heroDescription        String?
+  heroButtonText         String?
+  heroImage              String?
+  heroStats              Json?     // Array of { value, label, order }
+  
+  // Mission Section
+  missionTitle           String?
+  missionDescription     String?
+  missionButtonText      String?
+  missionImage           String?
+  
+  // Who We Are Section
+  whoWeAreTitle          String?
+  whoWeAreDescription    String?
+  whoWeAreMainImage      String?
+  whoWeAreRightCardImage String?
+  whoWeAreRightCardTitle String?
+  whoWeAreRightCardDescription String?
+  whoWeAreFeatures       Json?     // Array of { icon, title, description, order }
+  
+  // What We Do Section
+  whatWeDoTitle          String?
+  whatWeDoSubtitle       String?
+  whatWeDoDescription    String?
+  whatWeDoImage          String?
+  whatWeDoFeatures       Json?     // Array of { title, description, order }
+  
+  // Why Fieldsy Section
+  whyFieldsyTitle        String?
+  whyFieldsySubtitle     String?
+  whyFieldsyImage        String?
+  whyFieldsyBoxTitle     String?
+  whyFieldsyBoxDescription String?
+  whyFieldsyButtonText   String?
+  whyFieldsyFeatures     Json?     // Array of { icon, title, description, order }
+  
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  
+  @@map("about_pages")
+}

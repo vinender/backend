@@ -1,34 +1,8 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import prisma from '../config/database';
-import jwt from 'jsonwebtoken';
+import { authenticateAdmin } from '../middleware/admin.middleware';
 
 const router = Router();
-
-// Admin authentication middleware
-const authenticateAdmin = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
-    const admin = await prisma.user.findUnique({
-      where: { id: decoded.userId }
-    });
-
-    if (!admin || admin.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-
-    (req as any).user = admin;
-    (req as any).userId = admin.id;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
 
 // Get system commission settings
 router.get('/settings', authenticateAdmin, async (req, res) => {
