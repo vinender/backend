@@ -9,10 +9,19 @@ const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("../controllers/notification.controller");
 class RefundService {
     /**
+     * Get cancellation window hours from system settings
+     */
+    async getCancellationWindowHours() {
+        const settings = await database_1.default.systemSettings.findFirst();
+        return settings?.cancellationWindowHours || 24; // Default to 24 hours if not set
+    }
+    /**
      * Process immediate refund for cancelled booking
      */
     async processRefund(bookingId, reason = 'requested_by_customer') {
         try {
+            // Get cancellation window from settings
+            const cancellationWindowHours = await this.getCancellationWindowHours();
             // Get booking with payment details
             const booking = await database_1.default.booking.findUnique({
                 where: { id: bookingId },
@@ -54,18 +63,18 @@ class RefundService {
             const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
             let refundAmount = 0;
             let refundPercentage = 0;
-            if (hoursUntilBooking >= 24) {
-                // Full refund if cancelled at least 24 hours before
+            if (hoursUntilBooking >= cancellationWindowHours) {
+                // Full refund if cancelled at least cancellationWindowHours before
                 refundAmount = booking.payment.amount;
                 refundPercentage = 100;
             }
-            else if (hoursUntilBooking >= 12) {
-                // 50% refund if cancelled 12-24 hours before
+            else if (hoursUntilBooking >= cancellationWindowHours / 2) {
+                // 50% refund if cancelled between half and full cancellation window
                 refundAmount = booking.payment.amount * 0.5;
                 refundPercentage = 50;
             }
             else {
-                // No refund if cancelled less than 12 hours before
+                // No refund if cancelled less than half the cancellation window
                 refundAmount = 0;
                 refundPercentage = 0;
             }

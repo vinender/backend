@@ -43,6 +43,10 @@ const admin_payout_routes_1 = __importDefault(require("./routes/admin-payout.rou
 const auto_payout_routes_1 = __importDefault(require("./routes/auto-payout.routes"));
 const earnings_routes_1 = __importDefault(require("./routes/earnings.routes"));
 const commission_routes_1 = __importDefault(require("./routes/commission.routes"));
+const settings_routes_1 = __importDefault(require("./routes/settings.routes"));
+const faq_routes_1 = __importDefault(require("./routes/faq.routes"));
+const upload_routes_1 = __importDefault(require("./routes/upload.routes"));
+const about_page_routes_1 = __importDefault(require("./routes/about-page.routes"));
 // Import scheduled jobs
 const payout_job_1 = require("./jobs/payout.job");
 class Server {
@@ -172,6 +176,10 @@ class Server {
         this.app.use('/api/auto-payouts', auto_payout_routes_1.default);
         this.app.use('/api/earnings', earnings_routes_1.default);
         this.app.use('/api/commission', commission_routes_1.default);
+        this.app.use('/api/settings', settings_routes_1.default);
+        this.app.use('/api/faqs', faq_routes_1.default);
+        this.app.use('/api/upload', upload_routes_1.default);
+        this.app.use('/api/about-page', about_page_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }
@@ -213,15 +221,30 @@ class Server {
         // Initialize scheduled jobs
         (0, payout_job_1.initPayoutJobs)();
         console.log('✅ Scheduled jobs initialized');
+        // Enhanced error handling for port conflicts
+        this.httpServer.on('error', (error) => {
+            if (error.code === 'EADDRINUSE') {
+                console.error(`❌ Port ${constants_1.PORT} is already in use!`);
+                console.log(`💡 Please try one of the following:`);
+                console.log(`   1. Run: kill -9 $(lsof -ti:${constants_1.PORT})`);
+                console.log(`   2. Use a different port: PORT=5001 npm run dev`);
+                console.log(`   3. Wait a moment for the port to be released`);
+                process.exit(1);
+            }
+            else {
+                console.error('Server error:', error);
+                process.exit(1);
+            }
+        });
         this.httpServer.listen(constants_1.PORT, () => {
             console.log(`
 ╔════════════════════════════════════════════════════╗
 ║                                                    ║
 ║   🚀 Server is running successfully!               ║
 ║                                                    ║
-║   Mode: ${constants_1.NODE_ENV.padEnd(43)}                     ║
-║   Port: ${String(constants_1.PORT).padEnd(43)}                 ║
-║   Time: ${new Date().toLocaleString().padEnd(43)}  ║
+║   Mode: ${constants_1.NODE_ENV.padEnd(43)}║
+║   Port: ${String(constants_1.PORT).padEnd(43)}║
+║   Time: ${new Date().toLocaleString().padEnd(43)}║
 ║                                                    ║
 ║   API: http://localhost:${constants_1.PORT}/api                ║
 ║   Health: http://localhost:${constants_1.PORT}/health          ║

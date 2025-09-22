@@ -5,32 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const database_1 = __importDefault(require("../config/database"));
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const admin_middleware_1 = require("../middleware/admin.middleware");
 const router = (0, express_1.Router)();
-// Admin authentication middleware
-const authenticateAdmin = async (req, res, next) => {
-    try {
-        const token = req.headers.authorization?.split(' ')[1];
-        if (!token) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-        const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-        const admin = await database_1.default.user.findUnique({
-            where: { id: decoded.userId }
-        });
-        if (!admin || admin.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Admin access required' });
-        }
-        req.user = admin;
-        req.userId = admin.id;
-        next();
-    }
-    catch (error) {
-        return res.status(401).json({ error: 'Invalid token' });
-    }
-};
 // Get system commission settings
-router.get('/settings', authenticateAdmin, async (req, res) => {
+router.get('/settings', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         // Get or create system settings
         let settings = await database_1.default.systemSettings.findFirst();
@@ -55,7 +33,7 @@ router.get('/settings', authenticateAdmin, async (req, res) => {
     }
 });
 // Update default commission rate
-router.put('/settings', authenticateAdmin, async (req, res) => {
+router.put('/settings', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         const { defaultCommissionRate } = req.body;
         // Validate commission rate
@@ -93,7 +71,7 @@ router.put('/settings', authenticateAdmin, async (req, res) => {
     }
 });
 // Get field owner commission rate
-router.get('/field-owner/:userId', authenticateAdmin, async (req, res) => {
+router.get('/field-owner/:userId', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         const { userId } = req.params;
         const user = await database_1.default.user.findUnique({
@@ -137,7 +115,7 @@ router.get('/field-owner/:userId', authenticateAdmin, async (req, res) => {
     }
 });
 // Update field owner commission rate
-router.put('/field-owner/:userId', authenticateAdmin, async (req, res) => {
+router.put('/field-owner/:userId', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         const { userId } = req.params;
         const { commissionRate, useDefault } = req.body;
@@ -179,7 +157,7 @@ router.put('/field-owner/:userId', authenticateAdmin, async (req, res) => {
     }
 });
 // Get all field owners with commission rates
-router.get('/field-owners', authenticateAdmin, async (req, res) => {
+router.get('/field-owners', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         const { page = 1, limit = 10, search = '' } = req.query;
         const skip = (Number(page) - 1) * Number(limit);

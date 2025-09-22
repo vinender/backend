@@ -469,6 +469,9 @@ class BookingController {
     checkRefundEligibility = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const { id } = req.params;
         const userId = req.user.id;
+        // Get cancellation window from settings
+        const settings = await database_1.default.systemSettings.findFirst();
+        const cancellationWindowHours = settings?.cancellationWindowHours || 24;
         const booking = await booking_model_1.default.findById(id);
         if (!booking) {
             throw new AppError_1.AppError('Booking not found', 404);
@@ -498,7 +501,7 @@ class BookingController {
         console.log('Start time:', booking.startTime);
         // Calculate hours until booking from now
         const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-        const isRefundEligible = hoursUntilBooking >= 24;
+        const isRefundEligible = hoursUntilBooking >= cancellationWindowHours;
         console.log('Hours until booking:', hoursUntilBooking);
         console.log('Is refund eligible:', isRefundEligible);
         console.log('=========================');
@@ -507,10 +510,10 @@ class BookingController {
             data: {
                 isRefundEligible,
                 hoursUntilBooking: Math.floor(hoursUntilBooking),
-                canCancel: hoursUntilBooking >= 24,
+                canCancel: hoursUntilBooking >= cancellationWindowHours,
                 message: isRefundEligible
                     ? `This booking can be cancelled with a full refund. There are ${Math.floor(hoursUntilBooking)} hours until the booking time.`
-                    : `This booking cannot be cancelled with a refund. Cancellations must be made at least 24 hours before the booking time. Only ${Math.floor(hoursUntilBooking)} hours remain.`,
+                    : `This booking cannot be cancelled with a refund. Cancellations must be made at least ${cancellationWindowHours} hours before the booking time. Only ${Math.floor(hoursUntilBooking)} hours remain.`,
             },
         });
     });
@@ -520,6 +523,9 @@ class BookingController {
         const userId = req.user.id;
         const userRole = req.user.role;
         const { reason } = req.body;
+        // Get cancellation window from settings
+        const settings = await database_1.default.systemSettings.findFirst();
+        const cancellationWindowHours = settings?.cancellationWindowHours || 24;
         const booking = await booking_model_1.default.findById(id);
         if (!booking) {
             throw new AppError_1.AppError('Booking not found', 404);
@@ -555,12 +561,12 @@ class BookingController {
         console.log('Start time:', booking.startTime);
         // Calculate hours until booking from now
         const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-        // Check if cancellation is allowed (at least 24 hours before booking)
-        if (hoursUntilBooking < 24 && !isAdmin) {
-            throw new AppError_1.AppError('Cancellation not allowed. Bookings must be cancelled at least 24 hours in advance.', 400);
+        // Check if cancellation is allowed (at least cancellationWindowHours before booking)
+        if (hoursUntilBooking < cancellationWindowHours && !isAdmin) {
+            throw new AppError_1.AppError(`Cancellation not allowed. Bookings must be cancelled at least ${cancellationWindowHours} hours in advance.`, 400);
         }
         // Refund is eligible if cancelled at least 24 hours before booking
-        const isRefundEligible = hoursUntilBooking >= 24;
+        const isRefundEligible = hoursUntilBooking >= cancellationWindowHours;
         console.log('Hours until booking:', hoursUntilBooking);
         console.log('Is refund eligible:', isRefundEligible);
         console.log('===================================');
@@ -644,7 +650,7 @@ class BookingController {
                     ? `Refund of $${refundResult.refundAmount?.toFixed(2) || '0.00'} has been initiated and will be credited to your account within 5-7 business days.`
                     : isRefundEligible
                         ? 'You are eligible for a refund. The amount will be credited to your account within 5-7 business days.'
-                        : 'This booking is not eligible for a refund as it was cancelled less than 24 hours before the scheduled time.',
+                        : `This booking is not eligible for a refund as it was cancelled less than ${cancellationWindowHours} hours before the scheduled time.`,
             },
         });
     });

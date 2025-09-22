@@ -7,6 +7,18 @@ import cookieParser from "cookie-parser"
 import dotenv from "dotenv"
 import { PrismaClient } from "@prisma/client"
 
+
+// Import routes
+import authRoutes from "./routes/auth.routes"
+import userRoutes from "./routes/user.routes"
+import fieldRoutes from "./routes/field.routes"
+import bookingRoutes from "./routes/booking.routes"
+import earningsRoutes from "./routes/earnings.routes"
+import stripeConnectRoutes from "./routes/stripe-connect.routes"
+import payoutRoutes from "./routes/payout.routes"
+import commissionRoutes from "./routes/commission.routes"
+import adminRoutes from "./routes/admin.routes"
+import chatRoutes from "./routes/chat.routes"
 // Load environment variables
 dotenv.config()
 
@@ -53,15 +65,7 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
 
-// Import routes
-import authRoutes from "./routes/auth.routes"
-import userRoutes from "./routes/user.routes"
-import fieldRoutes from "./routes/field.routes"
-import bookingRoutes from "./routes/booking.routes"
-import earningsRoutes from "./routes/earnings.routes"
-import stripeConnectRoutes from "./routes/stripe-connect.routes"
-import payoutRoutes from "./routes/payout.routes"
-import commissionRoutes from "./routes/commission.routes"
+ 
 
 // Routes
 app.use("/api/auth", authRoutes)
@@ -72,6 +76,8 @@ app.use("/api/earnings", earningsRoutes)
 app.use("/api/stripe-connect", stripeConnectRoutes)
 app.use("/api/payouts", payoutRoutes)
 app.use("/api/commission", commissionRoutes)
+app.use('/api/admin', adminRoutes)
+app.use('/api/chat', chatRoutes)
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -96,6 +102,7 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
 })
+
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {

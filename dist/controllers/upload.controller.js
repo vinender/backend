@@ -1,0 +1,149 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.uploadMultiple = exports.uploadDirect = exports.upload = void 0;
+const client_s3_1 = require("@aws-sdk/client-s3");
+const multer_1 = __importDefault(require("multer"));
+const sharp_1 = __importDefault(require("sharp"));
+const uuid_1 = require("uuid");
+// Initialize S3 client
+const s3Client = new client_s3_1.S3Client({
+    region: process.env.AWS_REGION || 'us-east-1',
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+});
+// Configure multer for memory storage
+const storage = multer_1.default.memoryStorage();
+exports.upload = (0, multer_1.default)({
+    storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept images only
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('Only image files are allowed'));
+        }
+        cb(null, true);
+    },
+});
+// Upload file directly to S3
+const uploadDirect = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file uploaded',
+            });
+        }
+        const { folder = 'uploads', convertToWebp = 'true' } = req.body;
+        let fileBuffer = req.file.buffer;
+        let mimeType = req.file.mimetype;
+        let fileExtension = req.file.originalname.split('.').pop() || 'jpg';
+        // Convert to WebP if requested and it's an image
+        if (convertToWebp === 'true' && req.file.mimetype.startsWith('image/')) {
+            try {
+                fileBuffer = await (0, sharp_1.default)(req.file.buffer)
+                    .webp({ quality: 80 })
+                    .toBuffer();
+                mimeType = 'image/webp';
+                fileExtension = 'webp';
+            }
+            catch (error) {
+                console.error('Error converting to WebP:', error);
+                // Continue with original file if conversion fails
+            }
+        }
+        // Generate unique filename
+        const fileName = `${(0, uuid_1.v4)()}.${fileExtension}`;
+        const key = `${folder}/${fileName}`;
+        // Upload to S3 with public-read ACL
+        const command = new client_s3_1.PutObjectCommand({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: key,
+            Body: fileBuffer,
+            ContentType: mimeType,
+            ACL: 'public-read', // Make the file publicly accessible
+        });
+        await s3Client.send(command);
+        // Return the file URL
+        const fileUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+        res.status(200).json({
+            success: true,
+            fileUrl,
+            key,
+        });
+    }
+    catch (error) {
+        console.error('Error uploading file:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to upload file',
+        });
+    }
+};
+exports.uploadDirect = uploadDirect;
+// Upload multiple files
+const uploadMultiple = async (req, res) => {
+    try {
+        const files = req.files;
+        if (!files || files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No files uploaded',
+            });
+        }
+        const { folder = 'uploads', convertToWebp = 'true' } = req.body;
+        const uploadedFiles = [];
+        for (const file of files) {
+            let fileBuffer = file.buffer;
+            let mimeType = file.mimetype;
+            let fileExtension = file.originalname.split('.').pop() || 'jpg';
+            // Convert to WebP if requested
+            if (convertToWebp === 'true' && file.mimetype.startsWith('image/')) {
+                try {
+                    fileBuffer = await (0, sharp_1.default)(file.buffer)
+                        .webp({ quality: 80 })
+                        .toBuffer();
+                    mimeType = 'image/webp';
+                    fileExtension = 'webp';
+                }
+                catch (error) {
+                    console.error('Error converting to WebP:', error);
+                }
+            }
+            const fileName = `${(0, uuid_1.v4)()}.${fileExtension}`;
+            const key = `${folder}/${fileName}`;
+            const command = new client_s3_1.PutObjectCommand({
+                Bucket: process.env.AWS_S3_BUCKET,
+                Key: key,
+                Body: fileBuffer,
+                ContentType: mimeType,
+                ACL: 'public-read',
+            });
+            await s3Client.send(command);
+            const fileUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+            uploadedFiles.push({
+                fileUrl,
+                key,
+                originalName: file.originalname,
+            });
+        }
+        res.status(200).json({
+            success: true,
+            files: uploadedFiles,
+        });
+    }
+    catch (error) {
+        console.error('Error uploading files:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to upload files',
+        });
+    }
+};
+exports.uploadMultiple = uploadMultiple;
