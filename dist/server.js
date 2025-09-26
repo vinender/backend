@@ -49,6 +49,7 @@ const upload_routes_1 = __importDefault(require("./routes/upload.routes"));
 const about_page_routes_1 = __importDefault(require("./routes/about-page.routes"));
 // Import scheduled jobs
 const payout_job_1 = require("./jobs/payout.job");
+const held_payout_release_job_1 = require("./jobs/held-payout-release.job");
 class Server {
     app;
     httpServer;
@@ -220,6 +221,7 @@ class Server {
         });
         // Initialize scheduled jobs
         (0, payout_job_1.initPayoutJobs)();
+        (0, held_payout_release_job_1.startHeldPayoutReleaseJobs)();
         console.log('✅ Scheduled jobs initialized');
         // Enhanced error handling for port conflicts
         this.httpServer.on('error', (error) => {

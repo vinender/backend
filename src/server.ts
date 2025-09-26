@@ -51,6 +51,7 @@ import { errorHandler, notFound } from './middleware/error.middleware';
 
 // Import scheduled jobs
 import { initPayoutJobs } from './jobs/payout.job';
+import { startHeldPayoutReleaseJobs } from './jobs/held-payout-release.job';
 
 class Server {
   private app: Application;
@@ -245,6 +246,7 @@ class Server {
     
     // Initialize scheduled jobs
     initPayoutJobs();
+    startHeldPayoutReleaseJobs();
     console.log('✅ Scheduled jobs initialized');
     
     // Enhanced error handling for port conflicts

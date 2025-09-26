@@ -7,7 +7,6 @@ import cookieParser from "cookie-parser"
 import dotenv from "dotenv"
 import { PrismaClient } from "@prisma/client"
 
-
 // Import routes
 import authRoutes from "./routes/auth.routes"
 import userRoutes from "./routes/user.routes"
@@ -20,7 +19,8 @@ import commissionRoutes from "./routes/commission.routes"
 import adminRoutes from "./routes/admin.routes"
 import chatRoutes from "./routes/chat.routes"
 // Load environment variables
-dotenv.config()
+
+dotenv.config();
 
 // Initialize Express app
 const app = express()
@@ -59,6 +59,7 @@ app.use(cors({
   },
   credentials: true,
 }))
+
 app.use(compression())
 app.use(morgan("dev"))
 app.use(express.json())
@@ -107,6 +108,7 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on("SIGTERM", async () => {
   console.log("SIGTERM signal received: closing HTTP server")
-  await prisma.$disconnect()
-  process.exit(0)
+  await prisma.$disconnect();
+  process.exit(0);
 })
+

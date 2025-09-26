@@ -812,29 +812,70 @@ class BookingController {
                 status: true
             }
         });
-        // Generate time slots based on field's operating hours
+        // Generate time slots based on field's operating hours and booking duration
         const openingHour = field.openingTime ? parseInt(field.openingTime.split(':')[0]) : 6;
         const closingHour = field.closingTime ? parseInt(field.closingTime.split(':')[0]) : 21;
         const slots = [];
-        for (let hour = openingHour; hour < closingHour; hour++) {
-            // Format time slot
-            const startTime = hour === 0 ? '12:00AM' : hour < 12 ? `${hour}:00AM` : hour === 12 ? '12:00PM' : `${hour - 12}:00PM`;
-            const endHour = hour + 1;
-            const endTime = endHour === 0 ? '12:00AM' : endHour < 12 ? `${endHour}:00AM` : endHour === 12 ? '12:00PM' : `${endHour - 12}:00PM`;
-            const slotTime = `${startTime} - ${endTime}`;
-            // Check if this slot is in the past
-            const slotDateTime = new Date(selectedDate);
-            slotDateTime.setHours(hour, 0, 0, 0);
-            const isPast = slotDateTime < now;
-            // Check if slot is booked (private booking system)
-            const isBooked = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
-            slots.push({
-                time: slotTime,
-                startHour: hour,
-                isPast,
-                isBooked,
-                isAvailable: !isPast && !isBooked
-            });
+        // Determine slot duration based on field's bookingDuration
+        const slotDurationMinutes = field.bookingDuration === '30min' ? 30 : 60;
+        // Helper function to format time
+        const formatTime = (hour, minutes = 0) => {
+            const period = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+            const displayMinutes = minutes.toString().padStart(2, '0');
+            return `${displayHour}:${displayMinutes}${period}`;
+        };
+        // Generate slots based on duration
+        if (slotDurationMinutes === 30) {
+            // Generate 30-minute slots
+            for (let hour = openingHour; hour < closingHour; hour++) {
+                for (let minutes = 0; minutes < 60; minutes += 30) {
+                    const endMinutes = minutes + 30;
+                    const endHour = endMinutes === 60 ? hour + 1 : hour;
+                    const actualEndMinutes = endMinutes === 60 ? 0 : endMinutes;
+                    // Don't create slots that go beyond closing time
+                    if (endHour > closingHour || (endHour === closingHour && actualEndMinutes > 0)) {
+                        break;
+                    }
+                    const startTime = formatTime(hour, minutes);
+                    const endTime = formatTime(endHour, actualEndMinutes);
+                    const slotTime = `${startTime} - ${endTime}`;
+                    // Check if this slot is in the past
+                    const slotDateTime = new Date(selectedDate);
+                    slotDateTime.setHours(hour, minutes, 0, 0);
+                    const isPast = slotDateTime < now;
+                    // Check if slot is booked (private booking system)
+                    const isBooked = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
+                    slots.push({
+                        time: slotTime,
+                        startHour: hour,
+                        isPast,
+                        isBooked,
+                        isAvailable: !isPast && !isBooked
+                    });
+                }
+            }
+        }
+        else {
+            // Generate 1-hour slots
+            for (let hour = openingHour; hour < closingHour; hour++) {
+                const startTime = formatTime(hour);
+                const endTime = formatTime(hour + 1);
+                const slotTime = `${startTime} - ${endTime}`;
+                // Check if this slot is in the past
+                const slotDateTime = new Date(selectedDate);
+                slotDateTime.setHours(hour, 0, 0, 0);
+                const isPast = slotDateTime < now;
+                // Check if slot is booked (private booking system)
+                const isBooked = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
+                slots.push({
+                    time: slotTime,
+                    startHour: hour,
+                    isPast,
+                    isBooked,
+                    isAvailable: !isPast && !isBooked
+                });
+            }
         }
         res.json({
             success: true,
@@ -843,6 +884,7 @@ class BookingController {
                 fieldId,
                 fieldName: field.name,
                 slots,
+                bookingDuration: field.bookingDuration || '1hour',
                 operatingHours: {
                     opening: field.openingTime || '06:00',
                     closing: field.closingTime || '21:00'

@@ -8,6 +8,7 @@ const asyncHandler_1 = require("../utils/asyncHandler");
 const AppError_1 = require("../utils/AppError");
 const stripe_1 = __importDefault(require("stripe"));
 const payout_service_1 = require("../services/payout.service");
+const held_payout_service_1 = require("../services/held-payout.service");
 // Initialize Stripe
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
     apiVersion: '2024-11-20.acacia'
@@ -151,9 +152,19 @@ class StripeConnectController {
                 requirementsEventuallyDue: account.requirements?.eventually_due || []
             }
         });
-        // If account just became fully enabled, process pending payouts
+        // If account just became fully enabled, release held payouts and process pending ones
         if (wasNotEnabled && isNowEnabled) {
-            console.log(`Stripe account for user ${userId} is now fully enabled. Processing pending payouts...`);
+            console.log(`Stripe account for user ${userId} is now fully enabled. Releasing held payouts...`);
+            // First, release any held payouts
+            try {
+                await held_payout_service_1.heldPayoutService.releaseHeldPayouts(userId);
+                console.log(`Released held payouts for user ${userId}`);
+            }
+            catch (error) {
+                console.error(`Failed to release held payouts for user ${userId}:`, error);
+                // Don't throw - continue with processing
+            }
+            // Then process pending payouts
             try {
                 const results = await payout_service_1.payoutService.processPendingPayouts(userId);
                 console.log(`Processed pending payouts for user ${userId}:`, results);

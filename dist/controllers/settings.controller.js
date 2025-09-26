@@ -15,6 +15,8 @@ const getSystemSettings = async (req, res) => {
                     defaultCommissionRate: 20,
                     cancellationWindowHours: 24,
                     maxBookingsPerUser: 10,
+                    minimumFieldOperatingHours: 4,
+                    payoutReleaseSchedule: 'after_cancellation_window',
                     siteName: 'Fieldsy',
                     siteUrl: 'https://fieldsy.com',
                     supportEmail: 'support@fieldsy.com',
@@ -44,7 +46,7 @@ exports.getSystemSettings = getSystemSettings;
 // Update system settings (Admin only)
 const updateSystemSettings = async (req, res) => {
     try {
-        const { defaultCommissionRate, cancellationWindowHours, maxBookingsPerUser, siteName, siteUrl, supportEmail, maintenanceMode, enableNotifications, enableEmailNotifications, enableSmsNotifications, bannerText, highlightedText, aboutTitle, aboutDogImage, aboutFamilyImage, aboutDogIcons } = req.body;
+        const { defaultCommissionRate, cancellationWindowHours, maxBookingsPerUser, minimumFieldOperatingHours, payoutReleaseSchedule, siteName, siteUrl, supportEmail, maintenanceMode, enableNotifications, enableEmailNotifications, enableSmsNotifications, bannerText, highlightedText, aboutTitle, aboutDogImage, aboutFamilyImage, aboutDogIcons } = req.body;
         // Get existing settings or create if not exists
         let settings = await prisma.systemSettings.findFirst();
         if (!settings) {
@@ -54,6 +56,8 @@ const updateSystemSettings = async (req, res) => {
                     defaultCommissionRate: defaultCommissionRate || 20,
                     cancellationWindowHours: cancellationWindowHours || 24,
                     maxBookingsPerUser: maxBookingsPerUser || 10,
+                    minimumFieldOperatingHours: minimumFieldOperatingHours || 4,
+                    payoutReleaseSchedule: payoutReleaseSchedule || 'after_cancellation_window',
                     siteName: siteName || 'Fieldsy',
                     siteUrl: siteUrl || 'https://fieldsy.com',
                     supportEmail: supportEmail || 'support@fieldsy.com',
@@ -76,8 +80,10 @@ const updateSystemSettings = async (req, res) => {
                 where: { id: settings.id },
                 data: {
                     ...(defaultCommissionRate !== undefined && { defaultCommissionRate }),
+                    ...(payoutReleaseSchedule !== undefined && { payoutReleaseSchedule }),
                     ...(cancellationWindowHours !== undefined && { cancellationWindowHours }),
                     ...(maxBookingsPerUser !== undefined && { maxBookingsPerUser }),
+                    ...(minimumFieldOperatingHours !== undefined && { minimumFieldOperatingHours }),
                     ...(siteName !== undefined && { siteName }),
                     ...(siteUrl !== undefined && { siteUrl }),
                     ...(supportEmail !== undefined && { supportEmail }),
@@ -196,6 +202,7 @@ const getPublicSettings = async (req, res) => {
             select: {
                 cancellationWindowHours: true,
                 maxBookingsPerUser: true,
+                minimumFieldOperatingHours: true,
                 siteName: true,
                 siteUrl: true,
                 supportEmail: true,
@@ -222,6 +229,7 @@ const getPublicSettings = async (req, res) => {
             settings = {
                 cancellationWindowHours: 24,
                 maxBookingsPerUser: 10,
+                minimumFieldOperatingHours: 4,
                 siteName: 'Fieldsy',
                 siteUrl: 'https://fieldsy.com',
                 supportEmail: 'support@fieldsy.com',

@@ -20,9 +20,9 @@ export class AutomaticPayoutService {
   }
 
   /**
-   * Check if booking has passed the cancellation window (24 hours before booking time)
+   * Check if booking has passed the cancellation window (configurable hours before booking time)
    */
-  private hasCancellationWindowPassed(booking: any): boolean {
+  private hasCancellationWindowPassed(booking: any, cancellationWindowHours: number = 24): boolean {
     const now = new Date();
     const bookingDateTime = new Date(booking.date);
     
@@ -36,11 +36,34 @@ export class AutomaticPayoutService {
     
     bookingDateTime.setHours(hour, minutes || 0, 0, 0);
     
-    // Subtract 24 hours to get the cancellation deadline
-    const cancellationDeadline = new Date(bookingDateTime.getTime() - 24 * 60 * 60 * 1000);
+    // Subtract configured hours to get the cancellation deadline
+    const cancellationDeadline = new Date(bookingDateTime.getTime() - cancellationWindowHours * 60 * 60 * 1000);
     
     // Return true if current time is past the cancellation deadline
     return now > cancellationDeadline;
+  }
+
+  /**
+   * Check if payout should be released based on admin settings
+   */
+  private async shouldReleasePayout(booking: any, settings: any): Promise<boolean> {
+    const payoutReleaseSchedule = settings?.payoutReleaseSchedule || 'after_cancellation_window';
+    const cancellationWindowHours = settings?.cancellationWindowHours || 24;
+
+    if (payoutReleaseSchedule === 'immediate') {
+      // Release immediately after payment confirmation
+      return true;
+    } else if (payoutReleaseSchedule === 'on_weekend') {
+      // Check if today is Friday-Sunday
+      const today = new Date().getDay();
+      // Friday = 5, Saturday = 6, Sunday = 0
+      return today === 5 || today === 6 || today === 0;
+    } else if (payoutReleaseSchedule === 'after_cancellation_window') {
+      // Check if cancellation window has passed
+      return this.hasCancellationWindowPassed(booking, cancellationWindowHours);
+    }
+    
+    return false;
   }
 
   /**
@@ -51,17 +74,21 @@ export class AutomaticPayoutService {
     try {
       console.log('Starting automatic payout processing...');
       
+      // Get system settings for payout release schedule
+      const systemSettings = await prisma.systemSettings.findFirst();
+      
       // Find all confirmed bookings where:
       // 1. Payment is completed (PAID)
       // 2. Payout hasn't been processed yet
-      // 3. Cancellation window has passed (will check programmatically)
+      // 3. Based on the payout release schedule from admin settings
       const eligibleBookings = await prisma.booking.findMany({
         where: {
           status: 'CONFIRMED',
           paymentStatus: 'PAID',
           OR: [
             { payoutStatus: null },
-            { payoutStatus: 'PENDING' }
+            { payoutStatus: 'PENDING' },
+            { payoutStatus: 'HELD' }
           ]
         },
         include: {
@@ -75,6 +102,7 @@ export class AutomaticPayoutService {
       });
 
       console.log(`Found ${eligibleBookings.length} potentially eligible bookings`);
+      console.log(`Payout release schedule: ${systemSettings?.payoutReleaseSchedule || 'after_cancellation_window'}`);
 
       const results = {
         processed: 0,
@@ -85,14 +113,14 @@ export class AutomaticPayoutService {
 
       for (const booking of eligibleBookings) {
         try {
-          // Check if cancellation window has passed
-          if (!this.hasCancellationWindowPassed(booking)) {
-            console.log(`Booking ${booking.id} still within cancellation window`);
+          // Check if payout should be released based on admin settings
+          if (!await this.shouldReleasePayout(booking, systemSettings)) {
+            console.log(`Booking ${booking.id} not eligible for payout release yet`);
             results.skipped++;
             results.details.push({
               bookingId: booking.id,
               status: 'skipped',
-              reason: 'Within cancellation window'
+              reason: 'Not meeting payout release criteria'
             });
             continue;
           }
@@ -140,6 +168,9 @@ export class AutomaticPayoutService {
    */
   async processBookingPayoutAfterCancellationWindow(bookingId: string) {
     try {
+      // Get system settings
+      const systemSettings = await prisma.systemSettings.findFirst();
+      
       // Get booking with all necessary relations
       const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
@@ -157,9 +188,9 @@ export class AutomaticPayoutService {
         throw new Error('Booking not found');
       }
 
-      // Verify cancellation window has passed
-      if (!this.hasCancellationWindowPassed(booking)) {
-        console.log(`Booking ${bookingId} is still within cancellation window`);
+      // Verify payout should be released based on admin settings
+      if (!await this.shouldReleasePayout(booking, systemSettings)) {
+        console.log(`Booking ${bookingId} is not eligible for payout based on admin settings`);
         return null;
       }
 
@@ -262,7 +293,7 @@ export class AutomaticPayoutService {
             type: 'automatic_booking_payout',
             processingReason: 'cancellation_window_passed'
           },
-          description: `Automatic payout for booking ${bookingId} - ${field.name} (cancellation window passed)`
+          description: `Automatic payout for booking ${bookingId} - ${field.name}`
         });
 
         // Create payout record in database
@@ -307,7 +338,7 @@ export class AutomaticPayoutService {
           userId: fieldOwner.id,
           type: 'PAYOUT_PROCESSED',
           title: '💰 Payment Received!',
-          message: `£${payoutAmount.toFixed(2)} has been automatically transferred to your account for the ${field.name} booking. The cancellation window has passed and the booking is secured.`,
+          message: `£${payoutAmount.toFixed(2)} has been automatically transferred to your account for the ${field.name} booking.`,
           data: {
             bookingId,
             payoutId: payout.id,
@@ -524,7 +555,8 @@ export class AutomaticPayoutService {
         } else if (booking.payoutStatus === 'PROCESSING') {
           summary.pendingPayouts += amount;
         } else if (booking.status === 'CONFIRMED') {
-          if (this.hasCancellationWindowPassed(booking)) {
+          const systemSettings = await prisma.systemSettings.findFirst();
+          if (await this.shouldReleasePayout(booking, systemSettings)) {
             summary.pendingPayouts += amount;
           } else {
             summary.upcomingPayouts += amount;

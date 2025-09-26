@@ -21,6 +21,29 @@ class FieldController {
       throw new AppError('Field owners can only have one field. Please update your existing field instead.', 400);
     }
 
+    // Validate minimum operating hours if times are provided
+    if (req.body.openingTime && req.body.closingTime) {
+      const settings = await prisma.systemSettings.findFirst();
+      const minimumHours = settings?.minimumFieldOperatingHours || 4;
+      
+      const timeToMinutes = (timeStr: string): number => {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours * 60 + (minutes || 0);
+      };
+      
+      const openingMinutes = timeToMinutes(req.body.openingTime);
+      const closingMinutes = timeToMinutes(req.body.closingTime);
+      const diffHours = (closingMinutes - openingMinutes) / 60;
+      
+      if (diffHours < 0) {
+        throw new AppError('Closing time must be after opening time', 400);
+      }
+      
+      if (diffHours < minimumHours) {
+        throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
+      }
+    }
+
     const fieldData = {
       ...req.body,
       ownerId,
@@ -183,6 +206,35 @@ class FieldController {
     delete req.body.id;
     delete req.body.ownerId;
 
+    // Validate minimum operating hours if times are being updated
+    if (req.body.openingTime || req.body.closingTime) {
+      const settings = await prisma.systemSettings.findFirst();
+      const minimumHours = settings?.minimumFieldOperatingHours || 4;
+      
+      // Get the current field data to merge with updates
+      const openingTime = req.body.openingTime || field.openingTime;
+      const closingTime = req.body.closingTime || field.closingTime;
+      
+      if (openingTime && closingTime) {
+        const timeToMinutes = (timeStr: string): number => {
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          return hours * 60 + (minutes || 0);
+        };
+        
+        const openingMinutes = timeToMinutes(openingTime);
+        const closingMinutes = timeToMinutes(closingTime);
+        const diffHours = (closingMinutes - openingMinutes) / 60;
+        
+        if (diffHours < 0) {
+          throw new AppError('Closing time must be after opening time', 400);
+        }
+        
+        if (diffHours < minimumHours) {
+          throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
+        }
+      }
+    }
+
     const updatedField = await FieldModel.update(id, req.body);
 
     res.json({
@@ -327,6 +379,29 @@ class FieldController {
       
       // If the first step is field-details, include that data
       if (step === 'field-details') {
+        // Validate minimum operating hours
+        if (data.startTime && data.endTime) {
+          const settings = await prisma.systemSettings.findFirst();
+          const minimumHours = settings?.minimumFieldOperatingHours || 4;
+          
+          const timeToMinutes = (timeStr: string): number => {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + (minutes || 0);
+          };
+          
+          const openingMinutes = timeToMinutes(data.startTime);
+          const closingMinutes = timeToMinutes(data.endTime);
+          const diffHours = (closingMinutes - openingMinutes) / 60;
+          
+          if (diffHours < 0) {
+            throw new AppError('Closing time must be after opening time', 400);
+          }
+          
+          if (diffHours < minimumHours) {
+            throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
+          }
+        }
+        
         initialFieldData = {
           ...initialFieldData,
           name: data.fieldName,
@@ -382,6 +457,29 @@ class FieldController {
     // Update based on which step is being saved
     switch(step) {
       case 'field-details':
+        // Validate minimum operating hours
+        if (data.startTime && data.endTime) {
+          const settings = await prisma.systemSettings.findFirst();
+          const minimumHours = settings?.minimumFieldOperatingHours || 4;
+          
+          const timeToMinutes = (timeStr: string): number => {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + (minutes || 0);
+          };
+          
+          const openingMinutes = timeToMinutes(data.startTime);
+          const closingMinutes = timeToMinutes(data.endTime);
+          const diffHours = (closingMinutes - openingMinutes) / 60;
+          
+          if (diffHours < 0) {
+            throw new AppError('Closing time must be after opening time', 400);
+          }
+          
+          if (diffHours < minimumHours) {
+            throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
+          }
+        }
+        
         updateData = {
           name: data.fieldName,
           size: data.fieldSize,
@@ -1050,6 +1148,85 @@ class FieldController {
           totalBookings: 0,
           totalEarnings: 0
         }
+      });
+    }
+  });
+
+  // Get recent bookings for field owner
+  getRecentBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = (req as any).user.id;
+    const { limit = 5 } = req.query;
+    const limitNum = Number(limit);
+
+    try {
+      // First get the owner's field
+      const fields = await FieldModel.findByOwner(ownerId);
+      
+      if (!fields || fields.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No field found for this owner',
+          bookings: []
+        });
+      }
+
+      const fieldId = fields[0].id;
+
+      // Get recent bookings
+      const bookings = await prisma.booking.findMany({
+        where: {
+          fieldId,
+          status: {
+            in: ['CONFIRMED', 'COMPLETED']
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: limitNum,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              image: true
+            }
+          }
+        }
+      });
+
+      // Format bookings
+      const formattedBookings = bookings.map(booking => ({
+        id: booking.id,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        numberOfDogs: booking.numberOfDogs,
+        totalPrice: booking.totalPrice,
+        status: booking.status,
+        createdAt: booking.createdAt,
+        user: {
+          id: booking.user.id,
+          name: booking.user.name || 'Unknown',
+          email: booking.user.email,
+          phone: booking.user.phone,
+          profilePicture: booking.user.image
+        }
+      }));
+
+      res.status(200).json({
+        success: true,
+        bookings: formattedBookings
+      });
+
+    } catch (error) {
+      console.error('Error fetching recent bookings:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch recent bookings',
+        bookings: []
       });
     }
   });

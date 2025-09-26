@@ -932,36 +932,85 @@ class BookingController {
       }
     });
 
-    // Generate time slots based on field's operating hours
+    // Generate time slots based on field's operating hours and booking duration
     const openingHour = field.openingTime ? parseInt(field.openingTime.split(':')[0]) : 6;
     const closingHour = field.closingTime ? parseInt(field.closingTime.split(':')[0]) : 21;
 
     const slots = [];
+    
+    // Determine slot duration based on field's bookingDuration
+    const slotDurationMinutes = field.bookingDuration === '30min' ? 30 : 60;
+    
+    // Helper function to format time
+    const formatTime = (hour: number, minutes: number = 0): string => {
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      const displayMinutes = minutes.toString().padStart(2, '0');
+      return `${displayHour}:${displayMinutes}${period}`;
+    };
 
-    for (let hour = openingHour; hour < closingHour; hour++) {
-      // Format time slot
-      const startTime = hour === 0 ? '12:00AM' : hour < 12 ? `${hour}:00AM` : hour === 12 ? '12:00PM' : `${hour - 12}:00PM`;
-      const endHour = hour + 1;
-      const endTime = endHour === 0 ? '12:00AM' : endHour < 12 ? `${endHour}:00AM` : endHour === 12 ? '12:00PM' : `${endHour - 12}:00PM`;
-      const slotTime = `${startTime} - ${endTime}`;
+    // Generate slots based on duration
+    if (slotDurationMinutes === 30) {
+      // Generate 30-minute slots
+      for (let hour = openingHour; hour < closingHour; hour++) {
+        for (let minutes = 0; minutes < 60; minutes += 30) {
+          const endMinutes = minutes + 30;
+          const endHour = endMinutes === 60 ? hour + 1 : hour;
+          const actualEndMinutes = endMinutes === 60 ? 0 : endMinutes;
+          
+          // Don't create slots that go beyond closing time
+          if (endHour > closingHour || (endHour === closingHour && actualEndMinutes > 0)) {
+            break;
+          }
+          
+          const startTime = formatTime(hour, minutes);
+          const endTime = formatTime(endHour, actualEndMinutes);
+          const slotTime = `${startTime} - ${endTime}`;
+          
+          // Check if this slot is in the past
+          const slotDateTime = new Date(selectedDate);
+          slotDateTime.setHours(hour, minutes, 0, 0);
+          const isPast = slotDateTime < now;
+          
+          // Check if slot is booked (private booking system)
+          const isBooked = bookings.some(
+            booking => booking.timeSlot === slotTime || booking.startTime === startTime
+          );
+          
+          slots.push({
+            time: slotTime,
+            startHour: hour,
+            isPast,
+            isBooked,
+            isAvailable: !isPast && !isBooked
+          });
+        }
+      }
+    } else {
+      // Generate 1-hour slots
+      for (let hour = openingHour; hour < closingHour; hour++) {
+        const startTime = formatTime(hour);
+        const endTime = formatTime(hour + 1);
+        const slotTime = `${startTime} - ${endTime}`;
 
-      // Check if this slot is in the past
-      const slotDateTime = new Date(selectedDate);
-      slotDateTime.setHours(hour, 0, 0, 0);
-      const isPast = slotDateTime < now;
+        // Check if this slot is in the past
+        const slotDateTime = new Date(selectedDate);
+        slotDateTime.setHours(hour, 0, 0, 0);
+        const isPast = slotDateTime < now;
 
-      // Check if slot is booked (private booking system)
-      const isBooked = bookings.some(
-        booking => booking.timeSlot === slotTime || booking.startTime === startTime
-      );
+        // Check if slot is booked (private booking system)
+        const isBooked = bookings.some(
+          booking => booking.timeSlot === slotTime || booking.startTime === startTime
+        );
 
-      slots.push({
-        time: slotTime,
-        startHour: hour,
-        isPast,
-        isBooked,
-        isAvailable: !isPast && !isBooked
-      });
+        slots.push({
+          time: slotTime,
+          startHour: hour,
+          isPast,
+          isBooked,
+          isAvailable: !isPast && !isBooked
+        });
+      }
     }
 
     res.json({
@@ -971,6 +1020,7 @@ class BookingController {
         fieldId,
         fieldName: field.name,
         slots,
+        bookingDuration: field.bookingDuration || '1hour',
         operatingHours: {
           opening: field.openingTime || '06:00',
           closing: field.closingTime || '21:00'
@@ -998,6 +1048,274 @@ class BookingController {
     res.json({
       success: true,
       available: isAvailable,
+    });
+  });
+
+  // Get my recurring bookings (subscriptions + bookings with repeatBooking)
+  getMyRecurringBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const userId = (req as any).user.id;
+    const { status = 'active' } = req.query;
+
+    // Get both subscriptions and bookings with repeatBooking !== 'none'
+    const [subscriptions, recurringBookings] = await Promise.all([
+      // Get user's subscriptions from subscription table
+      prisma.subscription.findMany({
+        where: {
+          userId,
+          ...(status && { status: status as string })
+        },
+        include: {
+          field: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          },
+          bookings: {
+            take: 5,
+            orderBy: {
+              date: 'desc'
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      }),
+      // Get regular bookings with repeatBooking set (handle case variations)
+      prisma.booking.findMany({
+        where: {
+          userId,
+          AND: [
+            {
+              repeatBooking: {
+                not: null
+              }
+            },
+            {
+              repeatBooking: {
+                notIn: ['none', 'None', 'NONE', '']
+              }
+            }
+          ],
+          status: status === 'active' ? 'CONFIRMED' : { in: ['CANCELLED', 'COMPLETED'] }
+        },
+        include: {
+          field: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          },
+          payment: true
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      })
+    ]);
+
+    // Format subscriptions
+    const formattedSubscriptions = subscriptions.map(sub => ({
+      id: sub.id,
+      type: 'subscription',
+      fieldId: sub.fieldId,
+      fieldName: sub.field.name,
+      fieldAddress: sub.field.address,
+      fieldOwner: sub.field.owner.name,
+      interval: sub.interval,
+      dayOfWeek: sub.dayOfWeek,
+      dayOfMonth: sub.dayOfMonth,
+      timeSlot: sub.timeSlot,
+      startTime: sub.startTime,
+      endTime: sub.endTime,
+      numberOfDogs: sub.numberOfDogs,
+      totalPrice: sub.totalPrice,
+      status: sub.status,
+      nextBillingDate: sub.nextBillingDate,
+      currentPeriodEnd: sub.currentPeriodEnd,
+      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      canceledAt: sub.canceledAt,
+      recentBookings: sub.bookings.map(booking => ({
+        id: booking.id,
+        date: booking.date,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus
+      })),
+      createdAt: sub.createdAt
+    }));
+
+    // Format regular bookings with repeatBooking
+    const formattedRecurringBookings = recurringBookings.map(booking => ({
+      id: booking.id,
+      type: 'booking',
+      fieldId: booking.fieldId,
+      fieldName: booking.field.name,
+      fieldAddress: booking.field.address,
+      fieldOwner: booking.field.owner.name || booking.field.owner.email,
+      interval: booking.repeatBooking, // 'weekly' or 'monthly'
+      dayOfWeek: null, // Could extract from date if needed
+      dayOfMonth: null,
+      timeSlot: booking.timeSlot,
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      numberOfDogs: booking.numberOfDogs,
+      totalPrice: booking.totalPrice,
+      status: booking.status === 'CONFIRMED' ? 'active' : booking.status.toLowerCase(),
+      nextBillingDate: booking.date, // Use booking date
+      currentPeriodEnd: booking.date,
+      cancelAtPeriodEnd: false,
+      canceledAt: booking.cancelledAt,
+      recentBookings: [{
+        id: booking.id,
+        date: booking.date,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus
+      }],
+      createdAt: booking.createdAt,
+      repeatBooking: booking.repeatBooking // Include original field
+    }));
+
+    // Combine both lists
+    const allRecurringBookings = [...formattedSubscriptions, ...formattedRecurringBookings];
+
+    // Sort by creation date (newest first)
+    allRecurringBookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    res.json({
+      success: true,
+      data: allRecurringBookings,
+      total: allRecurringBookings.length,
+      breakdown: {
+        subscriptions: formattedSubscriptions.length,
+        recurringBookings: formattedRecurringBookings.length
+      }
+    });
+  });
+
+  // Cancel recurring booking (subscription)
+  cancelRecurringBooking = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const userId = (req as any).user.id;
+    const { id: subscriptionId } = req.params;
+    const { cancelImmediately = false } = req.body;
+
+    // Find the subscription
+    const subscription = await prisma.subscription.findUnique({
+      where: {
+        id: subscriptionId
+      },
+      include: {
+        field: true
+      }
+    });
+
+    if (!subscription) {
+      throw new AppError('Recurring booking not found', 404);
+    }
+
+    // Verify ownership
+    if (subscription.userId !== userId) {
+      throw new AppError('You are not authorized to cancel this recurring booking', 403);
+    }
+
+    // Cancel in Stripe if subscription exists
+    if (subscription.stripeSubscriptionId) {
+      try {
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        
+        if (cancelImmediately) {
+          // Cancel immediately and issue prorated refund
+          await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+        } else {
+          // Cancel at period end
+          await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+            cancel_at_period_end: true
+          });
+        }
+      } catch (stripeError: any) {
+        console.error('Stripe cancellation error:', stripeError);
+        // Continue with local cancellation even if Stripe fails
+      }
+    }
+
+    // Update subscription in database
+    const updatedSubscription = await prisma.subscription.update({
+      where: {
+        id: subscriptionId
+      },
+      data: {
+        status: cancelImmediately ? 'canceled' : subscription.status,
+        cancelAtPeriodEnd: !cancelImmediately,
+        canceledAt: cancelImmediately ? new Date() : null
+      }
+    });
+
+    // Cancel future bookings if canceling immediately
+    if (cancelImmediately) {
+      await prisma.booking.updateMany({
+        where: {
+          subscriptionId,
+          date: {
+            gte: new Date()
+          },
+          status: {
+            in: ['PENDING', 'CONFIRMED']
+          }
+        },
+        data: {
+          status: 'CANCELLED',
+          cancellationReason: 'Recurring booking canceled',
+          cancelledAt: new Date()
+        }
+      });
+    }
+
+    // Create notification for user
+    await createNotification({
+      userId,
+      type: 'booking_cancelled',
+      title: 'Recurring Booking Canceled',
+      message: cancelImmediately 
+        ? `Your recurring booking for ${subscription.field.name} has been canceled immediately.`
+        : `Your recurring booking for ${subscription.field.name} will be canceled at the end of the current period.`,
+      metadata: {
+        subscriptionId,
+        fieldId: subscription.fieldId,
+        cancelType: cancelImmediately ? 'immediate' : 'period_end'
+      }
+    });
+
+    // Create notification for field owner
+    await createNotification({
+      userId: subscription.field.ownerId,
+      type: 'booking_cancelled',
+      title: 'Recurring Booking Canceled',
+      message: cancelImmediately
+        ? `A recurring booking for ${subscription.field.name} has been canceled.`
+        : `A recurring booking for ${subscription.field.name} will end after the current period.`,
+      metadata: {
+        subscriptionId,
+        fieldId: subscription.fieldId,
+        cancelType: cancelImmediately ? 'immediate' : 'period_end'
+      }
+    });
+
+    res.json({
+      success: true,
+      message: cancelImmediately 
+        ? 'Recurring booking canceled immediately' 
+        : 'Recurring booking will be canceled at the end of the current period',
+      data: updatedSubscription
     });
   });
 

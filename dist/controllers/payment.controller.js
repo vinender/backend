@@ -219,6 +219,20 @@ class PaymentController {
             // Create a booking record with appropriate status
             const bookingStatus = paymentIntent.status === 'succeeded' ? 'CONFIRMED' : 'PENDING';
             const paymentStatus = paymentIntent.status === 'succeeded' ? 'PAID' : 'PENDING';
+            // Check if field owner has a connected Stripe account
+            const fieldOwnerStripeAccount = await database_1.default.stripeAccount.findUnique({
+                where: { userId: field.ownerId }
+            });
+            // Determine payout status based on Stripe account connection
+            let payoutStatus = 'PENDING';
+            let payoutHeldReason = undefined;
+            if (paymentIntent.status === 'succeeded') {
+                if (!fieldOwnerStripeAccount || !fieldOwnerStripeAccount.chargesEnabled || !fieldOwnerStripeAccount.payoutsEnabled) {
+                    // Hold the payout if field owner doesn't have a connected Stripe account
+                    payoutStatus = 'HELD';
+                    payoutHeldReason = 'NO_STRIPE_ACCOUNT';
+                }
+            }
             const booking = await database_1.default.booking.create({
                 data: {
                     fieldId,
@@ -234,7 +248,8 @@ class PaymentController {
                     status: bookingStatus,
                     paymentStatus: paymentStatus,
                     paymentIntentId: paymentIntent.id,
-                    payoutStatus: 'PENDING', // Payout pending until booking is completed
+                    payoutStatus,
+                    payoutHeldReason,
                     repeatBooking: repeatBooking || 'none'
                 }
             });

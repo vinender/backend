@@ -72,6 +72,7 @@ model User {
   reportsReceived   UserReport[]   @relation("ReportedRelation")
   blocksMade        UserBlock[]    @relation("BlockerRelation")
   blocksReceived    UserBlock[]    @relation("BlockedRelation")
+  subscriptions     Subscription[]
   
   @@map("users")
 }
@@ -178,6 +179,7 @@ model Field {
   favorites       Favorite[]
   conversations   Conversation[]
   claims          FieldClaim[]
+  subscriptions   Subscription[]
 
   @@index([city, state])
   @@index([ownerId])
@@ -199,12 +201,15 @@ model Booking {
   status        BookingStatus @default(PENDING)
   paymentStatus String?       // e.g., "PENDING", "PAID", "FAILED"
   paymentIntentId String?     // Stripe payment intent ID
-  payoutStatus  String?       // e.g., "PENDING", "PROCESSING", "COMPLETED", "FAILED"
+  payoutStatus  String?       // e.g., "PENDING", "PROCESSING", "COMPLETED", "FAILED", "HELD"
   payoutId      String?       @db.ObjectId // Reference to Payout record
+  payoutHeldReason String?    // Reason why payout is held (e.g., "NO_STRIPE_ACCOUNT")
+  payoutReleasedAt DateTime?  // When the held payout was released
   repeatBooking String?       // e.g., "none", "weekly", "monthly"
   notes         String?
   cancellationReason String?
   cancelledAt   DateTime?     // Track when booking was cancelled for refund eligibility
+  subscriptionId String?      @db.ObjectId // Reference to subscription if from recurring booking
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -214,6 +219,7 @@ model Booking {
   payment       Payment?
   review        Review?
   transactions  Transaction[]
+  subscription  Subscription? @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
 
   @@index([userId])
   @@index([fieldId])
@@ -560,11 +566,53 @@ model PaymentMethod {
   @@map("payment_methods")
 }
 
+model Subscription {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String    @db.ObjectId
+  fieldId           String    @db.ObjectId
+  stripeSubscriptionId String @unique // Stripe subscription ID
+  stripeCustomerId  String    // Stripe customer ID
+  status            String    // active, canceled, past_due, paused, etc.
+  interval          String    // weekly, monthly
+  intervalCount     Int       @default(1) // Number of intervals between billings
+  currentPeriodStart DateTime // Start of current billing period
+  currentPeriodEnd  DateTime  // End of current billing period
+  cancelAtPeriodEnd Boolean   @default(false) // If true, subscription will cancel at period end
+  canceledAt        DateTime? // When the subscription was canceled
+  
+  // Booking details
+  timeSlot          String    // e.g., "8:00AM - 9:00AM"
+  dayOfWeek         String?   // For weekly: Monday, Tuesday, etc.
+  dayOfMonth        Int?      // For monthly: 1-31
+  startTime         String    // e.g., "08:00"
+  endTime           String    // e.g., "09:00"
+  numberOfDogs      Int       @default(1)
+  totalPrice        Float     // Price per billing cycle
+  
+  // Next booking details
+  nextBillingDate   DateTime? // When the next payment will be charged
+  lastBookingDate   DateTime? // Last successful booking created
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  user              User      @relation(fields: [userId], references: [id])
+  field             Field     @relation(fields: [fieldId], references: [id])
+  bookings          Booking[] @relation("SubscriptionBookings")
+  
+  @@index([userId])
+  @@index([fieldId])
+  @@map("subscriptions")
+}
+
 model SystemSettings {
   id                    String    @id @default(auto()) @map("_id") @db.ObjectId
   defaultCommissionRate Float     @default(20) // Default commission rate (0-100), default 20%
   cancellationWindowHours Int     @default(24) // Hours before booking when cancellation with refund is allowed
   maxBookingsPerUser    Int?      @default(10) // Maximum number of active bookings per user
+  minimumFieldOperatingHours Int  @default(4) // Minimum hours between field opening and closing time
+  payoutReleaseSchedule String?   @default("after_cancellation_window") // "immediate", "on_weekend", "after_cancellation_window"
   siteName             String?    @default("Fieldsy")
   siteUrl              String?    @default("https://fieldsy.com")
   supportEmail         String?    @default("support@fieldsy.com")

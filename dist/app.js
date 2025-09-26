@@ -12,6 +12,17 @@ const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const client_1 = require("@prisma/client");
+// Import routes
+const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const user_routes_1 = __importDefault(require("./routes/user.routes"));
+const field_routes_1 = __importDefault(require("./routes/field.routes"));
+const booking_routes_1 = __importDefault(require("./routes/booking.routes"));
+const earnings_routes_1 = __importDefault(require("./routes/earnings.routes"));
+const stripe_connect_routes_1 = __importDefault(require("./routes/stripe-connect.routes"));
+const payout_routes_1 = __importDefault(require("./routes/payout.routes"));
+const commission_routes_1 = __importDefault(require("./routes/commission.routes"));
+const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
+const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
 // Load environment variables
 dotenv_1.default.config();
 // Initialize Express app
@@ -54,16 +65,6 @@ app.use((0, morgan_1.default)("dev"));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use((0, cookie_parser_1.default)());
-// Import routes
-const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
-const user_routes_1 = __importDefault(require("./routes/user.routes"));
-const field_routes_1 = __importDefault(require("./routes/field.routes"));
-const booking_routes_1 = __importDefault(require("./routes/booking.routes"));
-const earnings_routes_1 = __importDefault(require("./routes/earnings.routes"));
-const stripe_connect_routes_1 = __importDefault(require("./routes/stripe-connect.routes"));
-const payout_routes_1 = __importDefault(require("./routes/payout.routes"));
-const commission_routes_1 = __importDefault(require("./routes/commission.routes"));
-const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 // Routes
 app.use("/api/auth", auth_routes_1.default);
 app.use("/api/users", user_routes_1.default);
@@ -74,6 +75,7 @@ app.use("/api/stripe-connect", stripe_connect_routes_1.default);
 app.use("/api/payouts", payout_routes_1.default);
 app.use("/api/commission", commission_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
+app.use('/api/chat', chat_routes_1.default);
 // Health check endpoint
 app.get("/health", (req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });

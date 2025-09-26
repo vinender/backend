@@ -24,6 +24,7 @@ router.use(protect);
 // Field owner routes
 router.get('/owner/field', restrictTo('FIELD_OWNER'), fieldController.getOwnerField);
 router.get('/owner/bookings', restrictTo('FIELD_OWNER'), fieldController.getFieldBookings);
+router.get('/owner/bookings/recent', restrictTo('FIELD_OWNER'), fieldController.getRecentBookings);
 router.get('/owner/bookings/today', restrictTo('FIELD_OWNER'), fieldController.getTodayBookings);
 router.get('/owner/bookings/upcoming', restrictTo('FIELD_OWNER'), fieldController.getUpcomingBookings);
 router.get('/owner/bookings/previous', restrictTo('FIELD_OWNER'), fieldController.getPreviousBookings);

@@ -23,6 +23,7 @@ router.use(auth_middleware_1.protect);
 // Field owner routes
 router.get('/owner/field', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getOwnerField);
 router.get('/owner/bookings', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getFieldBookings);
+router.get('/owner/bookings/recent', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getRecentBookings);
 router.get('/owner/bookings/today', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getTodayBookings);
 router.get('/owner/bookings/upcoming', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getUpcomingBookings);
 router.get('/owner/bookings/previous', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getPreviousBookings);

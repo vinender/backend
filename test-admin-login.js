@@ -2,9 +2,9 @@ const axios = require('axios');
 
 async function testLogin() {
   try {
-    const response = await axios.post('http://localhost:5001/api/admin/login', {
+    const response = await axios.post('http://localhost:5000/api/admin/login', {
       email: 'admin@fieldsy.com',
-      password: 'Admin123!'
+      password: 'admin123'
     });
     
     console.log('Login successful!');
@@ -12,7 +12,7 @@ async function testLogin() {
     console.log('Admin:', response.data.admin);
     
     // Test verify endpoint
-    const verifyResponse = await axios.get('http://localhost:5001/api/admin/verify', {
+    const verifyResponse = await axios.get('http://localhost:5000/api/admin/verify', {
       headers: {
         'Authorization': `Bearer ${response.data.token}`
       }

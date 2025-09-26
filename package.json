@@ -11,7 +11,11 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "create-admin": "ts-node scripts/create-admin.ts"
+    "create-admin": "ts-node scripts/create-admin.ts",
+    "reset:all": "node scripts/reset-all-data.js",
+    "reset:all:force": "node scripts/reset-all-data.js --force",
+    "reset:db": "node scripts/reset-database.js",
+    "reset:db:force": "node scripts/reset-database.js --force"
   },
   "keywords": [],
   "author": "",

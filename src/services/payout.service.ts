@@ -4,8 +4,9 @@ import { createNotification } from '../controllers/notification.controller';
 import { calculatePayoutAmounts } from '../utils/commission.utils';
 
 const prisma = new PrismaClient();
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia'
+  apiVersion: '2025-07-30.basil'
 });
 
 export class PayoutService {
@@ -32,9 +33,15 @@ export class PayoutService {
         throw new Error('Booking not found');
       }
 
-      // Check if payout has already been processed
+      // Check if payout has already been processed or is held
       if (booking.payoutStatus === 'COMPLETED' || booking.payoutStatus === 'PROCESSING') {
         console.log(`Payout already ${booking.payoutStatus} for booking ${bookingId}`);
+        return;
+      }
+      
+      // Check if payout is held (e.g., no Stripe account)
+      if (booking.payoutStatus === 'HELD') {
+        console.log(`Payout is held for booking ${bookingId}. Reason: ${booking.payoutHeldReason}`);
         return;
       }
 
@@ -116,7 +123,7 @@ export class PayoutService {
       await prisma.booking.update({
         where: { id: bookingId },
         data: { payoutStatus: 'PROCESSING' }
-      });
+      }); 
 
       try {
         // Create a transfer to the connected account
