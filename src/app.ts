@@ -43,6 +43,10 @@ app.use(cors({
       "http://localhost:8081", // Expo web
       "http://localhost:19006", // Expo web alternate port
       "exp://localhost:8081", // Expo development
+      "https://fieldsy.indiitserver.in", // Production frontend
+      "https://fieldsy-admin.indiitserver.in", // Production admin
+      "http://fieldsy.indiitserver.in", // Allow HTTP as fallback
+      "http://fieldsy-admin.indiitserver.in", // Allow HTTP as fallback
     ];
     
     // Check if the origin is in the allowed list or is a local development URL

@@ -77,6 +77,10 @@ class Server {
           'http://localhost:3001', 
           'http://localhost:3002',
           'http://localhost:3003', // Admin dashboard
+          'https://fieldsy.indiitserver.in', // Production frontend
+          'https://fieldsy-admin.indiitserver.in', // Production admin
+          'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
+          'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
           FRONTEND_URL
         ];
         
