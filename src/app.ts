@@ -52,8 +52,10 @@ app.use(cors({
       "exp://localhost:8081", // Expo development
       "https://fieldsy.indiitserver.in", // Production frontend
       "https://fieldsy-admin.indiitserver.in", // Production admin
+      "https://fieldsy-api.indiitserver.in", // Production API (for self-referential calls)
       "http://fieldsy.indiitserver.in", // Allow HTTP as fallback
       "http://fieldsy-admin.indiitserver.in", // Allow HTTP as fallback
+      "http://fieldsy-api.indiitserver.in", // Allow HTTP API as fallback
     ];
     
     // Check if the origin is in the allowed list or is a local development URL
