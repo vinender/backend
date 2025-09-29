@@ -130,7 +130,7 @@ export class PayoutService {
         // Create a transfer to the connected account
         const transfer = await stripe.transfers.create({
           amount: payoutAmountInCents,
-          currency: 'usd',
+          currency: 'eur',
           destination: stripeAccount.stripeAccountId,
           transfer_group: `booking_${bookingId}`,
           metadata: {
@@ -148,7 +148,7 @@ export class PayoutService {
             stripeAccountId: stripeAccount.id,
             stripePayoutId: transfer.id,
             amount: payoutAmount,
-            currency: 'usd',
+            currency: 'eur',
             status: 'paid',
             method: 'standard',
             description: `Payout for booking ${bookingId}`,

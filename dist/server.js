@@ -103,7 +103,7 @@ class Server {
         // Rate limiting - more lenient in development
         const limiter = (0, express_rate_limit_1.rateLimit)({
             windowMs: 15 * 60 * 1000, // 15 minutes
-            max: constants_1.NODE_ENV === 'development' ? 10000 : 100, // Higher limit in dev
+            max: constants_1.NODE_ENV === 'development' ? 10000 : 10000, // Higher limit in dev
             message: 'Too many requests from this IP, please try again later.',
             skip: (req) => constants_1.NODE_ENV === 'development' && req.ip === '::1', // Skip for localhost in dev
         });

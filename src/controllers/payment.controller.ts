@@ -107,7 +107,7 @@ export class PaymentController {
       // Payment goes to platform account (admin) first
       const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
         amount: amountInCents,
-        currency: 'usd',
+        currency: 'eur',
         metadata: {
           userId,
           fieldId,
@@ -336,7 +336,7 @@ export class PaymentController {
             bookingId: booking.id,
             userId,
             amount,
-            currency: 'USD',
+            currency: 'EUR',
             status: 'completed',
             paymentMethod: 'card',
             stripePaymentId: paymentIntent.id,
@@ -414,7 +414,7 @@ export class PaymentController {
               userId: field.ownerId,
               type: 'PAYOUT_PROCESSED',
               title: '💰 Instant Payment Received!',
-              message: `£${fieldOwnerAmount.toFixed(2)} has been instantly transferred to your account for the ${field.name} booking.`,
+              message: `€${fieldOwnerAmount.toFixed(2)} has been instantly transferred to your account for the ${field.name} booking.`,
               data: {
                 bookingId: booking.id,
                 payoutId: payout.id,

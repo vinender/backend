@@ -731,7 +731,7 @@ class BookingController {
         isRefundEligible,
         refundResult,
         refundMessage: refundResult?.success 
-          ? `Refund of $${refundResult.refundAmount?.toFixed(2) || '0.00'} has been initiated and will be credited to your account within 5-7 business days.`
+          ? `Refund of €${refundResult.refundAmount?.toFixed(2) || '0.00'} has been initiated and will be credited to your account within 5-7 business days.`
           : isRefundEligible
             ? 'You are eligible for a refund. The amount will be credited to your account within 5-7 business days.'
             : `This booking is not eligible for a refund as it was cancelled less than ${cancellationWindowHours} hours before the scheduled time.`,
