@@ -157,7 +157,37 @@ class Server {
       });
     });
 
-    // API documentation endpoint
+    // API documentation - Root route for production
+    this.app.get('/', (req, res) => {
+      // Check if client accepts HTML
+      const acceptHeader = req.headers.accept || '';
+      
+      if (acceptHeader.includes('text/html')) {
+        // Serve HTML documentation
+        res.setHeader('Content-Type', 'text/html');
+        res.send(generateApiDocsHTML(apiDocumentation));
+      } else {
+        // Serve JSON for API clients
+        res.json({
+          success: true,
+          message: 'Fieldsy API',
+          version: '1.0.0',
+          documentation: 'Visit this URL in a browser for interactive documentation',
+          endpoints: {
+            auth: '/api/auth',
+            users: '/api/users',
+            fields: '/api/fields',
+            bookings: '/api/bookings',
+            reviews: '/api/reviews',
+            notifications: '/api/notifications',
+            payments: '/api/payments',
+            chat: '/api/chat',
+          },
+        });
+      }
+    });
+
+    // API documentation endpoint (also available at /api)
     this.app.get('/api', (req, res) => {
       // Check if client accepts HTML
       const acceptHeader = req.headers.accept || '';

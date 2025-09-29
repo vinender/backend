@@ -7,6 +7,10 @@ import cookieParser from "cookie-parser"
 import dotenv from "dotenv"
 import { PrismaClient } from "@prisma/client"
 
+// Import API documentation
+import { apiDocumentation } from "./utils/api-documentation"
+import { generateApiDocsHTML } from "./utils/api-docs-template"
+
 // Import routes
 import authRoutes from "./routes/auth.routes"
 import userRoutes from "./routes/user.routes"
@@ -73,7 +77,63 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
 
- 
+// API Documentation - Root route for production
+app.get("/", (req, res) => {
+  const acceptHeader = req.headers.accept || '';
+  
+  if (acceptHeader.includes('text/html')) {
+    // Serve HTML documentation for browsers
+    res.setHeader('Content-Type', 'text/html');
+    res.send(generateApiDocsHTML(apiDocumentation));
+  } else {
+    // Serve JSON for API clients
+    res.json({
+      success: true,
+      message: 'Fieldsy API',
+      version: '1.0.0',
+      documentation: 'Visit this URL in a browser for interactive documentation',
+      endpoints: {
+        auth: '/api/auth',
+        users: '/api/users', 
+        fields: '/api/fields',
+        bookings: '/api/bookings',
+        reviews: '/api/reviews',
+        notifications: '/api/notifications',
+        payments: '/api/payments',
+        chat: '/api/chat',
+      },
+    });
+  }
+});
+
+// API Documentation - Also available at /api 
+app.get("/api", (req, res) => {
+  const acceptHeader = req.headers.accept || '';
+  
+  if (acceptHeader.includes('text/html')) {
+    // Serve HTML documentation for browsers
+    res.setHeader('Content-Type', 'text/html');
+    res.send(generateApiDocsHTML(apiDocumentation));
+  } else {
+    // Serve JSON for API clients
+    res.json({
+      success: true,
+      message: 'Fieldsy API',
+      version: '1.0.0',
+      documentation: 'Visit this URL in a browser for interactive documentation',
+      endpoints: {
+        auth: '/api/auth',
+        users: '/api/users',
+        fields: '/api/fields',
+        bookings: '/api/bookings',
+        reviews: '/api/reviews',
+        notifications: '/api/notifications',
+        payments: '/api/payments',
+        chat: '/api/chat',
+      },
+    });
+  }
+});
 
 // Routes
 app.use("/api/auth", authRoutes)
