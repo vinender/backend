@@ -30,6 +30,7 @@ const PORT = process.env.PORT || 5000
 export const prisma = new PrismaClient()
 
 // Middleware
+app.set('trust proxy', 1); 
 app.use(helmet())
 app.use(cors({
   origin: function(origin, callback) {
