@@ -1,0 +1,868 @@
+{
+  "timestamp": "2025-09-29T06:35:21.587Z",
+  "totalRoutes": 162,
+  "categories": 26,
+  "routes": {
+    "/api/about-page": [
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/about-pageget"
+      },
+      {
+        "method": "/",
+        "path": "put",
+        "fullPath": "/api/about-pageput"
+      },
+      {
+        "method": "/SECTION/:SECTION",
+        "path": "put",
+        "fullPath": "/api/about-pageput"
+      }
+    ],
+    "/api/admin-payout": [
+      {
+        "method": "/PAYOUT-STATS",
+        "path": "get",
+        "fullPath": "/api/admin-payoutget"
+      },
+      {
+        "method": "/PROCESS-PAYOUTS",
+        "path": "post",
+        "fullPath": "/api/admin-payoutpost"
+      }
+    ],
+    "/api/admin": [
+      {
+        "method": "/NOTIFICATIONS/:ID",
+        "path": "delete",
+        "fullPath": "/api/admindelete"
+      },
+      {
+        "method": "/VERIFY",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/STATS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/REVENUE/TOTAL",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/BOOKINGS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/BOOKINGS/:ID",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/USERS/:ID",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/USERS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/FIELDS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/NOTIFICATIONS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/PAYMENTS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/BOOKING-STATS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/FIELD-UTILIZATION",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/CLAIMS",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/CLAIMS/:CLAIMID",
+        "path": "get",
+        "fullPath": "/api/adminget"
+      },
+      {
+        "method": "/NOTIFICATIONS/:ID/READ",
+        "path": "patch",
+        "fullPath": "/api/adminpatch"
+      },
+      {
+        "method": "/NOTIFICATIONS/READ-ALL",
+        "path": "patch",
+        "fullPath": "/api/adminpatch"
+      },
+      {
+        "method": "/CLAIMS/:CLAIMID/STATUS",
+        "path": "patch",
+        "fullPath": "/api/adminpatch"
+      },
+      {
+        "method": "/LOGIN",
+        "path": "post",
+        "fullPath": "/api/adminpost"
+      }
+    ],
+    "/api/auth.otp": [
+      {
+        "method": "/REGISTER",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      },
+      {
+        "method": "/VERIFY-SIGNUP",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      },
+      {
+        "method": "/RESEND-OTP",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      },
+      {
+        "method": "/FORGOT-PASSWORD",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      },
+      {
+        "method": "/VERIFY-RESET-OTP",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      },
+      {
+        "method": "/RESET-PASSWORD",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      },
+      {
+        "method": "/LOGIN",
+        "path": "post",
+        "fullPath": "/api/auth.otppost"
+      }
+    ],
+    "/api/auth": [
+      {
+        "method": "/TEST",
+        "path": "get",
+        "fullPath": "/api/authget"
+      },
+      {
+        "method": "/ME",
+        "path": "get",
+        "fullPath": "/api/authget"
+      },
+      {
+        "method": "/UPDATE-ROLE",
+        "path": "patch",
+        "fullPath": "/api/authpatch"
+      },
+      {
+        "method": "/REGISTER",
+        "path": "post",
+        "fullPath": "/api/authpost"
+      },
+      {
+        "method": "/LOGIN",
+        "path": "post",
+        "fullPath": "/api/authpost"
+      },
+      {
+        "method": "/REFRESH-TOKEN",
+        "path": "post",
+        "fullPath": "/api/authpost"
+      },
+      {
+        "method": "/SOCIAL-LOGIN",
+        "path": "post",
+        "fullPath": "/api/authpost"
+      },
+      {
+        "method": "/LOGOUT",
+        "path": "post",
+        "fullPath": "/api/authpost"
+      }
+    ],
+    "/api/auto-payout": [
+      {
+        "method": "/SUMMARY",
+        "path": "get",
+        "fullPath": "/api/auto-payoutget"
+      },
+      {
+        "method": "/TRIGGER",
+        "path": "post",
+        "fullPath": "/api/auto-payoutpost"
+      },
+      {
+        "method": "/PROCESS/:BOOKINGID",
+        "path": "post",
+        "fullPath": "/api/auto-payoutpost"
+      },
+      {
+        "method": "/REFUND/:BOOKINGID",
+        "path": "post",
+        "fullPath": "/api/auto-payoutpost"
+      }
+    ],
+    "/api/booking": [
+      {
+        "method": "GET",
+        "path": "/:id",
+        "fullPath": "/api/booking/:id"
+      },
+      {
+        "method": "GET",
+        "path": "/:id",
+        "fullPath": "/api/booking/:id"
+      },
+      {
+        "method": "/AVAILABILITY",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/FIELDS/:FIELDID/SLOT-AVAILABILITY",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/MY-BOOKINGS",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/MY-RECURRING",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/STATS",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/:ID/REFUND-ELIGIBILITY",
+        "path": "get",
+        "fullPath": "/api/bookingget"
+      },
+      {
+        "method": "/:ID/STATUS",
+        "path": "patch",
+        "fullPath": "/api/bookingpatch"
+      },
+      {
+        "method": "/:ID/CANCEL",
+        "path": "patch",
+        "fullPath": "/api/bookingpatch"
+      },
+      {
+        "method": "/",
+        "path": "post",
+        "fullPath": "/api/bookingpost"
+      },
+      {
+        "method": "/:ID/CANCEL-RECURRING",
+        "path": "post",
+        "fullPath": "/api/bookingpost"
+      },
+      {
+        "method": "/MARK-COMPLETED",
+        "path": "post",
+        "fullPath": "/api/bookingpost"
+      }
+    ],
+    "/api/chat": [
+      {
+        "method": "/CONVERSATIONS/:CONVERSATIONID",
+        "path": "delete",
+        "fullPath": "/api/chatdelete"
+      },
+      {
+        "method": "/CONVERSATIONS",
+        "path": "get",
+        "fullPath": "/api/chatget"
+      },
+      {
+        "method": "/CONVERSATIONS/:CONVERSATIONID/MESSAGES",
+        "path": "get",
+        "fullPath": "/api/chatget"
+      },
+      {
+        "method": "/UNREAD-COUNT",
+        "path": "get",
+        "fullPath": "/api/chatget"
+      },
+      {
+        "method": "/CONVERSATIONS",
+        "path": "post",
+        "fullPath": "/api/chatpost"
+      },
+      {
+        "method": "/MESSAGES",
+        "path": "post",
+        "fullPath": "/api/chatpost"
+      }
+    ],
+    "/api/claim": [
+      {
+        "method": "/CHECK-ELIGIBILITY/:FIELDID",
+        "path": "get",
+        "fullPath": "/api/claimget"
+      },
+      {
+        "method": "/FIELD/:FIELDID",
+        "path": "get",
+        "fullPath": "/api/claimget"
+      },
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/claimget"
+      },
+      {
+        "method": "/:CLAIMID",
+        "path": "get",
+        "fullPath": "/api/claimget"
+      },
+      {
+        "method": "/:CLAIMID/STATUS",
+        "path": "patch",
+        "fullPath": "/api/claimpatch"
+      },
+      {
+        "method": "/SUBMIT",
+        "path": "post",
+        "fullPath": "/api/claimpost"
+      }
+    ],
+    "/api/commission": [
+      {
+        "method": "/SETTINGS",
+        "path": "get",
+        "fullPath": "/api/commissionget"
+      },
+      {
+        "method": "/FIELD-OWNER/:USERID",
+        "path": "get",
+        "fullPath": "/api/commissionget"
+      },
+      {
+        "method": "/FIELD-OWNERS",
+        "path": "get",
+        "fullPath": "/api/commissionget"
+      },
+      {
+        "method": "/SETTINGS",
+        "path": "put",
+        "fullPath": "/api/commissionput"
+      },
+      {
+        "method": "/FIELD-OWNER/:USERID",
+        "path": "put",
+        "fullPath": "/api/commissionput"
+      }
+    ],
+    "/api/earnings": [
+      {
+        "method": "/DASHBOARD",
+        "path": "get",
+        "fullPath": "/api/earningsget"
+      },
+      {
+        "method": "/PAYOUT-HISTORY",
+        "path": "get",
+        "fullPath": "/api/earningsget"
+      },
+      {
+        "method": "/EXPORT",
+        "path": "get",
+        "fullPath": "/api/earningsget"
+      }
+    ],
+    "/api/faq": [
+      {
+        "method": "/ADMIN/:ID",
+        "path": "delete",
+        "fullPath": "/api/faqdelete"
+      },
+      {
+        "method": "/PUBLIC",
+        "path": "get",
+        "fullPath": "/api/faqget"
+      },
+      {
+        "method": "/ADMIN",
+        "path": "get",
+        "fullPath": "/api/faqget"
+      },
+      {
+        "method": "/ADMIN/:ID",
+        "path": "get",
+        "fullPath": "/api/faqget"
+      },
+      {
+        "method": "/ADMIN",
+        "path": "post",
+        "fullPath": "/api/faqpost"
+      },
+      {
+        "method": "/ADMIN/BULK",
+        "path": "post",
+        "fullPath": "/api/faqpost"
+      },
+      {
+        "method": "/ADMIN/:ID",
+        "path": "put",
+        "fullPath": "/api/faqput"
+      },
+      {
+        "method": "/ADMIN/REORDER",
+        "path": "put",
+        "fullPath": "/api/faqput"
+      }
+    ],
+    "/api/favorite": [
+      {
+        "method": "/:FIELDID",
+        "path": "delete",
+        "fullPath": "/api/favoritedelete"
+      },
+      {
+        "method": "/MY-SAVED-FIELDS",
+        "path": "get",
+        "fullPath": "/api/favoriteget"
+      },
+      {
+        "method": "/CHECK/:FIELDID",
+        "path": "get",
+        "fullPath": "/api/favoriteget"
+      },
+      {
+        "method": "/TOGGLE/:FIELDID",
+        "path": "post",
+        "fullPath": "/api/favoritepost"
+      }
+    ],
+    "/api/field": [
+      {
+        "method": "PATCH",
+        "path": "/:id",
+        "fullPath": "/api/field/:id"
+      },
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/SUGGESTIONS",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/SEARCH/LOCATION",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/UNCLAIMED",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/:ID",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/OWNER/FIELD",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/OWNER/BOOKINGS",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/OWNER/BOOKINGS/RECENT",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/OWNER/BOOKINGS/TODAY",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/OWNER/BOOKINGS/UPCOMING",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/OWNER/BOOKINGS/PREVIOUS",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/MY-FIELDS",
+        "path": "get",
+        "fullPath": "/api/fieldget"
+      },
+      {
+        "method": "/:ID/TOGGLE-STATUS",
+        "path": "patch",
+        "fullPath": "/api/fieldpatch"
+      },
+      {
+        "method": "/CLAIM-OWNERSHIP",
+        "path": "post",
+        "fullPath": "/api/fieldpost"
+      },
+      {
+        "method": "/SAVE-PROGRESS",
+        "path": "post",
+        "fullPath": "/api/fieldpost"
+      },
+      {
+        "method": "/SUBMIT-FOR-REVIEW",
+        "path": "post",
+        "fullPath": "/api/fieldpost"
+      },
+      {
+        "method": "/",
+        "path": "post",
+        "fullPath": "/api/fieldpost"
+      }
+    ],
+    "/api/notification": [
+      {
+        "method": "/:ID",
+        "path": "delete",
+        "fullPath": "/api/notificationdelete"
+      },
+      {
+        "method": "/CLEAR-ALL",
+        "path": "delete",
+        "fullPath": "/api/notificationdelete"
+      },
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/notificationget"
+      },
+      {
+        "method": "/UNREAD-COUNT",
+        "path": "get",
+        "fullPath": "/api/notificationget"
+      },
+      {
+        "method": "/:ID/READ",
+        "path": "patch",
+        "fullPath": "/api/notificationpatch"
+      },
+      {
+        "method": "/READ-ALL",
+        "path": "patch",
+        "fullPath": "/api/notificationpatch"
+      }
+    ],
+    "/api/payment-method": [
+      {
+        "method": "/:PAYMENTMETHODID",
+        "path": "delete",
+        "fullPath": "/api/payment-methoddelete"
+      },
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/payment-methodget"
+      },
+      {
+        "method": "/SETUP-INTENT",
+        "path": "post",
+        "fullPath": "/api/payment-methodpost"
+      },
+      {
+        "method": "/SAVE",
+        "path": "post",
+        "fullPath": "/api/payment-methodpost"
+      },
+      {
+        "method": "/:PAYMENTMETHODID/SET-DEFAULT",
+        "path": "put",
+        "fullPath": "/api/payment-methodput"
+      }
+    ],
+    "/api/payment": [
+      {
+        "method": "/PAYMENT-METHODS",
+        "path": "get",
+        "fullPath": "/api/paymentget"
+      },
+      {
+        "method": "/CREATE-PAYMENT-INTENT",
+        "path": "post",
+        "fullPath": "/api/paymentpost"
+      },
+      {
+        "method": "/CONFIRM-PAYMENT",
+        "path": "post",
+        "fullPath": "/api/paymentpost"
+      }
+    ],
+    "/api/payout": [
+      {
+        "method": "/EARNINGS/HISTORY",
+        "path": "get",
+        "fullPath": "/api/payoutget"
+      },
+      {
+        "method": "/EARNINGS/SUMMARY",
+        "path": "get",
+        "fullPath": "/api/payoutget"
+      },
+      {
+        "method": "/TRANSACTIONS/:TRANSACTIONID",
+        "path": "get",
+        "fullPath": "/api/payoutget"
+      },
+      {
+        "method": "/HISTORY",
+        "path": "get",
+        "fullPath": "/api/payoutget"
+      },
+      {
+        "method": "/PROCESS-PENDING",
+        "path": "post",
+        "fullPath": "/api/payoutpost"
+      },
+      {
+        "method": "/TRIGGER/:BOOKINGID",
+        "path": "post",
+        "fullPath": "/api/payoutpost"
+      }
+    ],
+    "/api/review": [
+      {
+        "method": "/:REVIEWID",
+        "path": "delete",
+        "fullPath": "/api/reviewdelete"
+      },
+      {
+        "method": "/USER/:USERID?",
+        "path": "get",
+        "fullPath": "/api/reviewget"
+      },
+      {
+        "method": "/:REVIEWID/HELPFUL",
+        "path": "post",
+        "fullPath": "/api/reviewpost"
+      }
+    ],
+    "/api/settings": [
+      {
+        "method": "/PUBLIC",
+        "path": "get",
+        "fullPath": "/api/settingsget"
+      },
+      {
+        "method": "/ADMIN",
+        "path": "get",
+        "fullPath": "/api/settingsget"
+      },
+      {
+        "method": "/USER",
+        "path": "get",
+        "fullPath": "/api/settingsget"
+      },
+      {
+        "method": "/ADMIN",
+        "path": "put",
+        "fullPath": "/api/settingsput"
+      },
+      {
+        "method": "/ADMIN/PLATFORM-IMAGES",
+        "path": "put",
+        "fullPath": "/api/settingsput"
+      }
+    ],
+    "/api/stripe-connect": [
+      {
+        "method": "/DISCONNECT",
+        "path": "delete",
+        "fullPath": "/api/stripe-connectdelete"
+      },
+      {
+        "method": "/ACCOUNT-STATUS",
+        "path": "get",
+        "fullPath": "/api/stripe-connectget"
+      },
+      {
+        "method": "/BALANCE",
+        "path": "get",
+        "fullPath": "/api/stripe-connectget"
+      },
+      {
+        "method": "/PAYOUT-HISTORY",
+        "path": "get",
+        "fullPath": "/api/stripe-connectget"
+      },
+      {
+        "method": "/CREATE-ACCOUNT",
+        "path": "post",
+        "fullPath": "/api/stripe-connectpost"
+      },
+      {
+        "method": "/ONBOARDING-LINK",
+        "path": "post",
+        "fullPath": "/api/stripe-connectpost"
+      },
+      {
+        "method": "/UPDATE-BANK",
+        "path": "post",
+        "fullPath": "/api/stripe-connectpost"
+      },
+      {
+        "method": "/PAYOUT",
+        "path": "post",
+        "fullPath": "/api/stripe-connectpost"
+      }
+    ],
+    "/api/stripe": [],
+    "/api/upload": [
+      {
+        "method": "/DIRECT",
+        "path": "post",
+        "fullPath": "/api/uploadpost"
+      },
+      {
+        "method": "/ADMIN/DIRECT",
+        "path": "post",
+        "fullPath": "/api/uploadpost"
+      },
+      {
+        "method": "/MULTIPLE",
+        "path": "post",
+        "fullPath": "/api/uploadpost"
+      },
+      {
+        "method": "/ADMIN/MULTIPLE",
+        "path": "post",
+        "fullPath": "/api/uploadpost"
+      }
+    ],
+    "/api/user-block": [
+      {
+        "method": "/BLOCKED",
+        "path": "get",
+        "fullPath": "/api/user-blockget"
+      },
+      {
+        "method": "/BLOCKED-BY",
+        "path": "get",
+        "fullPath": "/api/user-blockget"
+      },
+      {
+        "method": "/STATUS/:OTHERUSERID",
+        "path": "get",
+        "fullPath": "/api/user-blockget"
+      },
+      {
+        "method": "/BLOCK",
+        "path": "post",
+        "fullPath": "/api/user-blockpost"
+      },
+      {
+        "method": "/UNBLOCK",
+        "path": "post",
+        "fullPath": "/api/user-blockpost"
+      }
+    ],
+    "/api/user-report": [
+      {
+        "method": "/REPORTS",
+        "path": "get",
+        "fullPath": "/api/user-reportget"
+      },
+      {
+        "method": "/REPORTS/MY-REPORTS",
+        "path": "get",
+        "fullPath": "/api/user-reportget"
+      },
+      {
+        "method": "/REPORTS/:REPORTID",
+        "path": "get",
+        "fullPath": "/api/user-reportget"
+      },
+      {
+        "method": "/REPORT",
+        "path": "post",
+        "fullPath": "/api/user-reportpost"
+      },
+      {
+        "method": "/REPORTS/:REPORTID/STATUS",
+        "path": "put",
+        "fullPath": "/api/user-reportput"
+      }
+    ],
+    "/api/user": [
+      {
+        "method": "GET",
+        "path": "/:id",
+        "fullPath": "/api/user/:id"
+      },
+      {
+        "method": "GET",
+        "path": "/:id",
+        "fullPath": "/api/user/:id"
+      },
+      {
+        "method": "/STATS",
+        "path": "get",
+        "fullPath": "/api/userget"
+      },
+      {
+        "method": "/",
+        "path": "get",
+        "fullPath": "/api/userget"
+      },
+      {
+        "method": "/CHANGE-PASSWORD",
+        "path": "patch",
+        "fullPath": "/api/userpatch"
+      }
+    ]
+  }
+}

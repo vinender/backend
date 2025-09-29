@@ -49,6 +49,10 @@ import aboutPageRoutes from './routes/about-page.routes';
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
 
+// Import API documentation
+import { apiDocumentation } from './utils/api-documentation';
+import { generateApiDocsHTML } from './utils/api-docs-template';
+
 // Import scheduled jobs
 import { initPayoutJobs } from './jobs/payout.job';
 import { startHeldPayoutReleaseJobs } from './jobs/held-payout-release.job';
@@ -153,23 +157,34 @@ class Server {
       });
     });
 
-    // API info endpoint
+    // API documentation endpoint
     this.app.get('/api', (req, res) => {
-      res.json({
-        success: true,
-        message: 'Fieldsy API',
-        version: '1.0.0',
-        endpoints: {
-          auth: '/api/auth',
-          users: '/api/users',
-          fields: '/api/fields',
-          bookings: '/api/bookings',
-          reviews: '/api/reviews',
-          notifications: '/api/notifications',
-          payments: '/api/payments',
-          chat: '/api/chat',
-        },
-      });
+      // Check if client accepts HTML
+      const acceptHeader = req.headers.accept || '';
+      
+      if (acceptHeader.includes('text/html')) {
+        // Serve HTML documentation
+        res.setHeader('Content-Type', 'text/html');
+        res.send(generateApiDocsHTML(apiDocumentation));
+      } else {
+        // Serve JSON for API clients
+        res.json({
+          success: true,
+          message: 'Fieldsy API',
+          version: '1.0.0',
+          documentation: '/api (view in browser for interactive docs)',
+          endpoints: {
+            auth: '/api/auth',
+            users: '/api/users',
+            fields: '/api/fields',
+            bookings: '/api/bookings',
+            reviews: '/api/reviews',
+            notifications: '/api/notifications',
+            payments: '/api/payments',
+            chat: '/api/chat',
+          },
+        });
+      }
     });
 
     // Stripe webhook route (must be before other routes due to raw body requirement)

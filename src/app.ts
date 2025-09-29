@@ -39,8 +39,10 @@ app.use(cors({
     
     // List of allowed origins
     const allowedOrigins = [
-      process.env.FRONTEND_URL || "http://localhost:3000",
-      "http://localhost:3003",
+      process.env.FRONTEND_URL || "http://localhost:3000", // Frontend development
+      "http://localhost:3001", // Frontend alternate port
+      "http://localhost:3002", // Frontend alternate port
+      "http://localhost:3003", // Admin dashboard development
       "http://localhost:8081", // Expo web
       "http://localhost:19006", // Expo web alternate port
       "exp://localhost:8081", // Expo development
