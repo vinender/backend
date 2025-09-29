@@ -1,6 +1,7 @@
 //@ts-nocheck
 import { Request, Response } from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import multer from 'multer';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -156,6 +157,51 @@ export const uploadMultiple = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to upload files',
+    });
+  }
+};
+
+// Generate presigned POST URL for direct browser upload
+export const getPresignedUrl = async (req: Request, res: Response) => {
+  try {
+    const { fileName, fileType, folder = 'uploads' } = req.body;
+
+    if (!fileName || !fileType) {
+      return res.status(400).json({
+        success: false,
+        message: 'fileName and fileType are required',
+      });
+    }
+
+    // Generate unique key
+    const fileExtension = fileName.split('.').pop() || 'jpg';
+    const key = `${folder}/${uuidv4()}.${fileExtension}`;
+
+    // Create presigned POST data
+    const { url, fields } = await createPresignedPost(s3Client, {
+      Bucket: process.env.AWS_S3_BUCKET!,
+      Key: key,
+      Conditions: [
+        ['content-length-range', 0, 10 * 1024 * 1024], // 10MB max
+        ['starts-with', '$Content-Type', fileType],
+      ],
+      Fields: {
+        'Content-Type': fileType,
+      },
+      Expires: 600, // 10 minutes
+    });
+
+    // Return the presigned URL and form fields
+    res.status(200).json({
+      uploadUrl: url,
+      fileUrl: `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`,
+      fields,
+    });
+  } catch (error: any) {
+    console.error('Error generating presigned URL:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate presigned URL',
     });
   }
 };

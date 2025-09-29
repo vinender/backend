@@ -1,0 +1,33 @@
+[
+  {
+    "AllowedHeaders": [
+      "*"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      "http://localhost:3003",
+      "http://localhost:3004",
+      "http://localhost:3005",
+      "https://fieldsy.indiitserver.in",
+      "https://fieldsy.com",
+      "https://*.fieldsy.com",
+      "https://*.indiitserver.in"
+    ],
+    "ExposeHeaders": [
+      "ETag",
+      "x-amz-server-side-encryption",
+      "x-amz-request-id",
+      "x-amz-id-2"
+    ],
+    "MaxAgeSeconds": 3000
+  }
+]
