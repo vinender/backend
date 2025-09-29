@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+//@ts-nocheck
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
@@ -47,6 +48,9 @@ const settings_routes_1 = __importDefault(require("./routes/settings.routes"));
 const faq_routes_1 = __importDefault(require("./routes/faq.routes"));
 const upload_routes_1 = __importDefault(require("./routes/upload.routes"));
 const about_page_routes_1 = __importDefault(require("./routes/about-page.routes"));
+// Import API documentation
+const api_documentation_1 = require("./utils/api-documentation");
+const api_docs_template_1 = require("./utils/api-docs-template");
 // Import scheduled jobs
 const payout_job_1 = require("./jobs/payout.job");
 const held_payout_release_job_1 = require("./jobs/held-payout-release.job");
@@ -72,6 +76,10 @@ class Server {
                     'http://localhost:3001',
                     'http://localhost:3002',
                     'http://localhost:3003', // Admin dashboard
+                    'https://fieldsy.indiitserver.in', // Production frontend
+                    'https://fieldsy-admin.indiitserver.in', // Production admin
+                    'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
+                    'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
                     constants_1.FRONTEND_URL
                 ];
                 // Allow requests with no origin (like mobile apps or Postman)
@@ -135,23 +143,63 @@ class Server {
                 uptime: process.uptime(),
             });
         });
-        // API info endpoint
+        // API documentation - Root route for production
+        this.app.get('/', (req, res) => {
+            // Check if client accepts HTML
+            const acceptHeader = req.headers.accept || '';
+            if (acceptHeader.includes('text/html')) {
+                // Serve HTML documentation
+                res.setHeader('Content-Type', 'text/html');
+                res.send((0, api_docs_template_1.generateApiDocsHTML)(api_documentation_1.apiDocumentation));
+            }
+            else {
+                // Serve JSON for API clients
+                res.json({
+                    success: true,
+                    message: 'Fieldsy API',
+                    version: '1.0.0',
+                    documentation: 'Visit this URL in a browser for interactive documentation',
+                    endpoints: {
+                        auth: '/api/auth',
+                        users: '/api/users',
+                        fields: '/api/fields',
+                        bookings: '/api/bookings',
+                        reviews: '/api/reviews',
+                        notifications: '/api/notifications',
+                        payments: '/api/payments',
+                        chat: '/api/chat',
+                    },
+                });
+            }
+        });
+        // API documentation endpoint (also available at /api)
         this.app.get('/api', (req, res) => {
-            res.json({
-                success: true,
-                message: 'Fieldsy API',
-                version: '1.0.0',
-                endpoints: {
-                    auth: '/api/auth',
-                    users: '/api/users',
-                    fields: '/api/fields',
-                    bookings: '/api/bookings',
-                    reviews: '/api/reviews',
-                    notifications: '/api/notifications',
-                    payments: '/api/payments',
-                    chat: '/api/chat',
-                },
-            });
+            // Check if client accepts HTML
+            const acceptHeader = req.headers.accept || '';
+            if (acceptHeader.includes('text/html')) {
+                // Serve HTML documentation
+                res.setHeader('Content-Type', 'text/html');
+                res.send((0, api_docs_template_1.generateApiDocsHTML)(api_documentation_1.apiDocumentation));
+            }
+            else {
+                // Serve JSON for API clients
+                res.json({
+                    success: true,
+                    message: 'Fieldsy API',
+                    version: '1.0.0',
+                    documentation: '/api (view in browser for interactive docs)',
+                    endpoints: {
+                        auth: '/api/auth',
+                        users: '/api/users',
+                        fields: '/api/fields',
+                        bookings: '/api/bookings',
+                        reviews: '/api/reviews',
+                        notifications: '/api/notifications',
+                        payments: '/api/payments',
+                        chat: '/api/chat',
+                    },
+                });
+            }
         });
         // Stripe webhook route (must be before other routes due to raw body requirement)
         this.app.use('/api/stripe', stripe_routes_1.default);

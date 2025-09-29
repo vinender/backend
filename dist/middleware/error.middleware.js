@@ -19,7 +19,7 @@ const errorHandler = (err, req, res, next) => {
     }
     // Mongoose duplicate key
     if (err.code === 11000) {
-        const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
+        const value = err.errmsg.match(/(["'])(\?.)*?\1/)[0];
         const message = `Duplicate field value: ${value}. Please use another value!`;
         error = new AppError_1.AppError(message, 400);
     }

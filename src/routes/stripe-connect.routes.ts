@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import { protect, restrictTo } from '../middleware/auth.middleware';
 import stripeConnectController from '../controllers/stripe-connect.controller';

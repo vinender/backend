@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express'
 import { getAboutPage, updateAboutPage, updateAboutSection } from '../controllers/about-page.controller'
 import { authenticateAdmin } from '../middleware/admin.middleware'

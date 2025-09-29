@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getReviewsQuerySchema = exports.respondToReviewSchema = exports.updateReviewSchema = exports.createReviewSchema = void 0;
+//@ts-nocheck
 const zod_1 = require("zod");
 exports.createReviewSchema = zod_1.z.object({
     body: zod_1.z.object({

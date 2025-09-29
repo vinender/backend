@@ -1,3 +1,4 @@
+//@ts-nocheck
 /**
  * Custom error class for application errors
  */

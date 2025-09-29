@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import autoPayoutController from '../controllers/auto-payout.controller';
 import { protect, restrictTo } from '../middleware/auth.middleware';

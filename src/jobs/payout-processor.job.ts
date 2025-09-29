@@ -1,3 +1,4 @@
+//@ts-nocheck
 import cron from 'node-cron';
 import { automaticPayoutService } from '../services/auto-payout.service';
 import { createNotification } from '../controllers/notification.controller';

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+//@ts-nocheck
 const express_1 = require("express");
 const upload_controller_1 = require("../controllers/upload.controller");
 const auth_middleware_1 = require("../middleware/auth.middleware");

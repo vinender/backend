@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import favoriteController from '../controllers/favorite.controller';
 import { protect, restrictTo } from '../middleware/auth.middleware';

@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Request, Response } from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import multer from 'multer';

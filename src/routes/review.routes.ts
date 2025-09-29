@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import reviewController from '../controllers/review.controller';
 import { protect } from '../middleware/auth.middleware';

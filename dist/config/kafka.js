@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.shutdownKafka = exports.sendMessageToKafka = exports.initializeKafka = void 0;
+//@ts-nocheck
 const kafkajs_1 = require("kafkajs");
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
@@ -159,7 +160,7 @@ const sendMessageToKafka = async (message) => {
     catch (error) {
         console.error('Error handling message:', error);
         // If Kafka fails, try direct processing as fallback
-        if (socketIO && !error.message.includes('Socket.io')) {
+        if (socketIO && error instanceof Error && !error.message.includes('Socket.io')) {
             console.log('Kafka failed, processing message directly');
             return await processMessage(message, socketIO);
         }

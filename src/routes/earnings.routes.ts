@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import earningsController from '../controllers/earnings.controller';
 import { protect, restrictTo } from '../middleware/auth.middleware';

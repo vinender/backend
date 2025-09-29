@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.payoutProcessorJob = exports.PayoutProcessorJob = void 0;
+//@ts-nocheck
 const node_cron_1 = __importDefault(require("node-cron"));
 const auto_payout_service_1 = require("../services/auto-payout.service");
 const notification_controller_1 = require("../controllers/notification.controller");

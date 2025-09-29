@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+//@ts-nocheck
 const express_1 = require("express");
 const booking_controller_1 = __importDefault(require("../controllers/booking.controller"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
@@ -14,8 +15,10 @@ router.get('/fields/:fieldId/slot-availability', booking_controller_1.default.ge
 router.use(auth_middleware_1.protect);
 // Dog owner and field owner routes
 router.get('/my-bookings', booking_controller_1.default.getMyBookings);
+router.get('/my-recurring', booking_controller_1.default.getMyRecurringBookings);
 router.get('/stats', booking_controller_1.default.getBookingStats);
 router.post('/', booking_controller_1.default.createBooking);
+router.post('/:id/cancel-recurring', booking_controller_1.default.cancelRecurringBooking);
 // Admin routes
 router.get('/', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.getAllBookings);
 router.post('/mark-completed', (0, auth_middleware_1.restrictTo)('ADMIN'), booking_controller_1.default.markPastBookingsAsCompleted);

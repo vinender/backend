@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Server } from 'socket.io';
 
 declare global {

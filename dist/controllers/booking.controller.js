@@ -905,6 +905,258 @@ class BookingController {
             available: isAvailable,
         });
     });
+    // Get my recurring bookings (subscriptions + bookings with repeatBooking)
+    getMyRecurringBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const userId = req.user.id;
+        const { status = 'active' } = req.query;
+        // Get both subscriptions and bookings with repeatBooking !== 'none'
+        const [subscriptions, recurringBookings] = await Promise.all([
+            // Get user's subscriptions from subscription table
+            database_1.default.subscription.findMany({
+                where: {
+                    userId,
+                    ...(status && { status: status })
+                },
+                include: {
+                    field: {
+                        include: {
+                            owner: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true
+                                }
+                            }
+                        }
+                    },
+                    bookings: {
+                        take: 5,
+                        orderBy: {
+                            date: 'desc'
+                        }
+                    }
+                },
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            }),
+            // Get regular bookings with repeatBooking set (handle case variations)
+            database_1.default.booking.findMany({
+                where: {
+                    userId,
+                    AND: [
+                        {
+                            repeatBooking: {
+                                not: null
+                            }
+                        },
+                        {
+                            repeatBooking: {
+                                notIn: ['none', 'None', 'NONE', '']
+                            }
+                        }
+                    ],
+                    status: status === 'active' ? 'CONFIRMED' : { in: ['CANCELLED', 'COMPLETED'] }
+                },
+                include: {
+                    field: {
+                        include: {
+                            owner: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true
+                                }
+                            }
+                        }
+                    },
+                    payment: true
+                },
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            })
+        ]);
+        // Format subscriptions
+        const formattedSubscriptions = subscriptions.map(sub => ({
+            id: sub.id,
+            type: 'subscription',
+            fieldId: sub.fieldId,
+            fieldName: sub.field.name,
+            fieldAddress: sub.field.address,
+            fieldOwner: sub.field.owner.name,
+            interval: sub.interval,
+            dayOfWeek: sub.dayOfWeek,
+            dayOfMonth: sub.dayOfMonth,
+            timeSlot: sub.timeSlot,
+            startTime: sub.startTime,
+            endTime: sub.endTime,
+            numberOfDogs: sub.numberOfDogs,
+            totalPrice: sub.totalPrice,
+            status: sub.status,
+            nextBillingDate: sub.nextBillingDate,
+            currentPeriodEnd: sub.currentPeriodEnd,
+            cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+            canceledAt: sub.canceledAt,
+            recentBookings: sub.bookings.map(booking => ({
+                id: booking.id,
+                date: booking.date,
+                status: booking.status,
+                paymentStatus: booking.paymentStatus
+            })),
+            createdAt: sub.createdAt
+        }));
+        // Format regular bookings with repeatBooking
+        const formattedRecurringBookings = recurringBookings.map(booking => ({
+            id: booking.id,
+            type: 'booking',
+            fieldId: booking.fieldId,
+            fieldName: booking.field.name,
+            fieldAddress: booking.field.address,
+            fieldOwner: booking.field.owner.name || booking.field.owner.email,
+            interval: booking.repeatBooking, // 'weekly' or 'monthly'
+            dayOfWeek: null, // Could extract from date if needed
+            dayOfMonth: null,
+            timeSlot: booking.timeSlot,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+            numberOfDogs: booking.numberOfDogs,
+            totalPrice: booking.totalPrice,
+            status: booking.status === 'CONFIRMED' ? 'active' : booking.status.toLowerCase(),
+            nextBillingDate: booking.date, // Use booking date
+            currentPeriodEnd: booking.date,
+            cancelAtPeriodEnd: false,
+            canceledAt: booking.cancelledAt,
+            recentBookings: [{
+                    id: booking.id,
+                    date: booking.date,
+                    status: booking.status,
+                    paymentStatus: booking.paymentStatus
+                }],
+            createdAt: booking.createdAt,
+            repeatBooking: booking.repeatBooking // Include original field
+        }));
+        // Combine both lists
+        const allRecurringBookings = [...formattedSubscriptions, ...formattedRecurringBookings];
+        // Sort by creation date (newest first)
+        allRecurringBookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        res.json({
+            success: true,
+            data: allRecurringBookings,
+            total: allRecurringBookings.length,
+            breakdown: {
+                subscriptions: formattedSubscriptions.length,
+                recurringBookings: formattedRecurringBookings.length
+            }
+        });
+    });
+    // Cancel recurring booking (subscription)
+    cancelRecurringBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const userId = req.user.id;
+        const { id: subscriptionId } = req.params;
+        const { cancelImmediately = false } = req.body;
+        // Find the subscription
+        const subscription = await database_1.default.subscription.findUnique({
+            where: {
+                id: subscriptionId
+            },
+            include: {
+                field: true
+            }
+        });
+        if (!subscription) {
+            throw new AppError_1.AppError('Recurring booking not found', 404);
+        }
+        // Verify ownership
+        if (subscription.userId !== userId) {
+            throw new AppError_1.AppError('You are not authorized to cancel this recurring booking', 403);
+        }
+        // Cancel in Stripe if subscription exists
+        if (subscription.stripeSubscriptionId) {
+            try {
+                const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+                if (cancelImmediately) {
+                    // Cancel immediately and issue prorated refund
+                    await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+                }
+                else {
+                    // Cancel at period end
+                    await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+                        cancel_at_period_end: true
+                    });
+                }
+            }
+            catch (stripeError) {
+                console.error('Stripe cancellation error:', stripeError);
+                // Continue with local cancellation even if Stripe fails
+            }
+        }
+        // Update subscription in database
+        const updatedSubscription = await database_1.default.subscription.update({
+            where: {
+                id: subscriptionId
+            },
+            data: {
+                status: cancelImmediately ? 'canceled' : subscription.status,
+                cancelAtPeriodEnd: !cancelImmediately,
+                canceledAt: cancelImmediately ? new Date() : null
+            }
+        });
+        // Cancel future bookings if canceling immediately
+        if (cancelImmediately) {
+            await database_1.default.booking.updateMany({
+                where: {
+                    subscriptionId,
+                    date: {
+                        gte: new Date()
+                    },
+                    status: {
+                        in: ['PENDING', 'CONFIRMED']
+                    }
+                },
+                data: {
+                    status: 'CANCELLED',
+                    cancellationReason: 'Recurring booking canceled',
+                    cancelledAt: new Date()
+                }
+            });
+        }
+        // Create notification for user
+        await (0, notification_controller_1.createNotification)({
+            userId,
+            type: 'booking_cancelled',
+            title: 'Recurring Booking Canceled',
+            message: cancelImmediately
+                ? `Your recurring booking for ${subscription.field.name} has been canceled immediately.`
+                : `Your recurring booking for ${subscription.field.name} will be canceled at the end of the current period.`,
+            metadata: {
+                subscriptionId,
+                fieldId: subscription.fieldId,
+                cancelType: cancelImmediately ? 'immediate' : 'period_end'
+            }
+        });
+        // Create notification for field owner
+        await (0, notification_controller_1.createNotification)({
+            userId: subscription.field.ownerId,
+            type: 'booking_cancelled',
+            title: 'Recurring Booking Canceled',
+            message: cancelImmediately
+                ? `A recurring booking for ${subscription.field.name} has been canceled.`
+                : `A recurring booking for ${subscription.field.name} will end after the current period.`,
+            metadata: {
+                subscriptionId,
+                fieldId: subscription.fieldId,
+                cancelType: cancelImmediately ? 'immediate' : 'period_end'
+            }
+        });
+        res.json({
+            success: true,
+            message: cancelImmediately
+                ? 'Recurring booking canceled immediately'
+                : 'Recurring booking will be canceled at the end of the current period',
+            data: updatedSubscription
+        });
+    });
     // Helper function
     timeToMinutes(time) {
         const [hours, minutes] = time.split(':').map(Number);

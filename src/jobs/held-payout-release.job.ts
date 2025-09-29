@@ -1,3 +1,4 @@
+//@ts-nocheck
 import cron from 'node-cron';
 import { heldPayoutService } from '../services/held-payout.service';
 

@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+//@ts-nocheck
 const express_1 = require("express");
 const auto_payout_controller_1 = __importDefault(require("../controllers/auto-payout.controller"));
 const auth_middleware_1 = require("../middleware/auth.middleware");

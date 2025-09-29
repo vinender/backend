@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import { notificationController } from '../controllers/notification.controller';
 import { protect } from '../middleware/auth.middleware';

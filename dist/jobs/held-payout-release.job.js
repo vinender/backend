@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startHeldPayoutReleaseJobs = void 0;
+//@ts-nocheck
 const node_cron_1 = __importDefault(require("node-cron"));
 const held_payout_service_1 = require("../services/held-payout.service");
 // Run every hour to check for held payouts that should be released

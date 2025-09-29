@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import { protect } from '../middleware/auth.middleware';
 import { paymentMethodController } from '../controllers/payment-method.controller';

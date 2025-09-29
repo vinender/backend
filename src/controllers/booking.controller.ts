@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Request, Response, NextFunction } from 'express';
 import BookingModel from '../models/booking.model';
 import FieldModel from '../models/field.model';

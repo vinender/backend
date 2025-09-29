@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.otpService = exports.OtpService = void 0;
+//@ts-nocheck
 const client_1 = require("@prisma/client");
 const otpGenerator = __importStar(require("otp-generator"));
 const email_service_1 = require("./email.service");

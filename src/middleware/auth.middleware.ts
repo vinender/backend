@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';

@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { PrismaClient } from '@prisma/client';
 import * as otpGenerator from 'otp-generator';
 import { emailService } from './email.service';

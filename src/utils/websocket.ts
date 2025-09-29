@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Server } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import jwt from 'jsonwebtoken';

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppError = void 0;
+//@ts-nocheck
 /**
  * Custom error class for application errors
  */

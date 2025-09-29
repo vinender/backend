@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FIELD_TYPES = exports.BOOKING_STATUS = exports.USER_ROLES = exports.FRONTEND_URL = exports.NODE_ENV = exports.PORT = exports.BCRYPT_ROUNDS = exports.JWT_EXPIRES_IN = exports.JWT_SECRET = void 0;
+//@ts-nocheck
 exports.JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 exports.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 exports.BCRYPT_ROUNDS = 10;

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+//@ts-nocheck
 const express_1 = require("express");
 const faq_controller_1 = require("../controllers/faq.controller");
 const admin_middleware_1 = require("../middleware/admin.middleware");

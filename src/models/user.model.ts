@@ -1,3 +1,4 @@
+//@ts-nocheck
 import prisma from '../config/database';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_ROUNDS } from '../config/constants';

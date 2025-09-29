@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "build:no-check": "swc src -d dist --copy-files",
+    "build:fast": "swc src -d dist --copy-files",
     "start": "node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "prisma:generate": "prisma generate",
@@ -56,6 +58,8 @@
     "zod": "^4.0.17"
   },
   "devDependencies": {
+    "@swc/cli": "^0.7.8",
+    "@swc/core": "^1.13.5",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.9",

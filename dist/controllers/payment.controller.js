@@ -20,7 +20,10 @@ class PaymentController {
                 return res.status(401).json({ error: 'User not authenticated' });
             }
             // Create idempotency key to prevent duplicate bookings
-            const idempotencyKey = `booking_${userId}_${fieldId}_${date}_${timeSlot}`.replace(/[\s:]/g, '_');
+            // Use a unique key for each payment intent attempt
+            const crypto = require('crypto');
+            const requestId = crypto.randomBytes(16).toString('hex');
+            const idempotencyKey = `booking_${userId}_${fieldId}_${date}_${timeSlot}_${requestId}`.replace(/[\s:]/g, '_');
             // Check if a booking already exists for this exact combination
             const existingBooking = await database_1.default.booking.findFirst({
                 where: {
@@ -41,13 +44,27 @@ class PaymentController {
                     timeSlot,
                     existingBookingId: existingBooking.id
                 });
-                // Return existing booking info instead of creating duplicate
-                return res.status(200).json({
-                    paymentSucceeded: true,
-                    bookingId: existingBooking.id,
-                    message: 'Booking already exists',
-                    isDuplicate: true
-                });
+                // Check if the existing booking is already paid
+                if (existingBooking.paymentStatus === 'PAID' && existingBooking.status === 'CONFIRMED') {
+                    // Return existing booking info instead of creating duplicate
+                    return res.status(200).json({
+                        paymentSucceeded: true,
+                        bookingId: existingBooking.id,
+                        message: 'Booking already exists and is confirmed',
+                        isDuplicate: true
+                    });
+                }
+                else if (existingBooking.paymentStatus === 'PENDING') {
+                    // If there's a pending booking, we can try to complete it
+                    // but for safety, we'll still prevent duplicate creation
+                    return res.status(200).json({
+                        paymentSucceeded: false,
+                        bookingId: existingBooking.id,
+                        message: 'A booking for this slot is already being processed',
+                        isDuplicate: true,
+                        isPending: true
+                    });
+                }
             }
             // Get user for Stripe customer
             const user = await database_1.default.user.findUnique({
@@ -223,7 +240,10 @@ class PaymentController {
             const fieldOwnerStripeAccount = await database_1.default.stripeAccount.findUnique({
                 where: { userId: field.ownerId }
             });
-            // Determine payout status based on Stripe account connection
+            // Get system settings for payout release schedule
+            const systemSettings = await database_1.default.systemSettings.findFirst();
+            const payoutReleaseSchedule = systemSettings?.payoutReleaseSchedule || 'after_cancellation_window';
+            // Determine payout status based on Stripe account connection and release schedule
             let payoutStatus = 'PENDING';
             let payoutHeldReason = undefined;
             if (paymentIntent.status === 'succeeded') {
@@ -231,6 +251,25 @@ class PaymentController {
                     // Hold the payout if field owner doesn't have a connected Stripe account
                     payoutStatus = 'HELD';
                     payoutHeldReason = 'NO_STRIPE_ACCOUNT';
+                }
+                else if (payoutReleaseSchedule === 'immediate') {
+                    // Process immediate payout if configured
+                    payoutStatus = 'PENDING'; // Will be processed immediately after booking creation
+                }
+                else if (payoutReleaseSchedule === 'on_weekend') {
+                    // Check if today is weekend
+                    const today = new Date().getDay();
+                    if (today === 5 || today === 6 || today === 0) { // Friday, Saturday, Sunday
+                        payoutStatus = 'PENDING';
+                    }
+                    else {
+                        payoutStatus = 'HELD';
+                        payoutHeldReason = 'WAITING_FOR_WEEKEND';
+                    }
+                }
+                else { // after_cancellation_window
+                    payoutStatus = 'HELD';
+                    payoutHeldReason = 'WITHIN_CANCELLATION_WINDOW';
                 }
             }
             const booking = await database_1.default.booking.create({
@@ -284,6 +323,70 @@ class PaymentController {
                         message: `You have a new booking for ${field.name} on ${date} at ${timeSlot}.`,
                         data: { bookingId: booking.id, fieldId }
                     });
+                }
+                // Process immediate payout if configured and Stripe account is connected
+                if (payoutReleaseSchedule === 'immediate' && fieldOwnerStripeAccount &&
+                    fieldOwnerStripeAccount.chargesEnabled && fieldOwnerStripeAccount.payoutsEnabled) {
+                    try {
+                        console.log(`Processing immediate payout for booking ${booking.id}`);
+                        // Create a transfer to the connected account
+                        const transfer = await stripe_config_1.stripe.transfers.create({
+                            amount: Math.round(fieldOwnerAmount * 100), // Convert to cents
+                            currency: 'gbp',
+                            destination: fieldOwnerStripeAccount.stripeAccountId,
+                            transfer_group: `booking_${booking.id}`,
+                            metadata: {
+                                bookingId: booking.id,
+                                fieldId: field.id,
+                                fieldOwnerId: field.ownerId,
+                                type: 'immediate_booking_payout',
+                                processingReason: 'immediate_release_configured'
+                            },
+                            description: `Immediate payout for booking ${booking.id} - ${field.name}`
+                        });
+                        // Create payout record in database
+                        const payout = await database_1.default.payout.create({
+                            data: {
+                                stripeAccountId: fieldOwnerStripeAccount.id,
+                                stripePayoutId: transfer.id,
+                                amount: fieldOwnerAmount,
+                                currency: 'gbp',
+                                status: 'paid',
+                                method: 'standard',
+                                description: `Immediate payout for booking ${booking.id}`,
+                                bookingIds: [booking.id],
+                                arrivalDate: new Date()
+                            }
+                        });
+                        // Update booking with payout details
+                        await database_1.default.booking.update({
+                            where: { id: booking.id },
+                            data: {
+                                payoutStatus: 'COMPLETED',
+                                payoutId: payout.id
+                            }
+                        });
+                        // Notify field owner about immediate payout
+                        await (0, notification_controller_1.createNotification)({
+                            userId: field.ownerId,
+                            type: 'PAYOUT_PROCESSED',
+                            title: '💰 Instant Payment Received!',
+                            message: `£${fieldOwnerAmount.toFixed(2)} has been instantly transferred to your account for the ${field.name} booking.`,
+                            data: {
+                                bookingId: booking.id,
+                                payoutId: payout.id,
+                                amount: fieldOwnerAmount,
+                                fieldName: field.name,
+                                customerName: user.name || user.email
+                            }
+                        });
+                        console.log(`Immediate payout processed successfully for booking ${booking.id}`);
+                    }
+                    catch (payoutError) {
+                        console.error('Error processing immediate payout:', payoutError);
+                        // Don't fail the booking, just log the error
+                        // Payout will be retried by the scheduled job
+                    }
                 }
             }
             res.json({

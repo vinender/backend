@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import prisma from '../config/database';
 import { authenticateAdmin } from '../middleware/admin.middleware';

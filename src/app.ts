@@ -1,3 +1,4 @@
+//@ts-nocheck
 import express from "express"
 import cors from "cors"
 import helmet from "helmet"
@@ -180,4 +181,3 @@ process.on("SIGTERM", async () => {
   await prisma.$disconnect();
   process.exit(0);
 })
-

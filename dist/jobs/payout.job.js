@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initPayoutJobs = void 0;
 exports.processAutomaticTransfers = processAutomaticTransfers;
+//@ts-nocheck
 const node_cron_1 = __importDefault(require("node-cron"));
 const refund_service_1 = __importDefault(require("../services/refund.service"));
 const database_1 = __importDefault(require("../config/database"));

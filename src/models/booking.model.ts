@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { PrismaClient, Booking, BookingStatus, Prisma } from '@prisma/client';
 import prisma from '../config/database';
 

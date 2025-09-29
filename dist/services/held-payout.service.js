@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.heldPayoutService = exports.HeldPayoutService = void 0;
+//@ts-nocheck
 const client_1 = require("@prisma/client");
 const notification_controller_1 = require("../controllers/notification.controller");
 const prisma = new client_1.PrismaClient();

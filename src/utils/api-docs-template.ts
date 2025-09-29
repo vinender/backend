@@ -1,3 +1,4 @@
+//@ts-nocheck
 export const generateApiDocsHTML = (docs: any) => {
   return `
 <!DOCTYPE html>

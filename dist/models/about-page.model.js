@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AboutPage = void 0;
+//@ts-nocheck
 const mongoose_1 = __importStar(require("mongoose"));
 const AboutPageSchema = new mongoose_1.Schema({
     heroSection: {

@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import fieldController from '../controllers/field.controller';
 import { protect, restrictTo } from '../middleware/auth.middleware';

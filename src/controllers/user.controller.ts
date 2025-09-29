@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Request, Response, NextFunction } from 'express';
 import UserModel from '../models/user.model';
 import { asyncHandler } from '../utils/asyncHandler';

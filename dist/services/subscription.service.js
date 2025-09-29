@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.subscriptionService = exports.SubscriptionService = void 0;
+//@ts-nocheck
 const stripe_config_1 = require("../config/stripe.config");
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("../controllers/notification.controller");

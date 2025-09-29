@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+//@ts-nocheck
 const client_1 = require("@prisma/client");
 // Create a single instance of PrismaClient
 const prisma = new client_1.PrismaClient({

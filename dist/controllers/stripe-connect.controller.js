@@ -11,7 +11,7 @@ const payout_service_1 = require("../services/payout.service");
 const held_payout_service_1 = require("../services/held-payout.service");
 // Initialize Stripe
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2024-11-20.acacia'
+    apiVersion: '2025-07-30.basil'
 });
 class StripeConnectController {
     // Create Stripe Connect account
@@ -106,17 +106,28 @@ class StripeConnectController {
         if (!stripeAccount) {
             throw new AppError_1.AppError('No Stripe account found. Please create one first.', 404);
         }
-        // Create account link for onboarding
+        // Check if account needs updating or initial onboarding
+        const account = await stripe.accounts.retrieve(stripeAccount.stripeAccountId);
+        // For Express accounts, we always use 'account_onboarding' type
+        // The onboarding flow will automatically show only the required fields
+        // based on what's missing or needs to be updated
         const accountLink = await stripe.accountLinks.create({
             account: stripeAccount.stripeAccountId,
             refresh_url: refreshUrl || `${process.env.FRONTEND_URL}/field-owner/payouts?refresh=true`,
             return_url: returnUrl || `${process.env.FRONTEND_URL}/field-owner/payouts?success=true`,
-            type: 'account_onboarding'
+            type: 'account_onboarding', // Always use account_onboarding for Express accounts
+            // Collection options can be specified to focus on specific requirements
+            collection_options: {
+                fields: 'eventually_due', // This will prioritize eventually due fields in the onboarding flow
+                future_requirements: 'include' // Include future requirements in the collection
+            }
         });
+        console.log(`Created onboarding link for user ${userId}, account ${stripeAccount.stripeAccountId}`);
         res.json({
             success: true,
             data: {
-                url: accountLink.url
+                url: accountLink.url,
+                type: 'account_onboarding'
             }
         });
     });
@@ -174,6 +185,40 @@ class StripeConnectController {
                 // Don't throw - continue with response
             }
         }
+        // Check if account is restricted or has issues
+        const hasCriticalRequirements = (account.requirements?.currently_due && account.requirements.currently_due.length > 0) ||
+            (account.requirements?.past_due && account.requirements.past_due.length > 0);
+        const hasEventualRequirements = account.requirements?.eventually_due && account.requirements.eventually_due.length > 0;
+        const hasRequirements = hasCriticalRequirements || hasEventualRequirements;
+        const isRestricted = !account.charges_enabled || !account.payouts_enabled;
+        const requiresAction = hasCriticalRequirements || isRestricted; // Only critical requirements need immediate action
+        // Format requirements for frontend
+        const formatRequirements = (requirements = []) => {
+            return requirements.map(req => {
+                // Convert Stripe requirement codes to human-readable text
+                const requirementLabels = {
+                    'individual.verification.document': 'Identity verification document',
+                    'individual.dob.day': 'Date of birth',
+                    'individual.dob.month': 'Date of birth',
+                    'individual.dob.year': 'Date of birth',
+                    'individual.first_name': 'First name',
+                    'individual.last_name': 'Last name',
+                    'individual.address.line1': 'Address',
+                    'individual.address.city': 'City',
+                    'individual.address.postal_code': 'Postal code',
+                    'individual.address.country': 'Country',
+                    'individual.email': 'Email address',
+                    'individual.phone': 'Phone number',
+                    'external_account': 'Bank account details',
+                    'tos_acceptance.date': 'Terms of service acceptance',
+                    'tos_acceptance.ip': 'Terms of service acceptance'
+                };
+                return {
+                    code: req,
+                    label: requirementLabels[req] || req.replace(/_/g, ' ').replace(/\./g, ' - ')
+                };
+            });
+        };
         res.json({
             success: true,
             data: {
@@ -182,8 +227,18 @@ class StripeConnectController {
                 chargesEnabled: account.charges_enabled,
                 payoutsEnabled: account.payouts_enabled,
                 detailsSubmitted: account.details_submitted,
-                requirementsCurrentlyDue: account.requirements?.currently_due || [],
-                requirementsPastDue: account.requirements?.past_due || [],
+                requiresAction,
+                isRestricted,
+                hasRequirements,
+                hasCriticalRequirements,
+                hasEventualRequirements,
+                requirements: {
+                    currentlyDue: formatRequirements(account.requirements?.currently_due),
+                    pastDue: formatRequirements(account.requirements?.past_due),
+                    eventuallyDue: formatRequirements(account.requirements?.eventually_due),
+                    errors: account.requirements?.errors || [],
+                    disabledReason: account.requirements?.disabled_reason || null
+                },
                 bankAccountLast4: stripeAccount.bankAccountLast4,
                 bankAccountBrand: stripeAccount.bankAccountBrand
             }
@@ -284,14 +339,15 @@ class StripeConnectController {
         if (!stripeAccount) {
             throw new AppError_1.AppError('No Stripe account found', 404);
         }
-        // Generate account link for updating bank details
+        // For Express accounts, we use account_onboarding type
+        // The onboarding flow will automatically detect what needs to be updated
         const accountLink = await stripe.accountLinks.create({
             account: stripeAccount.stripeAccountId,
             refresh_url: `${process.env.FRONTEND_URL}/field-owner/payouts?refresh=true`,
             return_url: `${process.env.FRONTEND_URL}/field-owner/payouts?updated=true`,
-            type: 'account_update',
+            type: 'account_onboarding', // Express accounts only support account_onboarding
             collection_options: {
-                fields: 'currently_due'
+                fields: 'currently_due' // Focus on currently due requirements
             }
         });
         res.json({

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.emailService = void 0;
+//@ts-nocheck
 const nodemailer = require('nodemailer');
 const dotenv_1 = require("dotenv");
 (0, dotenv_1.config)();

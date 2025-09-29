@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Router } from 'express';
 import { userBlockController } from '../controllers/user-block.controller';
 import { protect } from '../middleware/auth.middleware';

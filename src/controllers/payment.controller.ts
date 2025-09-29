@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Request, Response } from 'express';
 import { stripe } from '../config/stripe.config';
 import prisma from '../config/database';

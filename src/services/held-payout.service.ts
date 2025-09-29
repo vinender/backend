@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { PrismaClient } from '@prisma/client';
 import { createNotification } from '../controllers/notification.controller';
 

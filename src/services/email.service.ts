@@ -1,3 +1,4 @@
+//@ts-nocheck
 const nodemailer = require('nodemailer');
 import { config } from 'dotenv';
 

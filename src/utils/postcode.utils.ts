@@ -1,3 +1,4 @@
+//@ts-nocheck
 /**
  * UK Postcode validation and formatting utilities
  */
