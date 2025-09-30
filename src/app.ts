@@ -36,7 +36,8 @@ export const prisma = new PrismaClient()
 
 // Middleware
 app.set('trust proxy', 1); 
-app.use(helmet())
+app.use(helmet());
+
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, etc.)

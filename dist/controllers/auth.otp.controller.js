@@ -252,12 +252,22 @@ exports.loginWithOtpCheck = (0, asyncHandler_1.asyncHandler)(async (req, res) =>
     if (!email || !password) {
         throw new AppError_1.AppError('Email and password are required', 400);
     }
-    // Find user by email only (since email is unique across all roles now)
-    const user = await prisma.user.findUnique({
-        where: {
-            email,
-        },
-    });
+    // Find user by email only (using findFirst since email is not unique across roles)
+    // The user's role will be returned from the database
+    let user;
+    try {
+        user = await prisma.user.findFirst({
+            where: {
+                email,
+            },
+        });
+    }
+    catch (error) {
+        // Log the Prisma error for debugging
+        console.error('[Login] Database query error:', error.message);
+        // Return a user-friendly error message instead of exposing database internals
+        throw new AppError_1.AppError('Invalid credentials', 401);
+    }
     if (!user) {
         throw new AppError_1.AppError('Invalid credentials', 401);
     }
