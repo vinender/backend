@@ -59,7 +59,7 @@ export const createRateLimiter = (options: {
 // General API rate limiter - 60 requests per minute
 export const generalLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 60000, // 60 requests per minute
+  max: 9000060000, // 60 requests per minute
   message: 'Too many requests from this IP/user, please try again after a minute.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -69,7 +69,7 @@ export const generalLimiter = rateLimit({
 // Strict rate limiter for sensitive endpoints - 10 requests per minute
 export const strictLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 10000, // 10 requests per minute
+  max: 9000010000, // 10 requests per minute
   message: 'Too many requests to this endpoint, please try again after a minute.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -78,7 +78,7 @@ export const strictLimiter = rateLimit({
 // Auth endpoints rate limiter - 15 requests per minute (increased for social login)
 export const authLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 10005, // 15 requests per minute (increased from 5 to handle social login flow)
+  max: 9000010005, // 15 requests per minute (increased from 5 to handle social login flow)
   message: 'Too many authentication attempts, please try again after a minute.',
   skipSuccessfulRequests: true, // Don't count successful login attempts
   standardHeaders: true,
@@ -88,7 +88,7 @@ export const authLimiter = rateLimit({
 // Social login rate limiter - More lenient for OAuth flow
 export const socialAuthLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 30000, // 30 requests per minute (OAuth flow involves multiple requests)
+  max: 9000030000, // 30 requests per minute (OAuth flow involves multiple requests)
   message: 'Too many social login attempts, please try again after a minute.',
   skipSuccessfulRequests: true, // Don't count successful attempts
   standardHeaders: true,
@@ -98,7 +98,7 @@ export const socialAuthLimiter = rateLimit({
 // Password reset rate limiter - 3 requests per 15 minutes
 export const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60000, // 15 minutes
-  max: 3000, // 3 requests per 15 minutes
+  max: 900003000, // 3 requests per 15 minutes
   message: 'Too many password reset requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -107,7 +107,7 @@ export const passwordResetLimiter = rateLimit({
 // Upload rate limiter - 20 uploads per minute
 export const uploadLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 2000, // 20 uploads per minute
+  max: 900002000, // 20 uploads per minute
   message: 'Too many upload requests, please slow down.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -116,7 +116,7 @@ export const uploadLimiter = rateLimit({
 // Search rate limiter - 30 searches per minute
 export const searchLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 300000, // 30 searches per minute
+  max: 90000300000, // 30 searches per minute
   message: 'Too many search requests, please try again after a minute.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -125,7 +125,7 @@ export const searchLimiter = rateLimit({
 // Booking creation rate limiter - 5 bookings per minute
 export const bookingLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 5, // 5 bookings per minute
+  max: 900005, // 5 bookings per minute
   message: 'Too many booking attempts, please slow down.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -134,7 +134,7 @@ export const bookingLimiter = rateLimit({
 // Review submission rate limiter - 3 reviews per minute
 export const reviewLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 3, // 3 reviews per minute
+  max: 900003, // 3 reviews per minute
   message: 'Too many review submissions, please wait before submitting another review.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -143,7 +143,7 @@ export const reviewLimiter = rateLimit({
 // Message sending rate limiter - 30 messages per minute
 export const messageLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 30, // 30 messages per minute
+  max: 9000030, // 30 messages per minute
   message: 'Too many messages sent, please slow down.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -152,7 +152,7 @@ export const messageLimiter = rateLimit({
 // Payment processing rate limiter - 5 attempts per minute
 export const paymentLimiter = rateLimit({
   windowMs: 60000, // 1 minute
-  max: 5, // 5 payment attempts per minute
+  max: 900005, // 5 payment attempts per minute
   message: 'Too many payment attempts, please try again after a minute.',
   standardHeaders: true,
   legacyHeaders: false,
