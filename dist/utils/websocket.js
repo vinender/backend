@@ -395,31 +395,35 @@ function setupWebSocket(server) {
                 console.log(`[Socket] Message saved to database with ID: ${savedMessage.id}`);
                 console.log(`[Socket] Message content: "${content.substring(0, 50)}..."`);
                 // Broadcast to conversation room (all participants)
-                // convRoom already defined above when we joined the room
-                // Check who is in the conversation room
+                // convRoom already defined above on line 353
+                // Broadcast to conversation room (both sender and receiver if they're in the room)
                 const socketsInConvRoom = await io.in(convRoom).fetchSockets();
                 console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
                 if (socketsInConvRoom.length > 0) {
                     console.log(`[Socket] Socket IDs in conversation room: ${socketsInConvRoom.map(s => s.id).join(', ')}`);
+                    // Emit to everyone in the conversation room
+                    io.to(convRoom).emit('new-message', savedMessage);
+                    console.log(`[Socket] Emitted 'new-message' to conversation room`);
                 }
-                io.to(convRoom).emit('new-message', savedMessage);
-                console.log(`[Socket] Emitted 'new-message' to conversation room`);
-                // Also send to receiver's user room for notification
+                // If receiver is NOT in the conversation room, send notification to their user room
                 const receiverRoom = `user-${receiverId}`;
-                const socketsInReceiverRoom = await io.in(receiverRoom).fetchSockets();
-                console.log(`[Socket] Notifying ${receiverRoom} - ${socketsInReceiverRoom.length} sockets connected`);
-                io.to(receiverRoom).emit('new-message-notification', {
-                    conversationId,
-                    message: savedMessage
+                const receiverInConvRoom = socketsInConvRoom.some((s) => {
+                    return s.data?.userId === receiverId;
                 });
-                console.log(`[Socket] Emitted 'new-message-notification' to receiver room`);
-                // Also emit new-message directly to receiver room
-                io.to(receiverRoom).emit('new-message', savedMessage);
-                console.log(`[Socket] Emitted 'new-message' to receiver room`);
+                if (!receiverInConvRoom) {
+                    // Receiver is not in the conversation (probably on different page)
+                    // Send notification to their user room
+                    const socketsInReceiverRoom = await io.in(receiverRoom).fetchSockets();
+                    console.log(`[Socket] Receiver not in conv room, notifying ${receiverRoom} - ${socketsInReceiverRoom.length} sockets`);
+                    if (socketsInReceiverRoom.length > 0) {
+                        io.to(receiverRoom).emit('new-message-notification', {
+                            conversationId,
+                            message: savedMessage
+                        });
+                        console.log(`[Socket] Emitted 'new-message-notification' to receiver room`);
+                    }
+                }
                 console.log(`[Socket] Message broadcasted successfully`);
-                // Send confirmation back to sender
-                console.log(`[Socket] Sending 'message-sent' confirmation back to sender`);
-                socket.emit('message-sent', savedMessage);
             }
             catch (error) {
                 console.error('[Socket] Error sending message:', error);
