@@ -10,11 +10,54 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 function setupWebSocket(server) {
+    // Define allowed origins for WebSocket connections
+    const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
+        'http://localhost:3003',
+        'http://localhost:8081',
+        'https://fieldsy.indiitserver.in',
+        'https://fieldsy-admin.indiitserver.in',
+        'http://fieldsy.indiitserver.in',
+        'http://fieldsy-admin.indiitserver.in',
+    ];
+    // Add FRONTEND_URL if it's defined and not already in the list
+    if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL)) {
+        allowedOrigins.push(process.env.FRONTEND_URL);
+    }
+    console.log('[WebSocket] Allowed origins:', allowedOrigins);
     const io = new socket_io_1.Server(server, {
         cors: {
-            origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+            origin: (origin, callback) => {
+                // Allow requests with no origin (like mobile apps or server-side requests)
+                if (!origin) {
+                    return callback(null, true);
+                }
+                // In development, be more permissive
+                if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
+                    return callback(null, true);
+                }
+                // Check if the origin is allowed
+                if (allowedOrigins.includes(origin)) {
+                    callback(null, true);
+                }
+                else {
+                    console.log('[WebSocket] Rejected origin:', origin);
+                    callback(new Error('Not allowed by CORS'));
+                }
+            },
             credentials: true,
+            methods: ['GET', 'POST', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization'],
         },
+        transports: ['polling', 'websocket'], // Polling first for better compatibility
+        allowEIO3: true, // Allow different Socket.IO versions
+        pingTimeout: 60000, // 60 seconds
+        pingInterval: 25000, // 25 seconds
+        upgradeTimeout: 30000, // 30 seconds for upgrade
+        maxHttpBufferSize: 1e8, // 100 MB
+        path: '/socket.io/', // Explicit path
     });
     // Store io instance globally for use in other modules
     global.io = io;
@@ -249,13 +292,28 @@ function setupWebSocket(server) {
         });
         // Send a message via socket
         socket.on('send-message', async (data) => {
+            console.log(`[Socket] === SEND-MESSAGE EVENT RECEIVED ===`);
+            console.log(`[Socket] From user: ${userId}`);
+            console.log(`[Socket] Data:`, data);
             try {
                 const { conversationId, content, receiverId } = data;
                 if (!conversationId || !content || !receiverId) {
+                    console.log(`[Socket] Missing required fields, sending error`);
                     socket.emit('message-error', { error: 'Missing required fields' });
                     return;
                 }
                 console.log(`[Socket] User ${userId} sending message to conversation ${conversationId}`);
+                // Check what rooms this socket is currently in
+                const socketRooms = Array.from(socket.rooms);
+                console.log(`[Socket] Current socket rooms:`, socketRooms);
+                const convRoom = `conversation:${conversationId}`;
+                const isInConvRoom = socketRooms.includes(convRoom);
+                console.log(`[Socket] Is socket in conversation room? ${isInConvRoom}`);
+                // Make sure sender is in the conversation room to receive their own message
+                if (!isInConvRoom) {
+                    console.log(`[Socket] Adding sender to conversation room: ${convRoom}`);
+                    socket.join(convRoom);
+                }
                 // Verify user is participant
                 const conversation = await prisma.conversation.findFirst({
                     where: {
@@ -331,13 +389,18 @@ function setupWebSocket(server) {
                         lastMessageAt: new Date()
                     }
                 });
-                console.log(`[Socket] Message saved: ${savedMessage.id}`);
+                console.log(`[Socket] Message saved to database with ID: ${savedMessage.id}`);
+                console.log(`[Socket] Message content: "${content.substring(0, 50)}..."`);
                 // Broadcast to conversation room (all participants)
-                const convRoom = `conversation:${conversationId}`;
+                // convRoom already defined above when we joined the room
                 // Check who is in the conversation room
                 const socketsInConvRoom = await io.in(convRoom).fetchSockets();
                 console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
+                if (socketsInConvRoom.length > 0) {
+                    console.log(`[Socket] Socket IDs in conversation room: ${socketsInConvRoom.map(s => s.id).join(', ')}`);
+                }
                 io.to(convRoom).emit('new-message', savedMessage);
+                console.log(`[Socket] Emitted 'new-message' to conversation room`);
                 // Also send to receiver's user room for notification
                 const receiverRoom = `user-${receiverId}`;
                 const socketsInReceiverRoom = await io.in(receiverRoom).fetchSockets();
@@ -346,8 +409,13 @@ function setupWebSocket(server) {
                     conversationId,
                     message: savedMessage
                 });
+                console.log(`[Socket] Emitted 'new-message-notification' to receiver room`);
+                // Also emit new-message directly to receiver room
+                io.to(receiverRoom).emit('new-message', savedMessage);
+                console.log(`[Socket] Emitted 'new-message' to receiver room`);
                 console.log(`[Socket] Message broadcasted successfully`);
-                // Send confirmation to sender
+                // Send confirmation back to sender
+                console.log(`[Socket] Sending 'message-sent' confirmation back to sender`);
                 socket.emit('message-sent', savedMessage);
             }
             catch (error) {
