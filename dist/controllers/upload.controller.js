@@ -3,8 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadMultiple = exports.uploadDirect = exports.upload = void 0;
+exports.getPresignedUrl = exports.uploadMultiple = exports.uploadDirect = exports.upload = void 0;
 const client_s3_1 = require("@aws-sdk/client-s3");
+const s3_presigned_post_1 = require("@aws-sdk/s3-presigned-post");
 const multer_1 = __importDefault(require("multer"));
 const sharp_1 = __importDefault(require("sharp"));
 const uuid_1 = require("uuid");
@@ -147,3 +148,45 @@ const uploadMultiple = async (req, res) => {
     }
 };
 exports.uploadMultiple = uploadMultiple;
+// Generate presigned POST URL for direct browser upload
+const getPresignedUrl = async (req, res) => {
+    try {
+        const { fileName, fileType, folder = 'uploads' } = req.body;
+        if (!fileName || !fileType) {
+            return res.status(400).json({
+                success: false,
+                message: 'fileName and fileType are required',
+            });
+        }
+        // Generate unique key
+        const fileExtension = fileName.split('.').pop() || 'jpg';
+        const key = `${folder}/${(0, uuid_1.v4)()}.${fileExtension}`;
+        // Create presigned POST data
+        const { url, fields } = await (0, s3_presigned_post_1.createPresignedPost)(s3Client, {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: key,
+            Conditions: [
+                ['content-length-range', 0, 10 * 1024 * 1024], // 10MB max
+                ['starts-with', '$Content-Type', fileType],
+            ],
+            Fields: {
+                'Content-Type': fileType,
+            },
+            Expires: 600, // 10 minutes
+        });
+        // Return the presigned URL and form fields
+        res.status(200).json({
+            uploadUrl: url,
+            fileUrl: `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`,
+            fields,
+        });
+    }
+    catch (error) {
+        console.error('Error generating presigned URL:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to generate presigned URL',
+        });
+    }
+};
+exports.getPresignedUrl = getPresignedUrl;

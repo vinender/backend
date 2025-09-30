@@ -200,7 +200,7 @@ async function retryFailedPayouts() {
                     userId: payout.stripeAccount.userId,
                     type: 'payout_retry_success',
                     title: 'Payout Processed',
-                    message: `Your previously failed payout of $${payout.amount.toFixed(2)} has been successfully processed.`,
+                    message: `Your previously failed payout of €${payout.amount.toFixed(2)} has been successfully processed.`,
                     data: {
                         payoutId: payout.id,
                         amount: payout.amount

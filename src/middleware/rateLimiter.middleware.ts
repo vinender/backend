@@ -48,9 +48,8 @@ export const createRateLimiter = (options: {
   // Use Redis store if available for distributed rate limiting
   if (redisClient) {
     config.store = new RedisStore({
-      client: redisClient,
-      prefix: 'rl:', // Redis key prefix
       sendCommand: (...args: string[]) => (redisClient as any).call(...args),
+      prefix: 'rl:', // Redis key prefix
     });
   }
 

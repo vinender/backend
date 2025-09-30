@@ -16,4 +16,8 @@ upload_controller_1.uploadMultiple);
 // Upload multiple files - for admin users
 router.post('/admin/multiple', admin_middleware_1.authenticateAdmin, upload_controller_1.upload.array('files', 10), // Max 10 files at once
 upload_controller_1.uploadMultiple);
+// Generate presigned URL for direct browser upload
+router.post('/presigned-url', auth_middleware_1.protect, upload_controller_1.getPresignedUrl);
+// Generate presigned URL for admin
+router.post('/admin/presigned-url', admin_middleware_1.authenticateAdmin, upload_controller_1.getPresignedUrl);
 exports.default = router;

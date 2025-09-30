@@ -11,7 +11,7 @@ const morgan_1 = __importDefault(require("morgan"));
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const dotenv_1 = __importDefault(require("dotenv"));
-const express_rate_limit_1 = require("express-rate-limit");
+const rateLimiter_middleware_1 = require("./middleware/rateLimiter.middleware");
 const express_mongo_sanitize_1 = __importDefault(require("express-mongo-sanitize"));
 const http_1 = require("http");
 const websocket_1 = require("./utils/websocket");
@@ -76,6 +76,7 @@ class Server {
                     'http://localhost:3001',
                     'http://localhost:3002',
                     'http://localhost:3003', // Admin dashboard
+                    'http://localhost:8081', // Expo web
                     'https://fieldsy.indiitserver.in', // Production frontend
                     'https://fieldsy-admin.indiitserver.in', // Production admin
                     'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
@@ -100,14 +101,11 @@ class Server {
             crossOriginResourcePolicy: { policy: "cross-origin" },
             contentSecurityPolicy: false,
         }));
-        // Rate limiting - more lenient in development
-        const limiter = (0, express_rate_limit_1.rateLimit)({
-            windowMs: 15 * 60 * 1000, // 15 minutes
-            max: constants_1.NODE_ENV === 'development' ? 10000 : 10000, // Higher limit in dev
-            message: 'Too many requests from this IP, please try again later.',
-            skip: (req) => constants_1.NODE_ENV === 'development' && req.ip === '::1', // Skip for localhost in dev
-        });
-        this.app.use('/api', limiter);
+        // Apply general rate limiter to all API routes (60 requests per minute)
+        // Bypass in development for localhost
+        this.app.use('/api', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.generalLimiter));
+        // Apply dynamic rate limiting based on user role
+        this.app.use('/api', rateLimiter_middleware_1.dynamicLimiter);
         // Data sanitization against NoSQL query injection
         this.app.use((0, express_mongo_sanitize_1.default)());
         // Stripe webhook endpoint (raw body needed, must be before JSON parser)
@@ -203,31 +201,46 @@ class Server {
         });
         // Stripe webhook route (must be before other routes due to raw body requirement)
         this.app.use('/api/stripe', stripe_routes_1.default);
-        // Mount API routes
-        this.app.use('/api/auth', auth_routes_1.default);
-        this.app.use('/api/auth/otp', auth_otp_routes_1.default);
+        // Mount API routes with specific rate limiters
+        // Auth routes - 5 requests per minute for login/register
+        this.app.use('/api/auth', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.authLimiter), auth_routes_1.default);
+        this.app.use('/api/auth/otp', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.authLimiter), auth_otp_routes_1.default);
+        // User routes - general rate limit
         this.app.use('/api/users', user_routes_1.default);
+        // Fields routes - search endpoints get search limiter (30/min)
+        this.app.use('/api/fields/search', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.searchLimiter));
         this.app.use('/api/fields', field_routes_1.default);
-        this.app.use('/api/bookings', booking_routes_1.default);
-        this.app.use('/api/reviews', review_routes_1.default);
+        // Booking routes - 5 bookings per minute
+        this.app.use('/api/bookings', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.bookingLimiter), booking_routes_1.default);
+        // Review routes - 3 reviews per minute
+        this.app.use('/api/reviews', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.reviewLimiter), review_routes_1.default);
+        // General routes with standard limits
         this.app.use('/api/notifications', notification_routes_1.default);
-        this.app.use('/api/payments', payment_routes_1.default);
+        // Payment routes - 5 payment attempts per minute
+        this.app.use('/api/payments', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.paymentLimiter), payment_routes_1.default);
+        // General routes
         this.app.use('/api/favorites', favorite_routes_1.default);
-        this.app.use('/api/chat', chat_routes_1.default);
+        // Chat routes - 30 messages per minute
+        this.app.use('/api/chat', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.messageLimiter), chat_routes_1.default);
+        // Payout and financial routes
         this.app.use('/api/payouts', payout_routes_1.default);
         this.app.use('/api/claims', claim_routes_1.default);
         this.app.use('/api/stripe-connect', stripe_connect_routes_1.default);
+        // User interaction routes
         this.app.use('/api/user-reports', user_report_routes_1.default);
         this.app.use('/api/user-blocks', user_block_routes_1.default);
         this.app.use('/api/payment-methods', payment_method_routes_1.default);
+        // Admin routes - handled by dynamic limiter (200/min for admins)
         this.app.use('/api/admin', admin_routes_1.default);
         this.app.use('/api/admin/payouts', admin_payout_routes_1.default);
         this.app.use('/api/auto-payouts', auto_payout_routes_1.default);
+        // Other routes
         this.app.use('/api/earnings', earnings_routes_1.default);
         this.app.use('/api/commission', commission_routes_1.default);
         this.app.use('/api/settings', settings_routes_1.default);
         this.app.use('/api/faqs', faq_routes_1.default);
-        this.app.use('/api/upload', upload_routes_1.default);
+        // Upload routes - 20 uploads per minute
+        this.app.use('/api/upload', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.uploadLimiter), upload_routes_1.default);
         this.app.use('/api/about-page', about_page_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
@@ -334,7 +347,6 @@ class Server {
         });
     }
 }
-
 // Create and start server
 const server = new Server();
 server.start();
