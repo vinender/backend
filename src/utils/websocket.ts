@@ -280,15 +280,34 @@ export function setupWebSocket(server: HTTPServer) {
 
     // Send a message via socket
     socket.on('send-message', async (data: { conversationId: string; content: string; receiverId: string }) => {
+      console.log(`[Socket] === SEND-MESSAGE EVENT RECEIVED ===`);
+      console.log(`[Socket] From user: ${userId}`);
+      console.log(`[Socket] Data:`, data);
+
       try {
         const { conversationId, content, receiverId } = data;
 
         if (!conversationId || !content || !receiverId) {
+          console.log(`[Socket] Missing required fields, sending error`);
           socket.emit('message-error', { error: 'Missing required fields' });
           return;
         }
 
         console.log(`[Socket] User ${userId} sending message to conversation ${conversationId}`);
+
+        // Check what rooms this socket is currently in
+        const socketRooms = Array.from(socket.rooms);
+        console.log(`[Socket] Current socket rooms:`, socketRooms);
+
+        const convRoom = `conversation:${conversationId}`;
+        const isInConvRoom = socketRooms.includes(convRoom);
+        console.log(`[Socket] Is socket in conversation room? ${isInConvRoom}`);
+
+        // Make sure sender is in the conversation room to receive their own message
+        if (!isInConvRoom) {
+          console.log(`[Socket] Adding sender to conversation room: ${convRoom}`);
+          socket.join(convRoom);
+        }
 
         // Verify user is participant
         const conversation = await prisma.conversation.findFirst({
@@ -371,16 +390,22 @@ export function setupWebSocket(server: HTTPServer) {
           }
         });
 
-        console.log(`[Socket] Message saved: ${savedMessage.id}`);
+        console.log(`[Socket] Message saved to database with ID: ${savedMessage.id}`);
+        console.log(`[Socket] Message content: "${content.substring(0, 50)}..."`);
 
         // Broadcast to conversation room (all participants)
-        const convRoom = `conversation:${conversationId}`;
+        // convRoom already defined above when we joined the room
 
         // Check who is in the conversation room
         const socketsInConvRoom = await io.in(convRoom).fetchSockets();
         console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
 
+        if (socketsInConvRoom.length > 0) {
+          console.log(`[Socket] Socket IDs in conversation room: ${socketsInConvRoom.map(s => s.id).join(', ')}`);
+        }
+
         io.to(convRoom).emit('new-message', savedMessage);
+        console.log(`[Socket] Emitted 'new-message' to conversation room`);
 
         // Also send to receiver's user room for notification
         const receiverRoom = `user-${receiverId}`;
@@ -391,10 +416,16 @@ export function setupWebSocket(server: HTTPServer) {
           conversationId,
           message: savedMessage
         });
+        console.log(`[Socket] Emitted 'new-message-notification' to receiver room`);
+
+        // Also emit new-message directly to receiver room
+        io.to(receiverRoom).emit('new-message', savedMessage);
+        console.log(`[Socket] Emitted 'new-message' to receiver room`);
 
         console.log(`[Socket] Message broadcasted successfully`);
 
-        // Send confirmation to sender
+        // Send confirmation back to sender
+        console.log(`[Socket] Sending 'message-sent' confirmation back to sender`);
         socket.emit('message-sent', savedMessage);
 
       } catch (error) {

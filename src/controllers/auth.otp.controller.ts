@@ -37,47 +37,49 @@ export const registerWithOtp = asyncHandler(async (req: Request, res: Response) 
     throw new AppError('Password must be at least 8 characters long', 400);
   }
 
-  // Check if user already exists
+  // Check if user already exists with this email (regardless of role)
   const existingUser = await prisma.user.findFirst({
     where: {
       email,
-      role,
     },
   });
 
   if (existingUser) {
+    // Check if the existing user has a different role
+    if (existingUser.role !== role) {
+      throw new AppError(`An account already exists with this email as a ${existingUser.role.replace('_', ' ').toLowerCase()}. Each email can only have one account.`, 409);
+    }
+
     if (existingUser.emailVerified) {
       throw new AppError('User already exists with this email', 409);
     }
-    // If user exists but not verified, allow them to re-register (update their data)
+    // If user exists with same role but not verified, allow them to re-register (update their data)
   }
 
   // Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
   // Create or update user (but not verified yet)
-  const user = await prisma.user.upsert({
-    where: {
-      email_role: {
-        email,
-        role,
-      },
-    },
-    update: {
-      name,
-      password: hashedPassword,
-      phone,
-      emailVerified: null, // Reset verification
-    },
-    create: {
-      name,
-      email,
-      password: hashedPassword,
-      role,
-      phone,
-      emailVerified: null,
-    },
-  });
+  const user = existingUser
+    ? await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          name,
+          password: hashedPassword,
+          phone,
+          emailVerified: null, // Reset verification
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role,
+          phone,
+          emailVerified: null,
+        },
+      });
 
   // Send OTP
   try {
@@ -213,7 +215,7 @@ export const requestPasswordReset = asyncHandler(async (req: Request, res: Respo
   });
 });
 
-// Verify password reset OTP (without marking as used)
+// Verify password reset OTP (marks OTP as verified)
 export const verifyPasswordResetOtp = asyncHandler(async (req: Request, res: Response) => {
   const { email, otp } = req.body;
 
@@ -221,12 +223,19 @@ export const verifyPasswordResetOtp = asyncHandler(async (req: Request, res: Res
     throw new AppError('Email and OTP are required', 400);
   }
 
-  // Check OTP validity without marking as verified
-  const isValid = await otpService.checkOtpValidity(email, otp, 'RESET_PASSWORD');
-  
+  // Verify OTP and mark as used
+  const isValid = await otpService.verifyOtp(email, otp, 'RESET_PASSWORD');
+
   if (!isValid) {
     throw new AppError('Invalid or expired OTP', 400);
   }
+
+  // Generate a temporary token for password reset (valid for 10 minutes)
+  const resetToken = jwt.sign(
+    { email, purpose: 'password-reset', otpVerified: true },
+    process.env.JWT_SECRET as string,
+    { expiresIn: '10m' }
+  );
 
   res.json({
     success: true,
@@ -234,16 +243,17 @@ export const verifyPasswordResetOtp = asyncHandler(async (req: Request, res: Res
     data: {
       email,
       otpVerified: true,
+      resetToken, // Send token to be used in password reset
     },
   });
 });
 
 // Reset password after OTP verification
 export const resetPasswordWithOtp = asyncHandler(async (req: Request, res: Response) => {
-  const { email, otp, newPassword } = req.body;
+  const { resetToken, newPassword } = req.body;
 
-  if (!email || !otp || !newPassword) {
-    throw new AppError('Email, OTP, and new password are required', 400);
+  if (!resetToken || !newPassword) {
+    throw new AppError('Reset token and new password are required', 400);
   }
 
   // Validate password strength
@@ -251,12 +261,20 @@ export const resetPasswordWithOtp = asyncHandler(async (req: Request, res: Respo
     throw new AppError('Password must be at least 8 characters long', 400);
   }
 
-  // Verify OTP again for security
-  const isValid = await otpService.verifyOtp(email, otp, 'RESET_PASSWORD');
-  
-  if (!isValid) {
-    throw new AppError('Invalid or expired OTP', 400);
+  // Verify reset token
+  let decoded: any;
+  try {
+    decoded = jwt.verify(resetToken, process.env.JWT_SECRET as string);
+  } catch (error) {
+    throw new AppError('Invalid or expired reset token', 401);
   }
+
+  // Check if token is for password reset
+  if (decoded.purpose !== 'password-reset' || !decoded.otpVerified) {
+    throw new AppError('Invalid reset token', 401);
+  }
+
+  const email = decoded.email;
 
   // Hash new password
   const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -277,17 +295,16 @@ export const resetPasswordWithOtp = asyncHandler(async (req: Request, res: Respo
 
 // Login with email verification check
 export const loginWithOtpCheck = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password, role = 'DOG_OWNER' } = req.body;
+  const { email, password } = req.body;
 
   if (!email || !password) {
     throw new AppError('Email and password are required', 400);
   }
 
-  // Find user
-  const user = await prisma.user.findFirst({
+  // Find user by email only (since email is unique across all roles now)
+  const user = await prisma.user.findUnique({
     where: {
       email,
-      role,
     },
   });
 
@@ -299,14 +316,14 @@ export const loginWithOtpCheck = asyncHandler(async (req: Request, res: Response
   if (!user.emailVerified) {
     // Send new OTP
     await otpService.sendOtp(email, 'EMAIL_VERIFICATION', user.name || undefined);
-    
+
     res.status(403).json({
       success: false,
       message: 'Email not verified. We have sent you a verification code.',
       data: {
         requiresVerification: true,
         email,
-        role,
+        role: user.role,
       },
     });
     return;

@@ -161,9 +161,10 @@ async function resetDatabase() {
       { model: 'notification', name: 'Notifications' },
       { model: 'message', name: 'Messages' },
       { model: 'conversation', name: 'Conversations' },
-      { model: 'fieldReview', name: 'Field Reviews' },
+      { model: 'review', name: 'Reviews' },
       { model: 'payment', name: 'Payments' },
       { model: 'booking', name: 'Bookings' },
+      { model: 'subscription', name: 'Subscriptions' },
       { model: 'favorite', name: 'Favorites' },
       { model: 'paymentMethod', name: 'Payment Methods' },
       { model: 'payout', name: 'Payouts' },
@@ -172,12 +173,12 @@ async function resetDatabase() {
       { model: 'field', name: 'Fields' },
       { model: 'userReport', name: 'User Reports' },
       { model: 'userBlock', name: 'User Blocks' },
+      { model: 'otpVerification', name: 'OTP Verifications' },
       { model: 'user', name: 'Users' },
       // Settings data will be preserved:
-      // - commission (Commission Settings)
-      // - aboutPage (About Page Content) 
+      // - platformSettings (Platform Settings)
+      // - aboutPage (About Page Content)
       // - fAQ (FAQs)
-      // - systemSettings (System Settings)
     ];
     
     for (const { model, name } of deletionOrder) {
@@ -211,11 +212,16 @@ async function seedInitialData() {
     if (!existingSettings) {
       await prisma.systemSettings.create({
         data: {
-          defaultCommissionRate: 20,
+          defaultCommissionRate: 15,
           cancellationWindowHours: 24,
           maxBookingsPerUser: 10,
           minimumFieldOperatingHours: 4,
-          payoutReleaseSchedule: 'after_cancellation_window'
+          payoutReleaseSchedule: 'after_cancellation_window',
+          maintenanceMode: false,
+          termsOfService: 'Default terms of service',
+          privacyPolicy: 'Default privacy policy',
+          contactEmail: 'support@fieldsy.com',
+          supportPhone: '+353 1 234 5678'
         }
       });
       console.log(`${colors.green}✓ Created default system settings${colors.reset}`);

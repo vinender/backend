@@ -187,11 +187,15 @@ class UserModel {
     role?: 'DOG_OWNER' | 'FIELD_OWNER' | 'ADMIN';
   }) {
     const userRole = data.role || 'DOG_OWNER';
-    
-    // Check if user exists with same email and role
-    const existingUser = await this.findByEmailAndRole(data.email, userRole);
-    
+
+    // Check if user exists with same email (regardless of role)
+    const existingUser = await this.findByEmail(data.email);
+
     if (existingUser) {
+      // Check if the existing user has a different role
+      if (existingUser.role !== userRole) {
+        throw new Error(`An account already exists with this email as a ${existingUser.role.replace('_', ' ').toLowerCase()}. Each email can only have one account.`);
+      }
       // Update existing user with social login info
       const updateData: any = {
         name: data.name || existingUser.name,
