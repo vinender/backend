@@ -190,6 +190,10 @@ export function setupWebSocket(server: HTTPServer) {
         socket.join(convRoom);
         console.log(`[Socket] User ${userId} joined room: ${convRoom}`);
 
+        // Verify room membership
+        const socketsInRoom = await io.in(convRoom).fetchSockets();
+        console.log(`[Socket] Room ${convRoom} now has ${socketsInRoom.length} members`);
+
         // Fetch and send message history
         const messages = await prisma.message.findMany({
           where: { conversationId },
