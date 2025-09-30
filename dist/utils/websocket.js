@@ -334,14 +334,19 @@ function setupWebSocket(server) {
                 console.log(`[Socket] Message saved: ${savedMessage.id}`);
                 // Broadcast to conversation room (all participants)
                 const convRoom = `conversation:${conversationId}`;
+                // Check who is in the conversation room
+                const socketsInConvRoom = await io.in(convRoom).fetchSockets();
+                console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
                 io.to(convRoom).emit('new-message', savedMessage);
                 // Also send to receiver's user room for notification
                 const receiverRoom = `user-${receiverId}`;
+                const socketsInReceiverRoom = await io.in(receiverRoom).fetchSockets();
+                console.log(`[Socket] Notifying ${receiverRoom} - ${socketsInReceiverRoom.length} sockets connected`);
                 io.to(receiverRoom).emit('new-message-notification', {
                     conversationId,
                     message: savedMessage
                 });
-                console.log(`[Socket] Message broadcasted to ${convRoom} and ${receiverRoom}`);
+                console.log(`[Socket] Message broadcasted successfully`);
                 // Send confirmation to sender
                 socket.emit('message-sent', savedMessage);
             }
