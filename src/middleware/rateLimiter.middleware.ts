@@ -3,6 +3,22 @@ import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
 
+// Flag to enable/disable rate limiting globally
+// Can be set via environment variable or directly
+export const RATE_LIMITER_ENABLED = process.env.RATE_LIMITER_ENABLED !== 'false'; // Default to true unless explicitly disabled
+
+// Helper middleware to conditionally apply rate limiting
+export const conditionalRateLimit = (limiter: any) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Skip rate limiting if disabled
+    if (!RATE_LIMITER_ENABLED) {
+      return next();
+    }
+    // Apply the rate limiter
+    return limiter(req, res, next);
+  };
+};
+
 // Create Redis client if available, otherwise use memory store
 let redisClient: Redis | null = null;
 if (process.env.REDIS_URL) {
@@ -53,11 +69,14 @@ export const createRateLimiter = (options: {
     });
   }
 
-  return rateLimit(config);
+  const limiter = rateLimit(config);
+
+  // Return wrapped limiter that respects the RATE_LIMITER_ENABLED flag
+  return conditionalRateLimit(limiter);
 };
 
-// General API rate limiter - 60 requests per minute
-export const generalLimiter = rateLimit({
+// Base rate limiters (internal use)
+const _generalLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 9000060000, // 60 requests per minute
   message: 'Too many requests from this IP/user, please try again after a minute.',
@@ -66,8 +85,7 @@ export const generalLimiter = rateLimit({
   // Use default key generator for IP-based limiting
 });
 
-// Strict rate limiter for sensitive endpoints - 10 requests per minute
-export const strictLimiter = rateLimit({
+const _strictLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 9000010000, // 10 requests per minute
   message: 'Too many requests to this endpoint, please try again after a minute.',
@@ -75,8 +93,7 @@ export const strictLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Auth endpoints rate limiter - 15 requests per minute (increased for social login)
-export const authLimiter = rateLimit({
+const _authLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 9000010005, // 15 requests per minute (increased from 5 to handle social login flow)
   message: 'Too many authentication attempts, please try again after a minute.',
@@ -85,8 +102,7 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Social login rate limiter - More lenient for OAuth flow
-export const socialAuthLimiter = rateLimit({
+const _socialAuthLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 9000030000, // 30 requests per minute (OAuth flow involves multiple requests)
   message: 'Too many social login attempts, please try again after a minute.',
@@ -95,8 +111,7 @@ export const socialAuthLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Password reset rate limiter - 3 requests per 15 minutes
-export const passwordResetLimiter = rateLimit({
+const _passwordResetLimiter = rateLimit({
   windowMs: 15 * 60000, // 15 minutes
   max: 900003000, // 3 requests per 15 minutes
   message: 'Too many password reset requests, please try again later.',
@@ -104,8 +119,7 @@ export const passwordResetLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Upload rate limiter - 20 uploads per minute
-export const uploadLimiter = rateLimit({
+const _uploadLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 900002000, // 20 uploads per minute
   message: 'Too many upload requests, please slow down.',
@@ -113,8 +127,7 @@ export const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Search rate limiter - 30 searches per minute
-export const searchLimiter = rateLimit({
+const _searchLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 90000300000, // 30 searches per minute
   message: 'Too many search requests, please try again after a minute.',
@@ -122,8 +135,7 @@ export const searchLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Booking creation rate limiter - 5 bookings per minute
-export const bookingLimiter = rateLimit({
+const _bookingLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 900005, // 5 bookings per minute
   message: 'Too many booking attempts, please slow down.',
@@ -131,8 +143,7 @@ export const bookingLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Review submission rate limiter - 3 reviews per minute
-export const reviewLimiter = rateLimit({
+const _reviewLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 900003, // 3 reviews per minute
   message: 'Too many review submissions, please wait before submitting another review.',
@@ -140,8 +151,7 @@ export const reviewLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Message sending rate limiter - 30 messages per minute
-export const messageLimiter = rateLimit({
+const _messageLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 9000030, // 30 messages per minute
   message: 'Too many messages sent, please slow down.',
@@ -149,14 +159,26 @@ export const messageLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Payment processing rate limiter - 5 attempts per minute
-export const paymentLimiter = rateLimit({
+const _paymentLimiter = rateLimit({
   windowMs: 60000, // 1 minute
   max: 900005, // 5 payment attempts per minute
   message: 'Too many payment attempts, please try again after a minute.',
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Exported rate limiters with conditional wrapper
+export const generalLimiter = conditionalRateLimit(_generalLimiter);
+export const strictLimiter = conditionalRateLimit(_strictLimiter);
+export const authLimiter = conditionalRateLimit(_authLimiter);
+export const socialAuthLimiter = conditionalRateLimit(_socialAuthLimiter);
+export const passwordResetLimiter = conditionalRateLimit(_passwordResetLimiter);
+export const uploadLimiter = conditionalRateLimit(_uploadLimiter);
+export const searchLimiter = conditionalRateLimit(_searchLimiter);
+export const bookingLimiter = conditionalRateLimit(_bookingLimiter);
+export const reviewLimiter = conditionalRateLimit(_reviewLimiter);
+export const messageLimiter = conditionalRateLimit(_messageLimiter);
+export const paymentLimiter = conditionalRateLimit(_paymentLimiter);
 
 // Development mode bypass middleware
 export const bypassInDevelopment = (limiter: any) => {
@@ -172,8 +194,13 @@ export const bypassInDevelopment = (limiter: any) => {
 
 // Dynamic rate limiter based on user role
 export const dynamicLimiter = (req: Request, res: Response, next: NextFunction) => {
+  // Skip if rate limiting is disabled
+  if (!RATE_LIMITER_ENABLED) {
+    return next();
+  }
+
   const userRole = (req as any).user?.role;
-  
+
   let limiter;
   switch (userRole) {
     case 'ADMIN':
@@ -196,9 +223,9 @@ export const dynamicLimiter = (req: Request, res: Response, next: NextFunction) 
       break;
     default:
       // Regular users and unauthenticated users
-      limiter = generalLimiter;
+      limiter = _generalLimiter; // Use base limiter directly since we already checked the flag
   }
-  
+
   return limiter(req, res, next);
 };
 
@@ -260,12 +287,17 @@ const slidingLimiter = new SlidingWindowLimiter(60000, 60);
 // Middleware using sliding window algorithm
 export const slidingWindowMiddleware = (windowMs: number = 60000, max: number = 60) => {
   const limiter = new SlidingWindowLimiter(windowMs, max);
-  
+
   return (req: Request, res: Response, next: NextFunction) => {
+    // Skip if rate limiting is disabled
+    if (!RATE_LIMITER_ENABLED) {
+      return next();
+    }
+
     // Use IP or user ID as key
     const userId = (req as any).user?.id || (req as any).userId;
     const key = userId ? `user_${userId}` : (req.ip || req.socket.remoteAddress || 'unknown');
-    
+
     if (!limiter.isAllowed(key)) {
       return res.status(429).json({
         success: false,
@@ -273,7 +305,7 @@ export const slidingWindowMiddleware = (windowMs: number = 60000, max: number = 
         retryAfter: Math.ceil(windowMs / 1000), // Retry after X seconds
       });
     }
-    
+
     next();
   };
 };
