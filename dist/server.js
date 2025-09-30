@@ -54,7 +54,6 @@ const api_docs_template_1 = require("./utils/api-docs-template");
 // Import scheduled jobs
 const payout_job_1 = require("./jobs/payout.job");
 const held_payout_release_job_1 = require("./jobs/held-payout-release.job");
-//
 class Server {
     app;
     httpServer;

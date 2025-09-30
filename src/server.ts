@@ -68,7 +68,8 @@ import { generateApiDocsHTML } from './utils/api-docs-template';
 // Import scheduled jobs
 import { initPayoutJobs } from './jobs/payout.job';
 import { startHeldPayoutReleaseJobs } from './jobs/held-payout-release.job';
-//
+
+
 class Server {
   private app: Application;
   private httpServer: any;
@@ -91,6 +92,7 @@ class Server {
         const allowedOrigins = [
           'http://localhost:3000',
           'http://localhost:3001', 
+          'http://localhost:5000', 
           'http://localhost:3002',
           'http://localhost:3003', // Admin dashboard
           'http://localhost:8081', // Expo web
