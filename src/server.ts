@@ -6,7 +6,18 @@ import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { rateLimit } from 'express-rate-limit';
+import { 
+  generalLimiter, 
+  authLimiter, 
+  uploadLimiter,
+  bookingLimiter,
+  paymentLimiter,
+  searchLimiter,
+  messageLimiter,
+  reviewLimiter,
+  bypassInDevelopment,
+  dynamicLimiter
+} from './middleware/rateLimiter.middleware';
 import mongoSanitize from 'express-mongo-sanitize';
 import { createServer } from 'http';
 import { setupWebSocket } from './utils/websocket';
@@ -82,6 +93,7 @@ class Server {
           'http://localhost:3001', 
           'http://localhost:3002',
           'http://localhost:3003', // Admin dashboard
+          'http://localhost:8081', // Expo web
           'https://fieldsy.indiitserver.in', // Production frontend
           'https://fieldsy-admin.indiitserver.in', // Production admin
           'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
@@ -108,14 +120,12 @@ class Server {
       contentSecurityPolicy: false,
     }));
 
-    // Rate limiting - more lenient in development
-    const limiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: NODE_ENV === 'development' ? 10000 : 100, // Higher limit in dev
-      message: 'Too many requests from this IP, please try again later.',
-      skip: (req) => NODE_ENV === 'development' && req.ip === '::1', // Skip for localhost in dev
-    });
-    this.app.use('/api', limiter);
+    // Apply general rate limiter to all API routes (60 requests per minute)
+    // Bypass in development for localhost
+    this.app.use('/api', bypassInDevelopment(generalLimiter));
+    
+    // Apply dynamic rate limiting based on user role
+    this.app.use('/api', dynamicLimiter);
 
     // Data sanitization against NoSQL query injection
     this.app.use(mongoSanitize());
@@ -221,31 +231,60 @@ class Server {
     // Stripe webhook route (must be before other routes due to raw body requirement)
     this.app.use('/api/stripe', stripeRoutes);
     
-    // Mount API routes
-    this.app.use('/api/auth', authRoutes);
-    this.app.use('/api/auth/otp', authOtpRoutes);
+    // Mount API routes with specific rate limiters
+    // Auth routes - 5 requests per minute for login/register
+    this.app.use('/api/auth', bypassInDevelopment(authLimiter), authRoutes);
+    this.app.use('/api/auth/otp', bypassInDevelopment(authLimiter), authOtpRoutes);
+    
+    // User routes - general rate limit
     this.app.use('/api/users', userRoutes);
+    
+    // Fields routes - search endpoints get search limiter (30/min)
+    this.app.use('/api/fields/search', bypassInDevelopment(searchLimiter));
     this.app.use('/api/fields', fieldRoutes);
-    this.app.use('/api/bookings', bookingRoutes);
-    this.app.use('/api/reviews', reviewRoutes);
+    
+    // Booking routes - 5 bookings per minute
+    this.app.use('/api/bookings', bypassInDevelopment(bookingLimiter), bookingRoutes);
+    
+    // Review routes - 3 reviews per minute
+    this.app.use('/api/reviews', bypassInDevelopment(reviewLimiter), reviewRoutes);
+    
+    // General routes with standard limits
     this.app.use('/api/notifications', notificationRoutes);
-    this.app.use('/api/payments', paymentRoutes);
+    
+    // Payment routes - 5 payment attempts per minute
+    this.app.use('/api/payments', bypassInDevelopment(paymentLimiter), paymentRoutes);
+    
+    // General routes
     this.app.use('/api/favorites', favoriteRoutes);
-    this.app.use('/api/chat', chatRoutes);
+    
+    // Chat routes - 30 messages per minute
+    this.app.use('/api/chat', bypassInDevelopment(messageLimiter), chatRoutes);
+    
+    // Payout and financial routes
     this.app.use('/api/payouts', payoutRoutes);
     this.app.use('/api/claims', claimRoutes);
     this.app.use('/api/stripe-connect', stripeConnectRoutes);
+    
+    // User interaction routes
     this.app.use('/api/user-reports', userReportRoutes);
     this.app.use('/api/user-blocks', userBlockRoutes);
     this.app.use('/api/payment-methods', paymentMethodRoutes);
+    
+    // Admin routes - handled by dynamic limiter (200/min for admins)
     this.app.use('/api/admin', adminRoutes);
     this.app.use('/api/admin/payouts', adminPayoutRoutes);
     this.app.use('/api/auto-payouts', autoPayoutRoutes);
+    
+    // Other routes
     this.app.use('/api/earnings', earningsRoutes);
     this.app.use('/api/commission', commissionRoutes);
     this.app.use('/api/settings', settingsRoutes);
     this.app.use('/api/faqs', faqRoutes);
-    this.app.use('/api/upload', uploadRoutes);
+    
+    // Upload routes - 20 uploads per minute
+    this.app.use('/api/upload', bypassInDevelopment(uploadLimiter), uploadRoutes);
+    
     this.app.use('/api/about-page', aboutPageRoutes);
 
     // Serve static files (if any)

@@ -1,0 +1,270 @@
+import { Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+import Redis from 'ioredis';
+
+// Create Redis client if available, otherwise use memory store
+let redisClient: Redis | null = null;
+if (process.env.REDIS_URL) {
+  redisClient = new Redis(process.env.REDIS_URL);
+  redisClient.on('error', (err) => {
+    console.error('Redis Client Error:', err);
+    redisClient = null; // Fallback to memory store
+  });
+}
+
+// Custom key generator to include user ID if authenticated
+// Uses the built-in IP key generator for proper IPv6 handling
+const keyGenerator = (req: Request): string => {
+  // If user is authenticated, use user ID for more accurate limiting
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (userId) {
+    return `user_${userId}`;
+  }
+  // For IP-based limiting, return undefined to use the default key generator
+  // This ensures proper IPv6 handling
+  return undefined as any;
+};
+
+// Different rate limit configurations for different endpoints
+export const createRateLimiter = (options: {
+  windowMs?: number;
+  max?: number;
+  message?: string;
+  skipSuccessfulRequests?: boolean;
+  skipFailedRequests?: boolean;
+}) => {
+  const config: any = {
+    windowMs: options.windowMs || 60000, // Default: 1 minute
+    max: options.max || 60, // Default: 60 requests per minute
+    message: options.message || 'Too many requests, please try again later.',
+    standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    keyGenerator: options.skipSuccessfulRequests || options.skipFailedRequests ? keyGenerator : undefined,
+    skipSuccessfulRequests: options.skipSuccessfulRequests || false,
+    skipFailedRequests: options.skipFailedRequests || true,
+  };
+
+  // Use Redis store if available for distributed rate limiting
+  if (redisClient) {
+    config.store = new RedisStore({
+      client: redisClient,
+      prefix: 'rl:', // Redis key prefix
+      sendCommand: (...args: string[]) => (redisClient as any).call(...args),
+    });
+  }
+
+  return rateLimit(config);
+};
+
+// General API rate limiter - 60 requests per minute
+export const generalLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 60, // 60 requests per minute
+  message: 'Too many requests from this IP/user, please try again after a minute.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Use default key generator for IP-based limiting
+});
+
+// Strict rate limiter for sensitive endpoints - 10 requests per minute
+export const strictLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 10, // 10 requests per minute
+  message: 'Too many requests to this endpoint, please try again after a minute.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Auth endpoints rate limiter - 5 requests per minute
+export const authLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 5, // 5 requests per minute
+  message: 'Too many authentication attempts, please try again after a minute.',
+  skipSuccessfulRequests: true, // Don't count successful login attempts
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Password reset rate limiter - 3 requests per 15 minutes
+export const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60000, // 15 minutes
+  max: 3, // 3 requests per 15 minutes
+  message: 'Too many password reset requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Upload rate limiter - 20 uploads per minute
+export const uploadLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 20, // 20 uploads per minute
+  message: 'Too many upload requests, please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Search rate limiter - 30 searches per minute
+export const searchLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 30, // 30 searches per minute
+  message: 'Too many search requests, please try again after a minute.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Booking creation rate limiter - 5 bookings per minute
+export const bookingLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 5, // 5 bookings per minute
+  message: 'Too many booking attempts, please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Review submission rate limiter - 3 reviews per minute
+export const reviewLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 3, // 3 reviews per minute
+  message: 'Too many review submissions, please wait before submitting another review.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Message sending rate limiter - 30 messages per minute
+export const messageLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 30, // 30 messages per minute
+  message: 'Too many messages sent, please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Payment processing rate limiter - 5 attempts per minute
+export const paymentLimiter = rateLimit({
+  windowMs: 60000, // 1 minute
+  max: 5, // 5 payment attempts per minute
+  message: 'Too many payment attempts, please try again after a minute.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Development mode bypass middleware
+export const bypassInDevelopment = (limiter: any) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Bypass rate limiting in development for localhost
+    if (process.env.NODE_ENV === 'development' && 
+        (req.ip === '::1' || req.ip === '127.0.0.1' || req.ip === '::ffff:127.0.0.1')) {
+      return next();
+    }
+    return limiter(req, res, next);
+  };
+};
+
+// Dynamic rate limiter based on user role
+export const dynamicLimiter = (req: Request, res: Response, next: NextFunction) => {
+  const userRole = (req as any).user?.role;
+  
+  let limiter;
+  switch (userRole) {
+    case 'ADMIN':
+      // Admins get higher limits
+      limiter = rateLimit({
+        windowMs: 60000,
+        max: 200, // 200 requests per minute for admins
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
+      break;
+    case 'FIELD_OWNER':
+      // Field owners get moderate limits
+      limiter = rateLimit({
+        windowMs: 60000,
+        max: 100, // 100 requests per minute for field owners
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
+      break;
+    default:
+      // Regular users and unauthenticated users
+      limiter = generalLimiter;
+  }
+  
+  return limiter(req, res, next);
+};
+
+// Sliding window rate limiter for more accurate limiting
+export class SlidingWindowLimiter {
+  private requests: Map<string, number[]> = new Map();
+  private windowMs: number;
+  private maxRequests: number;
+
+  constructor(windowMs: number = 60000, maxRequests: number = 60) {
+    this.windowMs = windowMs;
+    this.maxRequests = maxRequests;
+    
+    // Clean up old entries every minute
+    setInterval(() => this.cleanup(), 60000);
+  }
+
+  isAllowed(key: string): boolean {
+    const now = Date.now();
+    const windowStart = now - this.windowMs;
+    
+    // Get or create request timestamps for this key
+    let timestamps = this.requests.get(key) || [];
+    
+    // Filter out timestamps outside the window
+    timestamps = timestamps.filter(ts => ts > windowStart);
+    
+    // Check if limit is exceeded
+    if (timestamps.length >= this.maxRequests) {
+      return false;
+    }
+    
+    // Add current timestamp
+    timestamps.push(now);
+    this.requests.set(key, timestamps);
+    
+    return true;
+  }
+
+  cleanup() {
+    const now = Date.now();
+    const windowStart = now - this.windowMs;
+    
+    // Remove old timestamps and empty entries
+    for (const [key, timestamps] of this.requests.entries()) {
+      const filtered = timestamps.filter(ts => ts > windowStart);
+      if (filtered.length === 0) {
+        this.requests.delete(key);
+      } else {
+        this.requests.set(key, filtered);
+      }
+    }
+  }
+}
+
+// Create a sliding window limiter instance
+const slidingLimiter = new SlidingWindowLimiter(60000, 60);
+
+// Middleware using sliding window algorithm
+export const slidingWindowMiddleware = (windowMs: number = 60000, max: number = 60) => {
+  const limiter = new SlidingWindowLimiter(windowMs, max);
+  
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Use IP or user ID as key
+    const userId = (req as any).user?.id || (req as any).userId;
+    const key = userId ? `user_${userId}` : (req.ip || req.socket.remoteAddress || 'unknown');
+    
+    if (!limiter.isAllowed(key)) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many requests, please try again later.',
+        retryAfter: Math.ceil(windowMs / 1000), // Retry after X seconds
+      });
+    }
+    
+    next();
+  };
+};
