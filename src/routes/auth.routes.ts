@@ -4,6 +4,7 @@ import authController from '../controllers/auth.controller';
 import { protect } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import { registerSchema, loginSchema } from '../validations/auth.validation';
+import { socialAuthLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/test', (req, res) => {
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/refresh-token', authController.refreshToken);
-router.post('/social-login', authController.socialLogin);
+router.post('/social-login', socialAuthLimiter, authController.socialLogin);
 
 // Protected routes
 router.get('/me', protect, authController.getMe);

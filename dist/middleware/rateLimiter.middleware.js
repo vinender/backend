@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.slidingWindowMiddleware = exports.SlidingWindowLimiter = exports.dynamicLimiter = exports.bypassInDevelopment = exports.paymentLimiter = exports.messageLimiter = exports.reviewLimiter = exports.bookingLimiter = exports.searchLimiter = exports.uploadLimiter = exports.passwordResetLimiter = exports.authLimiter = exports.strictLimiter = exports.generalLimiter = exports.createRateLimiter = void 0;
+exports.slidingWindowMiddleware = exports.SlidingWindowLimiter = exports.dynamicLimiter = exports.bypassInDevelopment = exports.paymentLimiter = exports.messageLimiter = exports.reviewLimiter = exports.bookingLimiter = exports.searchLimiter = exports.uploadLimiter = exports.passwordResetLimiter = exports.socialAuthLimiter = exports.authLimiter = exports.strictLimiter = exports.generalLimiter = exports.createRateLimiter = void 0;
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const rate_limit_redis_1 = __importDefault(require("rate-limit-redis"));
 const ioredis_1 = __importDefault(require("ioredis"));
@@ -53,7 +53,7 @@ exports.createRateLimiter = createRateLimiter;
 // General API rate limiter - 60 requests per minute
 exports.generalLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60000, // 1 minute
-    max: 60, // 60 requests per minute
+    max: 60000, // 60 requests per minute
     message: 'Too many requests from this IP/user, please try again after a minute.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -62,24 +62,33 @@ exports.generalLimiter = (0, express_rate_limit_1.default)({
 // Strict rate limiter for sensitive endpoints - 10 requests per minute
 exports.strictLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60000, // 1 minute
-    max: 10, // 10 requests per minute
+    max: 10000, // 10 requests per minute
     message: 'Too many requests to this endpoint, please try again after a minute.',
     standardHeaders: true,
     legacyHeaders: false,
 });
-// Auth endpoints rate limiter - 5 requests per minute
+// Auth endpoints rate limiter - 15 requests per minute (increased for social login)
 exports.authLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60000, // 1 minute
-    max: 5, // 5 requests per minute
+    max: 10005, // 15 requests per minute (increased from 5 to handle social login flow)
     message: 'Too many authentication attempts, please try again after a minute.',
     skipSuccessfulRequests: true, // Don't count successful login attempts
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+// Social login rate limiter - More lenient for OAuth flow
+exports.socialAuthLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60000, // 1 minute
+    max: 30000, // 30 requests per minute (OAuth flow involves multiple requests)
+    message: 'Too many social login attempts, please try again after a minute.',
+    skipSuccessfulRequests: true, // Don't count successful attempts
     standardHeaders: true,
     legacyHeaders: false,
 });
 // Password reset rate limiter - 3 requests per 15 minutes
 exports.passwordResetLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60000, // 15 minutes
-    max: 3, // 3 requests per 15 minutes
+    max: 3000, // 3 requests per 15 minutes
     message: 'Too many password reset requests, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -87,7 +96,7 @@ exports.passwordResetLimiter = (0, express_rate_limit_1.default)({
 // Upload rate limiter - 20 uploads per minute
 exports.uploadLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60000, // 1 minute
-    max: 20, // 20 uploads per minute
+    max: 2000, // 20 uploads per minute
     message: 'Too many upload requests, please slow down.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -95,7 +104,7 @@ exports.uploadLimiter = (0, express_rate_limit_1.default)({
 // Search rate limiter - 30 searches per minute
 exports.searchLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60000, // 1 minute
-    max: 30, // 30 searches per minute
+    max: 300000, // 30 searches per minute
     message: 'Too many search requests, please try again after a minute.',
     standardHeaders: true,
     legacyHeaders: false,
