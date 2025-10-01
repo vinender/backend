@@ -8,6 +8,7 @@ const stripe_config_1 = require("../config/stripe.config");
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("./notification.controller");
 const commission_utils_1 = require("../utils/commission.utils");
+const email_service_1 = require("../services/email.service");
 class PaymentController {
     // Create a payment intent for booking a field
     async createPaymentIntent(req, res) {
@@ -18,6 +19,24 @@ class PaymentController {
             const userId = req.user?.id;
             if (!userId) {
                 return res.status(401).json({ error: 'User not authenticated' });
+            }
+            // Check if user is blocked and get user for Stripe customer
+            const user = await database_1.default.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                    stripeCustomerId: true,
+                    isBlocked: true,
+                    blockReason: true
+                }
+            });
+            if (user?.isBlocked) {
+                return res.status(403).json({
+                    error: 'Your account has been blocked',
+                    reason: user.blockReason || 'Please contact support for more information'
+                });
             }
             // Create idempotency key to prevent duplicate bookings
             // Use a unique key for each payment intent attempt
@@ -66,10 +85,6 @@ class PaymentController {
                     });
                 }
             }
-            // Get user for Stripe customer
-            const user = await database_1.default.user.findUnique({
-                where: { id: userId }
-            });
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
             }
@@ -82,10 +97,8 @@ class PaymentController {
             }
             // Calculate amount in cents (Stripe uses smallest currency unit)
             const amountInCents = Math.round(amount * 100);
-            // Calculate platform commission (20% for admin)
-            const PLATFORM_COMMISSION_RATE = 0.20; // 20% commission
-            const platformCommission = Math.round(amount * PLATFORM_COMMISSION_RATE * 100) / 100;
-            const fieldOwnerAmount = amount - platformCommission;
+            // Calculate platform commission dynamically using commission utils
+            const { fieldOwnerAmount, platformCommission, commissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(amount, field.ownerId || '');
             // Prepare payment intent parameters
             // Payment goes to platform account (admin) first
             const paymentIntentParams = {
@@ -101,7 +114,8 @@ class PaymentController {
                     repeatBooking: repeatBooking || 'none',
                     type: 'field_booking',
                     platformCommission: platformCommission.toString(),
-                    fieldOwnerAmount: fieldOwnerAmount.toString()
+                    fieldOwnerAmount: fieldOwnerAmount.toString(),
+                    commissionRate: commissionRate.toString()
                 },
                 description: `Booking for ${field.name} on ${date} at ${timeSlot}`,
                 receipt_email: req.user?.email,
@@ -282,7 +296,7 @@ class PaymentController {
                     timeSlot,
                     numberOfDogs: parseInt(numberOfDogs),
                     totalPrice: amount,
-                    platformCommission,
+                    platformCommission: platformCommission,
                     fieldOwnerAmount,
                     status: bookingStatus,
                     paymentStatus: paymentStatus,
@@ -324,6 +338,49 @@ class PaymentController {
                         data: { bookingId: booking.id, fieldId }
                     });
                 }
+                // Send email notifications
+                try {
+                    // Get field owner details for email
+                    const fieldOwner = await database_1.default.user.findUnique({
+                        where: { id: field.ownerId },
+                        select: { name: true, email: true }
+                    });
+                    // Send booking confirmation email to dog owner
+                    if (user.email) {
+                        await email_service_1.emailService.sendBookingConfirmationToDogOwner({
+                            email: user.email,
+                            userName: user.name || 'Valued Customer',
+                            bookingId: booking.id,
+                            fieldName: field.name,
+                            fieldAddress: field.address || '',
+                            date: new Date(date),
+                            startTime: startTimeStr,
+                            endTime: endTimeStr,
+                            totalPrice: amount,
+                            fieldOwnerName: fieldOwner?.name || 'Field Owner'
+                        });
+                    }
+                    // Send new booking notification email to field owner
+                    if (fieldOwner?.email) {
+                        await email_service_1.emailService.sendNewBookingNotificationToFieldOwner({
+                            email: fieldOwner.email,
+                            ownerName: fieldOwner.name || 'Field Owner',
+                            bookingId: booking.id,
+                            fieldName: field.name,
+                            date: new Date(date),
+                            startTime: startTimeStr,
+                            endTime: endTimeStr,
+                            totalPrice: amount,
+                            fieldOwnerAmount,
+                            platformCommission,
+                            dogOwnerName: user.name || user.email || 'Customer'
+                        });
+                    }
+                }
+                catch (emailError) {
+                    console.error('Error sending booking emails:', emailError);
+                    // Don't fail the booking if email fails
+                }
                 // Process immediate payout if configured and Stripe account is connected
                 if (payoutReleaseSchedule === 'immediate' && fieldOwnerStripeAccount &&
                     fieldOwnerStripeAccount.chargesEnabled && fieldOwnerStripeAccount.payoutsEnabled) {
@@ -332,7 +389,7 @@ class PaymentController {
                         // Create a transfer to the connected account
                         const transfer = await stripe_config_1.stripe.transfers.create({
                             amount: Math.round(fieldOwnerAmount * 100), // Convert to cents
-                            currency: 'gbp',
+                            currency: 'eur',
                             destination: fieldOwnerStripeAccount.stripeAccountId,
                             transfer_group: `booking_${booking.id}`,
                             metadata: {
@@ -350,7 +407,7 @@ class PaymentController {
                                 stripeAccountId: fieldOwnerStripeAccount.id,
                                 stripePayoutId: transfer.id,
                                 amount: fieldOwnerAmount,
-                                currency: 'gbp',
+                                currency: 'eur',
                                 status: 'paid',
                                 method: 'standard',
                                 description: `Immediate payout for booking ${booking.id}`,

@@ -222,15 +222,23 @@ export class AutomaticPayoutService {
       if (!stripeAccount) {
         console.log(`Field owner ${fieldOwner.id} does not have a Stripe account`);
         
+        // Calculate field owner amount if not stored
+        let payoutAmount = booking.fieldOwnerAmount;
+        if (!payoutAmount) {
+          const { calculatePayoutAmounts } = await import('../utils/commission.utils');
+          const calculated = await calculatePayoutAmounts(booking.totalPrice, fieldOwner.id);
+          payoutAmount = calculated.fieldOwnerAmount;
+        }
+
         // Notify field owner to set up Stripe account
         await createNotification({
           userId: fieldOwner.id,
           type: 'PAYOUT_PENDING',
           title: 'Set up payment account for automatic payouts',
-          message: `You have a pending payout of €${(booking.fieldOwnerAmount || (booking.totalPrice * 0.8)).toFixed(2)} from a booking that's ready for payment. Please set up your payment account to receive funds automatically.`,
-          data: { 
+          message: `You have a pending payout of €${payoutAmount.toFixed(2)} from a booking that's ready for payment. Please set up your payment account to receive funds automatically.`,
+          data: {
             bookingId,
-            amount: booking.fieldOwnerAmount || (booking.totalPrice * 0.8),
+            amount: payoutAmount,
             fieldName: field.name
           }
         });
@@ -248,15 +256,23 @@ export class AutomaticPayoutService {
       if (!stripeAccount.chargesEnabled || !stripeAccount.payoutsEnabled) {
         console.log(`Field owner ${fieldOwner.id} Stripe account is not fully set up`);
         
+        // Calculate field owner amount if not stored
+        let payoutAmount = booking.fieldOwnerAmount;
+        if (!payoutAmount) {
+          const { calculatePayoutAmounts } = await import('../utils/commission.utils');
+          const calculated = await calculatePayoutAmounts(booking.totalPrice, fieldOwner.id);
+          payoutAmount = calculated.fieldOwnerAmount;
+        }
+
         // Notify field owner to complete Stripe onboarding
         await createNotification({
           userId: fieldOwner.id,
           type: 'PAYOUT_PENDING',
           title: 'Complete payment account setup',
-          message: `Complete your payment account setup to receive €${(booking.fieldOwnerAmount || (booking.totalPrice * 0.8)).toFixed(2)} from a recent booking.`,
-          data: { 
+          message: `Complete your payment account setup to receive €${payoutAmount.toFixed(2)} from a recent booking.`,
+          data: {
             bookingId,
-            amount: booking.fieldOwnerAmount || (booking.totalPrice * 0.8),
+            amount: payoutAmount,
             fieldName: field.name
           }
         });
@@ -270,8 +286,13 @@ export class AutomaticPayoutService {
         return null;
       }
 
-      // Calculate payout amount (field owner's portion - already has platform fee deducted)
-      const payoutAmount = booking.fieldOwnerAmount || (booking.totalPrice * 0.8);
+      // Get payout amount - use stored value or calculate
+      let payoutAmount = booking.fieldOwnerAmount;
+      if (!payoutAmount) {
+        const { calculatePayoutAmounts } = await import('../utils/commission.utils');
+        const calculated = await calculatePayoutAmounts(booking.totalPrice, fieldOwner.id);
+        payoutAmount = calculated.fieldOwnerAmount;
+      }
       const payoutAmountInCents = Math.round(payoutAmount * 100);
 
       // Update booking to processing
@@ -284,7 +305,7 @@ export class AutomaticPayoutService {
         // Create a transfer to the connected account
         const transfer = await stripe.transfers.create({
           amount: payoutAmountInCents,
-          currency: 'gbp',
+          currency: 'eur',
           destination: stripeAccount.stripeAccountId,
           transfer_group: `booking_${bookingId}`,
           metadata: {
@@ -303,7 +324,7 @@ export class AutomaticPayoutService {
             stripeAccountId: stripeAccount.id,
             stripePayoutId: transfer.id,
             amount: payoutAmount,
-            currency: 'gbp',
+            currency: 'eur',
             status: 'paid',
             method: 'standard',
             description: `Automatic payout for booking ${bookingId} - Cancellation window passed`,
@@ -547,8 +568,15 @@ export class AutomaticPayoutService {
         bookingsInCancellationWindow: [] as any[]
       };
 
+      // Import commission calculation utility
+      const { calculatePayoutAmounts } = await import('../utils/commission.utils');
+
       for (const booking of bookings) {
-        const amount = booking.fieldOwnerAmount || (booking.totalPrice * 0.8);
+        let amount = booking.fieldOwnerAmount;
+        if (!amount) {
+          const calculated = await calculatePayoutAmounts(booking.totalPrice, userId);
+          amount = calculated.fieldOwnerAmount;
+        }
         
         if (booking.payoutStatus === 'COMPLETED') {
           summary.completedPayouts += amount;

@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -11,11 +44,20 @@ const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("./notification.controller");
 const payout_service_1 = require("../services/payout.service");
 const refund_service_1 = __importDefault(require("../services/refund.service"));
+const email_service_1 = require("../services/email.service");
 class BookingController {
     // Create a new booking
     createBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const dogOwnerId = req.user.id;
         const { fieldId, date, startTime, endTime, notes, numberOfDogs = 1 } = req.body;
+        // Check if user is blocked
+        const user = await database_1.default.user.findUnique({
+            where: { id: dogOwnerId },
+            select: { isBlocked: true, blockReason: true }
+        });
+        if (user?.isBlocked) {
+            throw new AppError_1.AppError(`Your account has been blocked. ${user.blockReason || 'Please contact support for more information'}`, 403);
+        }
         // Verify field exists and is active
         const field = await field_model_1.default.findById(fieldId);
         if (!field) {
@@ -87,6 +129,9 @@ class BookingController {
             bookingDuration: field.bookingDuration,
             totalPrice
         });
+        // Calculate commission amounts using dynamic commission rate
+        const { calculatePayoutAmounts } = await Promise.resolve().then(() => __importStar(require('../utils/commission.utils')));
+        const { fieldOwnerAmount, platformCommission } = await calculatePayoutAmounts(totalPrice, field.ownerId || '');
         // Create booking
         const booking = await booking_model_1.default.create({
             dogOwnerId,
@@ -96,6 +141,8 @@ class BookingController {
             endTime,
             timeSlot: `${startTime} - ${endTime}`, // Set timeSlot to match startTime and endTime
             totalPrice,
+            fieldOwnerAmount,
+            platformCommission,
             numberOfDogs, // Store for pricing and info, but slot is now private
             notes,
         });
@@ -393,6 +440,28 @@ class BookingController {
                     endTime: booking.endTime,
                 },
             });
+            // Send email notification
+            try {
+                const dogOwner = await database_1.default.user.findUnique({
+                    where: { id: booking.userId },
+                    select: { email: true, name: true }
+                });
+                if (dogOwner?.email) {
+                    await email_service_1.emailService.sendBookingStatusChangeEmail({
+                        email: dogOwner.email,
+                        userName: dogOwner.name || 'Valued Customer',
+                        bookingId: booking.id,
+                        fieldName: field.name,
+                        date: new Date(booking.date),
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        newStatus: 'CONFIRMED'
+                    });
+                }
+            }
+            catch (emailError) {
+                console.error('Error sending confirmation email:', emailError);
+            }
         }
         else if (status === 'COMPLETED') {
             // Notify dog owner that booking is completed
@@ -407,6 +476,28 @@ class BookingController {
                     fieldName: field.name,
                 },
             });
+            // Send email notification
+            try {
+                const dogOwner = await database_1.default.user.findUnique({
+                    where: { id: booking.userId },
+                    select: { email: true, name: true }
+                });
+                if (dogOwner?.email) {
+                    await email_service_1.emailService.sendBookingStatusChangeEmail({
+                        email: dogOwner.email,
+                        userName: dogOwner.name || 'Valued Customer',
+                        bookingId: booking.id,
+                        fieldName: field.name,
+                        date: new Date(booking.date),
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        newStatus: 'COMPLETED'
+                    });
+                }
+            }
+            catch (emailError) {
+                console.error('Error sending completion email:', emailError);
+            }
             // Trigger automatic payout to field owner
             try {
                 console.log(`Triggering automatic payout for completed booking ${id}`);
@@ -610,6 +701,33 @@ class BookingController {
                         endTime: booking.endTime,
                     },
                 });
+                // Send email to field owner
+                try {
+                    const fieldOwner = await database_1.default.user.findUnique({
+                        where: { id: field.ownerId },
+                        select: { email: true, name: true }
+                    });
+                    if (fieldOwner?.email) {
+                        const dogOwner = await database_1.default.user.findUnique({
+                            where: { id: booking.userId },
+                            select: { name: true, email: true }
+                        });
+                        await email_service_1.emailService.sendBookingStatusChangeEmail({
+                            email: fieldOwner.email,
+                            userName: fieldOwner.name || 'Field Owner',
+                            bookingId: booking.id,
+                            fieldName: field.name,
+                            date: new Date(booking.date),
+                            startTime: booking.startTime,
+                            endTime: booking.endTime,
+                            newStatus: 'CANCELLED',
+                            reason: `Cancelled by customer: ${dogOwner?.name || dogOwner?.email || 'Customer'}. ${reason || ''}`
+                        });
+                    }
+                }
+                catch (emailError) {
+                    console.error('Error sending cancellation email to field owner:', emailError);
+                }
             }
             // Send confirmation to dog owner
             await (0, notification_controller_1.createNotification)({
@@ -623,6 +741,29 @@ class BookingController {
                     fieldName: field.name,
                 },
             });
+            // Send email to dog owner
+            try {
+                const dogOwner = await database_1.default.user.findUnique({
+                    where: { id: booking.userId },
+                    select: { email: true, name: true }
+                });
+                if (dogOwner?.email) {
+                    await email_service_1.emailService.sendBookingStatusChangeEmail({
+                        email: dogOwner.email,
+                        userName: dogOwner.name || 'Valued Customer',
+                        bookingId: booking.id,
+                        fieldName: field.name,
+                        date: new Date(booking.date),
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        newStatus: 'CANCELLED',
+                        reason: reason || 'You cancelled this booking'
+                    });
+                }
+            }
+            catch (emailError) {
+                console.error('Error sending cancellation confirmation email:', emailError);
+            }
         }
         else if (isFieldOwner) {
             // Field owner cancelled - notify dog owner
@@ -638,6 +779,29 @@ class BookingController {
                     date: booking.date,
                 },
             });
+            // Send email to dog owner
+            try {
+                const dogOwner = await database_1.default.user.findUnique({
+                    where: { id: booking.userId },
+                    select: { email: true, name: true }
+                });
+                if (dogOwner?.email) {
+                    await email_service_1.emailService.sendBookingStatusChangeEmail({
+                        email: dogOwner.email,
+                        userName: dogOwner.name || 'Valued Customer',
+                        bookingId: booking.id,
+                        fieldName: field.name,
+                        date: new Date(booking.date),
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        newStatus: 'CANCELLED',
+                        reason: reason || 'The field owner cancelled this booking'
+                    });
+                }
+            }
+            catch (emailError) {
+                console.error('Error sending cancellation email to dog owner:', emailError);
+            }
         }
         res.json({
             success: true,
@@ -813,8 +977,38 @@ class BookingController {
             }
         });
         // Generate time slots based on field's operating hours and booking duration
-        const openingHour = field.openingTime ? parseInt(field.openingTime.split(':')[0]) : 6;
-        const closingHour = field.closingTime ? parseInt(field.closingTime.split(':')[0]) : 21;
+        // Parse opening and closing times to include minutes
+        const parseTime = (timeStr) => {
+            if (!timeStr)
+                return { hour: 0, minute: 0 };
+            // First, try to match 12-hour format with AM/PM (e.g., "12:15AM", "2:30 PM")
+            const time12Match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+            if (time12Match) {
+                let hour = parseInt(time12Match[1]);
+                const minute = parseInt(time12Match[2]);
+                const period = time12Match[3].toUpperCase();
+                // Convert to 24-hour format
+                if (period === 'PM' && hour !== 12) {
+                    hour += 12;
+                }
+                else if (period === 'AM' && hour === 12) {
+                    hour = 0;
+                }
+                return { hour, minute };
+            }
+            // Second, try to match 24-hour format (e.g., "14:30", "02:15")
+            const time24Match = timeStr.match(/(\d{1,2}):(\d{2})/);
+            if (time24Match) {
+                const hour = parseInt(time24Match[1]);
+                const minute = parseInt(time24Match[2]);
+                return { hour, minute };
+            }
+            // Fallback: try to parse as just hour
+            const hour = parseInt(timeStr.split(':')[0]) || 0;
+            return { hour, minute: 0 };
+        };
+        const openingTime = parseTime(field.openingTime || '6:00AM');
+        const closingTime = parseTime(field.closingTime || '9:00PM');
         const slots = [];
         // Determine slot duration based on field's bookingDuration
         const slotDurationMinutes = field.bookingDuration === '30min' ? 30 : 60;
@@ -825,57 +1019,41 @@ class BookingController {
             const displayMinutes = minutes.toString().padStart(2, '0');
             return `${displayHour}:${displayMinutes}${period}`;
         };
-        // Generate slots based on duration
-        if (slotDurationMinutes === 30) {
-            // Generate 30-minute slots
-            for (let hour = openingHour; hour < closingHour; hour++) {
-                for (let minutes = 0; minutes < 60; minutes += 30) {
-                    const endMinutes = minutes + 30;
-                    const endHour = endMinutes === 60 ? hour + 1 : hour;
-                    const actualEndMinutes = endMinutes === 60 ? 0 : endMinutes;
-                    // Don't create slots that go beyond closing time
-                    if (endHour > closingHour || (endHour === closingHour && actualEndMinutes > 0)) {
-                        break;
-                    }
-                    const startTime = formatTime(hour, minutes);
-                    const endTime = formatTime(endHour, actualEndMinutes);
-                    const slotTime = `${startTime} - ${endTime}`;
-                    // Check if this slot is in the past
-                    const slotDateTime = new Date(selectedDate);
-                    slotDateTime.setHours(hour, minutes, 0, 0);
-                    const isPast = slotDateTime < now;
-                    // Check if slot is booked (private booking system)
-                    const isBooked = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
-                    slots.push({
-                        time: slotTime,
-                        startHour: hour,
-                        isPast,
-                        isBooked,
-                        isAvailable: !isPast && !isBooked
-                    });
-                }
-            }
-        }
-        else {
-            // Generate 1-hour slots
-            for (let hour = openingHour; hour < closingHour; hour++) {
-                const startTime = formatTime(hour);
-                const endTime = formatTime(hour + 1);
-                const slotTime = `${startTime} - ${endTime}`;
-                // Check if this slot is in the past
-                const slotDateTime = new Date(selectedDate);
-                slotDateTime.setHours(hour, 0, 0, 0);
-                const isPast = slotDateTime < now;
-                // Check if slot is booked (private booking system)
-                const isBooked = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
-                slots.push({
-                    time: slotTime,
-                    startHour: hour,
-                    isPast,
-                    isBooked,
-                    isAvailable: !isPast && !isBooked
-                });
-            }
+        // Convert time to minutes for easier calculation
+        const timeToMinutes = (hour, minute) => {
+            return hour * 60 + minute;
+        };
+        const openingMinutes = timeToMinutes(openingTime.hour, openingTime.minute);
+        const closingMinutes = timeToMinutes(closingTime.hour, closingTime.minute);
+        // Generate slots from opening to closing time
+        let currentMinutes = openingMinutes;
+        while (currentMinutes + slotDurationMinutes <= closingMinutes) {
+            // Calculate start time
+            const startHour = Math.floor(currentMinutes / 60);
+            const startMinute = currentMinutes % 60;
+            // Calculate end time
+            const endTotalMinutes = currentMinutes + slotDurationMinutes;
+            const endHour = Math.floor(endTotalMinutes / 60);
+            const endMinute = endTotalMinutes % 60;
+            // Format times
+            const startTime = formatTime(startHour, startMinute);
+            const endTime = formatTime(endHour, endMinute);
+            const slotTime = `${startTime} - ${endTime}`;
+            // Check if this slot is in the past
+            const slotDateTime = new Date(selectedDate);
+            slotDateTime.setHours(startHour, startMinute, 0, 0);
+            const isPast = slotDateTime < now;
+            // Check if slot is booked (private booking system)
+            const isBooked = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
+            slots.push({
+                time: slotTime,
+                startHour: startHour,
+                isPast,
+                isBooked,
+                isAvailable: !isPast && !isBooked
+            });
+            // Move to next slot
+            currentMinutes += slotDurationMinutes;
         }
         res.json({
             success: true,

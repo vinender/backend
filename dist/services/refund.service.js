@@ -208,7 +208,7 @@ class RefundService {
             try {
                 const transfer = await stripe_config_1.stripe.transfers.create({
                     amount: Math.round(netPayoutAmount * 100), // Convert to cents
-                    currency: 'usd',
+                    currency: 'eur',
                     destination: stripeAccount.stripeAccountId,
                     description: `Payout for booking ${booking.id}`,
                     metadata: {

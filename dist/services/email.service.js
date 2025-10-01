@@ -560,6 +560,455 @@ const getPasswordResetTemplate = (otp, name) => {
     </html>
   `;
 };
+const getBookingConfirmationTemplate = (bookingData) => {
+    const formattedDate = new Date(bookingData.date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Confirmed</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .success-badge {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 15px 0;
+          }
+          .info-box {
+            background-color: #f0f8f0;
+            border-left: 4px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .info-item {
+            margin: 12px 0;
+            font-size: 15px;
+          }
+          .info-label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            min-width: 120px;
+          }
+          .price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h1>Booking Confirmed!</h1>
+            <div class="success-badge">✓ Payment Successful</div>
+            <p>Dear ${bookingData.userName},</p>
+            <p>Your booking has been confirmed and paid for successfully! Get ready for a great time with your furry friend.</p>
+
+            <div class="info-box">
+              <h3 style="margin-top: 0;">Booking Details</h3>
+              <div class="info-item">
+                <span class="info-label">Booking ID:</span> #${bookingData.bookingId.slice(-8).toUpperCase()}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Field:</span> ${bookingData.fieldName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Location:</span> ${bookingData.fieldAddress}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Date:</span> ${formattedDate}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Time:</span> ${bookingData.startTime} - ${bookingData.endTime}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Field Owner:</span> ${bookingData.fieldOwnerName}
+              </div>
+              <div class="info-item" style="margin-top: 20px; padding-top: 15px; border-top: 2px dashed #ccc;">
+                <span class="info-label">Total Paid:</span> <span class="price">€${bookingData.totalPrice.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <p><strong>What's Next?</strong></p>
+            <ul>
+              <li>You'll receive a reminder 24 hours before your booking</li>
+              <li>You can contact the field owner through our messaging system</li>
+              <li>Please arrive on time to make the most of your booking</li>
+              <li>Have fun and enjoy your time at the field!</li>
+            </ul>
+
+            <p>If you have any questions or need to make changes to your booking, please contact us through the app.</p>
+
+            <p>Thank you for choosing Fieldsy!</p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+const getNewBookingNotificationTemplate = (bookingData) => {
+    const formattedDate = new Date(bookingData.date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>New Booking Received</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .new-badge {
+            display: inline-block;
+            background-color: #FF9800;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 15px 0;
+          }
+          .info-box {
+            background-color: #fff8e1;
+            border-left: 4px solid #FF9800;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .earnings-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .info-item {
+            margin: 12px 0;
+            font-size: 15px;
+          }
+          .info-label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            min-width: 140px;
+          }
+          .price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h1>New Booking Received!</h1>
+            <div class="new-badge">🎉 New Booking</div>
+            <p>Dear ${bookingData.ownerName},</p>
+            <p>Great news! You have received a new booking for your field.</p>
+
+            <div class="info-box">
+              <h3 style="margin-top: 0;">Booking Details</h3>
+              <div class="info-item">
+                <span class="info-label">Booking ID:</span> #${bookingData.bookingId.slice(-8).toUpperCase()}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Field:</span> ${bookingData.fieldName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Customer:</span> ${bookingData.dogOwnerName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Date:</span> ${formattedDate}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Time:</span> ${bookingData.startTime} - ${bookingData.endTime}
+              </div>
+            </div>
+
+            <div class="earnings-box">
+              <h3 style="margin-top: 0;">💰 Your Earnings</h3>
+              <div class="info-item">
+                <span class="info-label">Total Booking Price:</span> €${bookingData.totalPrice.toFixed(2)}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Platform Commission:</span> €${bookingData.platformCommission.toFixed(2)}
+              </div>
+              <div class="info-item" style="margin-top: 15px; padding-top: 15px; border-top: 2px dashed #4CAF50;">
+                <span class="info-label">Your Payout:</span> <span class="price">€${bookingData.fieldOwnerAmount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <p><strong>What's Next?</strong></p>
+            <ul>
+              <li>The booking amount has been secured via Stripe</li>
+              <li>Your payout will be processed after the booking is completed</li>
+              <li>You can message the customer through the app if needed</li>
+              <li>Please ensure your field is ready for the booking time</li>
+            </ul>
+
+            <p>If you have any questions or concerns, please contact our support team.</p>
+
+            <p>Thank you for being part of Fieldsy!</p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+const getBookingStatusChangeTemplate = (emailData) => {
+    const formattedDate = new Date(emailData.date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    const statusColors = {
+        'CANCELLED': '#f44336',
+        'COMPLETED': '#4CAF50',
+        'CONFIRMED': '#2196F3'
+    };
+    const statusMessages = {
+        'CANCELLED': 'Your booking has been cancelled.',
+        'COMPLETED': 'Your booking has been completed. We hope you had a great time!',
+        'CONFIRMED': 'Your booking has been confirmed.'
+    };
+    const statusColor = statusColors[emailData.newStatus] || '#FF9800';
+    const statusMessage = statusMessages[emailData.newStatus] || `Your booking status has been updated to ${emailData.newStatus}.`;
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Status Update</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .status-badge {
+            display: inline-block;
+            background-color: ${statusColor};
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 15px 0;
+          }
+          .info-box {
+            background-color: #f5f5f5;
+            border-left: 4px solid ${statusColor};
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .info-item {
+            margin: 12px 0;
+            font-size: 15px;
+          }
+          .info-label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            min-width: 120px;
+          }
+          .reason-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h1>Booking Status Update</h1>
+            <div class="status-badge">${emailData.newStatus}</div>
+            <p>Dear ${emailData.userName},</p>
+            <p>${statusMessage}</p>
+
+            <div class="info-box">
+              <h3 style="margin-top: 0;">Booking Details</h3>
+              <div class="info-item">
+                <span class="info-label">Booking ID:</span> #${emailData.bookingId.slice(-8).toUpperCase()}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Field:</span> ${emailData.fieldName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Date:</span> ${formattedDate}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Time:</span> ${emailData.startTime} - ${emailData.endTime}
+              </div>
+            </div>
+
+            ${emailData.reason ? `
+            <div class="reason-box">
+              <h3 style="margin-top: 0;">Reason:</h3>
+              <p>${emailData.reason}</p>
+            </div>
+            ` : ''}
+
+            ${emailData.newStatus === 'CANCELLED' ? `
+              <p>If you were charged for this booking, a refund will be processed to your original payment method within 5-7 business days.</p>
+            ` : ''}
+
+            ${emailData.newStatus === 'COMPLETED' ? `
+              <p>We hope you and your furry friend had a wonderful time! If you enjoyed your experience, please consider leaving a review for the field owner.</p>
+            ` : ''}
+
+            <p>If you have any questions, please don't hesitate to contact our support team.</p>
+
+            <p>Thank you for using Fieldsy!</p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
 // Email service class
 class EmailService {
     async sendMail(to, subject, html) {
@@ -633,6 +1082,45 @@ class EmailService {
         catch (error) {
             console.error(`❌ Failed to send field claim status email to ${statusData.email}:`, error);
             // Don't throw error to prevent status update from failing
+            return false;
+        }
+    }
+    async sendBookingConfirmationToDogOwner(bookingData) {
+        const subject = 'Booking Confirmed - Fieldsy';
+        const html = getBookingConfirmationTemplate(bookingData);
+        try {
+            const result = await this.sendMail(bookingData.email, subject, html);
+            console.log(`✅ Booking confirmation email sent to ${bookingData.email}`);
+            return result;
+        }
+        catch (error) {
+            console.error(`❌ Failed to send booking confirmation email to ${bookingData.email}:`, error);
+            return false;
+        }
+    }
+    async sendNewBookingNotificationToFieldOwner(bookingData) {
+        const subject = 'New Booking Received - Fieldsy';
+        const html = getNewBookingNotificationTemplate(bookingData);
+        try {
+            const result = await this.sendMail(bookingData.email, subject, html);
+            console.log(`✅ New booking notification email sent to ${bookingData.email}`);
+            return result;
+        }
+        catch (error) {
+            console.error(`❌ Failed to send new booking notification email to ${bookingData.email}:`, error);
+            return false;
+        }
+    }
+    async sendBookingStatusChangeEmail(emailData) {
+        const subject = `Booking ${emailData.newStatus} - Fieldsy`;
+        const html = getBookingStatusChangeTemplate(emailData);
+        try {
+            const result = await this.sendMail(emailData.email, subject, html);
+            console.log(`✅ Booking status change email sent to ${emailData.email}`);
+            return result;
+        }
+        catch (error) {
+            console.error(`❌ Failed to send booking status change email to ${emailData.email}:`, error);
             return false;
         }
     }

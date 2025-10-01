@@ -43,6 +43,9 @@ model User {
   provider      String    @default("general") // google, apple, or general
   stripeCustomerId String?  // Stripe customer ID for payment methods
   isReported    Boolean   @default(false)
+  isBlocked     Boolean   @default(false) // Admin can block users
+  blockedAt     DateTime? // When the user was blocked
+  blockReason   String?   // Reason for blocking
   commissionRate Float?    // Custom commission rate for field owners (0-100)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

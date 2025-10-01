@@ -34,20 +34,22 @@ export async function getEffectiveCommissionRate(userId: string): Promise<number
  * Calculate field owner amount and platform fee based on commission rate
  */
 export async function calculatePayoutAmounts(
-  totalAmount: number, 
+  totalAmount: number,
   fieldOwnerId: string
-): Promise<{ fieldOwnerAmount: number; platformFeeAmount: number; commissionRate: number }> {
+): Promise<{ fieldOwnerAmount: number; platformFeeAmount: number; platformCommission: number; commissionRate: number }> {
   const commissionRate = await getEffectiveCommissionRate(fieldOwnerId);
-  
+
   // Platform gets the commission percentage
   const platformFeeAmount = (totalAmount * commissionRate) / 100;
-  
+  const platformCommission = platformFeeAmount; // Same value, different name for DB compatibility
+
   // Field owner gets the remaining amount
   const fieldOwnerAmount = totalAmount - platformFeeAmount;
-  
+
   return {
     fieldOwnerAmount,
     platformFeeAmount,
+    platformCommission, // DB field name
     commissionRate
   };
 }

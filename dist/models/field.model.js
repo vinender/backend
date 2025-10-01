@@ -90,6 +90,19 @@ class FieldModel {
             isActive: true,
             isSubmitted: true,
         };
+        // Exclude fields from blocked field owners
+        const blockedOwners = await database_1.default.user.findMany({
+            where: {
+                role: 'FIELD_OWNER',
+                isBlocked: true
+            },
+            select: { id: true }
+        });
+        if (blockedOwners.length > 0) {
+            whereClause.ownerId = {
+                notIn: blockedOwners.map(owner => owner.id)
+            };
+        }
         // Handle comprehensive search (field name, address, city, state, zipCode)
         if (where.search) {
             // Check if search term might be a UK postcode

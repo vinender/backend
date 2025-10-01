@@ -116,8 +116,20 @@ class EarningsController {
             })
         ]);
         // Calculate earnings from bookings (for pending amounts)
-        const calculateBookingEarnings = (bookings) => {
-            return bookings.reduce((sum, b) => sum + (b.fieldOwnerAmount || b.totalPrice * 0.8), 0);
+        const calculateBookingEarnings = async (bookings) => {
+            // Calculate earnings - use stored fieldOwnerAmount or fallback to calculation
+            const { calculatePayoutAmounts } = require('../utils/commission.utils');
+            let sum = 0;
+            for (const b of bookings) {
+                if (b.fieldOwnerAmount) {
+                    sum += b.fieldOwnerAmount;
+                }
+                else {
+                    const calc = await calculatePayoutAmounts(b.totalPrice, userId);
+                    sum += calc.fieldOwnerAmount;
+                }
+            }
+            return sum;
         };
         // Use payout amounts for period earnings
         const totalEarnings = totalEarningsFromPayouts;
@@ -125,7 +137,7 @@ class EarningsController {
         const weekEarnings = weekPayouts.reduce((sum, p) => sum + p.amount, 0);
         const monthEarnings = monthPayouts.reduce((sum, p) => sum + p.amount, 0);
         const yearEarnings = yearPayouts.reduce((sum, p) => sum + p.amount, 0);
-        const completedPayoutAmount = calculateBookingEarnings(completedPayoutBookings);
+        const completedPayoutAmount = await calculateBookingEarnings(completedPayoutBookings);
         // Get payout summary
         const payoutSummary = await auto_payout_service_1.automaticPayoutService.getPayoutSummary(userId);
         // Get recent payouts
@@ -156,7 +168,7 @@ class EarningsController {
                         fieldName: b.field.name,
                         customerName: b.user.name || b.user.email,
                         date: b.date,
-                        amount: b.fieldOwnerAmount || b.totalPrice * 0.8
+                        amount: b.fieldOwnerAmount || (b.totalPrice * 0.8)
                     }))
                 };
             }));
@@ -314,7 +326,7 @@ class EarningsController {
                     customerName: b.user.name || b.user.email,
                     date: b.date,
                     time: `${b.startTime} - ${b.endTime}`,
-                    amount: b.fieldOwnerAmount || b.totalPrice * 0.8,
+                    amount: b.fieldOwnerAmount || (b.totalPrice * 0.8),
                     status: b.status
                 }))
             };

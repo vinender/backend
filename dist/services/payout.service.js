@@ -62,6 +62,9 @@ class PayoutService {
             if (!stripeAccount) {
                 console.log(`Field owner ${fieldOwner.id} does not have a Stripe account`);
                 // Notify field owner to set up Stripe account
+                // Calculate field owner amount if not stored
+                const { fieldOwnerAmount: calculatedAmount } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, fieldOwner.id);
+                const payoutAmount = booking.fieldOwnerAmount || calculatedAmount;
                 await (0, notification_controller_1.createNotification)({
                     userId: fieldOwner.id,
                     type: 'PAYOUT_PENDING',
@@ -69,7 +72,7 @@ class PayoutService {
                     message: 'You have pending payouts. Please set up your payment account to receive funds.',
                     data: {
                         bookingId,
-                        amount: booking.fieldOwnerAmount || (booking.totalPrice * 0.8)
+                        amount: payoutAmount
                     }
                 });
                 // Mark payout as pending account setup
@@ -82,6 +85,9 @@ class PayoutService {
             // Check if Stripe account is fully onboarded
             if (!stripeAccount.chargesEnabled || !stripeAccount.payoutsEnabled) {
                 console.log(`Field owner ${fieldOwner.id} Stripe account is not fully set up`);
+                // Calculate field owner amount if not stored
+                const { fieldOwnerAmount: calculatedAmount } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, fieldOwner.id);
+                const payoutAmount = booking.fieldOwnerAmount || calculatedAmount;
                 // Notify field owner to complete Stripe onboarding
                 await (0, notification_controller_1.createNotification)({
                     userId: fieldOwner.id,
@@ -90,7 +96,7 @@ class PayoutService {
                     message: 'Please complete your payment account setup to receive pending payouts.',
                     data: {
                         bookingId,
-                        amount: booking.fieldOwnerAmount || (booking.totalPrice * 0.8)
+                        amount: payoutAmount
                     }
                 });
                 // Mark payout as pending account setup
@@ -100,9 +106,15 @@ class PayoutService {
                 });
                 return;
             }
-            // Calculate payout amount using commission rates
-            const { fieldOwnerAmount, platformFeeAmount, commissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, fieldOwner.id);
-            const payoutAmount = booking.fieldOwnerAmount || fieldOwnerAmount;
+            // Get payout amount - use stored value or calculate
+            let payoutAmount = booking.fieldOwnerAmount;
+            let platformCommission = booking.platformCommission;
+            if (!payoutAmount) {
+                // Calculate if not stored (fallback for old bookings)
+                const calculated = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, fieldOwner.id);
+                payoutAmount = calculated.fieldOwnerAmount;
+                platformCommission = calculated.platformCommission;
+            }
             const payoutAmountInCents = Math.round(payoutAmount * 100);
             // Update booking to processing
             await prisma.booking.update({
@@ -145,7 +157,7 @@ class PayoutService {
                         payoutStatus: 'COMPLETED',
                         payoutId: payout.id,
                         fieldOwnerAmount: payoutAmount,
-                        platformFeeAmount: platformFeeAmount
+                        platformCommission: platformCommission
                     }
                 });
                 // Send notification to field owner
@@ -153,7 +165,7 @@ class PayoutService {
                     userId: fieldOwner.id,
                     type: 'PAYOUT_PROCESSED',
                     title: 'Payment Received!',
-                    message: `£${payoutAmount.toFixed(2)} has been transferred to your account for ${field.name} booking.`,
+                    message: `€${payoutAmount.toFixed(2)} has been transferred to your account for ${field.name} booking.`,
                     data: {
                         bookingId,
                         payoutId: payout.id,
@@ -281,7 +293,7 @@ class PayoutService {
                         fieldName: b.field.name,
                         customerName: b.user.name || b.user.email,
                         date: b.date,
-                        amount: b.fieldOwnerAmount || b.totalPrice * 0.8
+                        amount: b.fieldOwnerAmount || (b.totalPrice * 0.8)
                     }))
                 };
             }));

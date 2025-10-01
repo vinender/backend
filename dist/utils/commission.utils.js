@@ -40,11 +40,13 @@ async function calculatePayoutAmounts(totalAmount, fieldOwnerId) {
     const commissionRate = await getEffectiveCommissionRate(fieldOwnerId);
     // Platform gets the commission percentage
     const platformFeeAmount = (totalAmount * commissionRate) / 100;
+    const platformCommission = platformFeeAmount; // Same value, different name for DB compatibility
     // Field owner gets the remaining amount
     const fieldOwnerAmount = totalAmount - platformFeeAmount;
     return {
         fieldOwnerAmount,
         platformFeeAmount,
+        platformCommission, // DB field name
         commissionRate
     };
 }

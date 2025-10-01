@@ -250,8 +250,14 @@ async function calculateFieldOwnerEarnings() {
       for (const field of owner.ownedFields) {
         for (const booking of field.bookings) {
           if (!booking.payment) continue;
-          
-          const bookingAmount = booking.fieldOwnerAmount || (booking.totalPrice * 0.8); // 80% after platform fee
+
+          // Get field owner amount - use stored or calculate dynamically
+          let bookingAmount = booking.fieldOwnerAmount;
+          if (!bookingAmount) {
+            const { calculatePayoutAmounts } = require('../utils/commission.utils');
+            const calculated = await calculatePayoutAmounts(booking.totalPrice, owner.id);
+            bookingAmount = calculated.fieldOwnerAmount;
+          }
           
           if (booking.payoutStatus === 'COMPLETED') {
             totalEarnings += bookingAmount;
