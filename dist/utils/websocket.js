@@ -412,11 +412,13 @@ function setupWebSocket(server) {
                 // Broadcast to conversation room (both sender and receiver if they're in the room)
                 const socketsInConvRoom = await io.in(convRoom).fetchSockets();
                 console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
+                console.log(`[Socket] Message sender ID: ${userId}, Receiver ID: ${receiverId}`);
                 if (socketsInConvRoom.length > 0) {
                     console.log(`[Socket] Socket IDs in conversation room: ${socketsInConvRoom.map(s => s.id).join(', ')}`);
+                    console.log(`[Socket] User IDs in room:`, socketsInConvRoom.map((s) => s.userId));
                     // Emit to everyone in the conversation room
                     io.to(convRoom).emit('new-message', savedMessage);
-                    console.log(`[Socket] Emitted 'new-message' to conversation room`);
+                    console.log(`[Socket] Emitted 'new-message' to conversation room with message ID: ${savedMessage.id}`);
                 }
                 // If receiver is NOT in the conversation room, send notification to their user room
                 const receiverRoom = `user-${receiverId}`;
