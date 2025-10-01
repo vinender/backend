@@ -194,7 +194,7 @@ export function setupWebSocket(server: HTTPServer) {
         const socketsInRoom = await io.in(convRoom).fetchSockets();
         console.log(`[Socket] Room ${convRoom} now has ${socketsInRoom.length} members`);
 
-        // Fetch and send message history
+        // Fetch and send message history (most recent 50 messages)
         const messages = await prisma.message.findMany({
           where: { conversationId },
           include: {
@@ -215,9 +215,12 @@ export function setupWebSocket(server: HTTPServer) {
               }
             }
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },  // Get newest first
           take: 50
         });
+
+        // Reverse to show oldest to newest
+        messages.reverse();
 
         // Send message history to this specific socket
         socket.emit('message-history', {
