@@ -157,10 +157,12 @@ app.use("/api/commission", commissionRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/chat', chatRoutes)
 
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() })
 })
+
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -171,10 +173,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   })
 })
 
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" })
 })
+
 
 // Start server
 app.listen(PORT, () => {
