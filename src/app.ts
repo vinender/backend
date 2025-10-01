@@ -25,6 +25,7 @@ import adminRoutes from "./routes/admin.routes"
 import chatRoutes from "./routes/chat.routes"
 // Load environment variables
 
+
 dotenv.config();
 
 // Initialize Express app
@@ -75,11 +76,12 @@ app.use(cors({
   credentials: true,
 }))
 
-app.use(compression())
-app.use(morgan("dev"))
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
-app.use(cookieParser())
+app.use(compression());
+app.use(morgan("dev"));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
 
 // API Documentation - Root route for production
 app.get("/", (req, res) => {

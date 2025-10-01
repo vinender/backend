@@ -329,18 +329,21 @@ export function setupWebSocket(server: HTTPServer) {
       }
     });
 
-    // Send a message via socket
-    socket.on('send-message', async (data: { conversationId: string; content: string; receiverId: string }) => {
+    // Send a message via socket (with acknowledgment callback)
+    socket.on('send-message', async (data: { conversationId: string; content: string; receiverId: string; correlationId?: string }, callback?: Function) => {
       console.log(`[Socket] === SEND-MESSAGE EVENT RECEIVED ===`);
       console.log(`[Socket] From user: ${userId}`);
       console.log(`[Socket] Data:`, data);
+      console.log(`[Socket] Has callback:`, !!callback);
 
       try {
-        const { conversationId, content, receiverId } = data;
+        const { conversationId, content, receiverId, correlationId } = data;
 
         if (!conversationId || !content || !receiverId) {
           console.log(`[Socket] Missing required fields, sending error`);
-          socket.emit('message-error', { error: 'Missing required fields' });
+          const error = { error: 'Missing required fields', correlationId };
+          socket.emit('message-error', error);
+          if (callback) callback({ success: false, error: 'Missing required fields' });
           return;
         }
 
@@ -371,7 +374,9 @@ export function setupWebSocket(server: HTTPServer) {
         });
 
         if (!conversation) {
-          socket.emit('message-error', { error: 'Access denied' });
+          const error = { error: 'Access denied', correlationId };
+          socket.emit('message-error', error);
+          if (callback) callback({ success: false, error: 'Access denied' });
           return;
         }
 
@@ -396,10 +401,13 @@ export function setupWebSocket(server: HTTPServer) {
         ]);
 
         if (senderBlockedReceiver || receiverBlockedSender) {
-          socket.emit('message-error', {
+          const error = {
             error: 'Cannot send messages. One or both users have blocked each other.',
-            blocked: true
-          });
+            blocked: true,
+            correlationId
+          };
+          socket.emit('message-error', error);
+          if (callback) callback({ success: false, error: error.error, blocked: true });
           return;
         }
 
@@ -461,7 +469,8 @@ export function setupWebSocket(server: HTTPServer) {
         // If receiver is NOT in the conversation room, send notification to their user room
         const receiverRoom = `user-${receiverId}`;
         const receiverInConvRoom = socketsInConvRoom.some((s: any) => {
-          return s.data?.userId === receiverId;
+          // FIX: userId is attached directly to socket, not in s.data
+          return (s as any).userId === receiverId;
         });
 
         if (!receiverInConvRoom) {
@@ -481,9 +490,21 @@ export function setupWebSocket(server: HTTPServer) {
 
         console.log(`[Socket] Message broadcasted successfully`);
 
+        // Send acknowledgment to sender with the saved message
+        if (callback) {
+          console.log(`[Socket] Sending ACK to sender for message ${savedMessage.id}`);
+          callback({
+            success: true,
+            message: savedMessage,
+            correlationId: data.correlationId
+          });
+        }
+
       } catch (error) {
         console.error('[Socket] Error sending message:', error);
-        socket.emit('message-error', { error: 'Failed to send message' });
+        const errorResponse = { error: 'Failed to send message', correlationId: data.correlationId };
+        socket.emit('message-error', errorResponse);
+        if (callback) callback({ success: false, error: 'Failed to send message' });
       }
     });
 
