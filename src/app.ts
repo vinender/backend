@@ -76,11 +76,13 @@ app.use(cors({
   credentials: true,
 }))
 
+
 app.use(compression());
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
 
 
 // API Documentation - Root route for production
@@ -112,6 +114,7 @@ app.get("/", (req, res) => {
   }
 });
 
+
 // API Documentation - Also available at /api 
 app.get("/api", (req, res) => {
   const acceptHeader = req.headers.accept || '';
@@ -140,6 +143,7 @@ app.get("/api", (req, res) => {
     });
   }
 });
+
 
 // Routes
 app.use("/api/auth", authRoutes)
