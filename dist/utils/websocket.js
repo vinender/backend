@@ -411,14 +411,35 @@ function setupWebSocket(server) {
                 // convRoom already defined above on line 353
                 // Broadcast to conversation room (both sender and receiver if they're in the room)
                 const socketsInConvRoom = await io.in(convRoom).fetchSockets();
+                console.log(`[Socket] === BROADCASTING MESSAGE ===`);
                 console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
                 console.log(`[Socket] Message sender ID: ${userId}, Receiver ID: ${receiverId}`);
                 if (socketsInConvRoom.length > 0) {
                     console.log(`[Socket] Socket IDs in conversation room: ${socketsInConvRoom.map(s => s.id).join(', ')}`);
-                    console.log(`[Socket] User IDs in room:`, socketsInConvRoom.map((s) => s.userId));
+                    // Enhanced logging: Show which user each socket belongs to
+                    const socketUserMappings = socketsInConvRoom.map((s) => ({
+                        socketId: s.id,
+                        userId: s.userId || 'UNKNOWN'
+                    }));
+                    console.log(`[Socket] Socket-to-User mappings:`, JSON.stringify(socketUserMappings, null, 2));
+                    // Check if sender is in room
+                    const senderSocketsCount = socketsInConvRoom.filter((s) => s.userId === userId).length;
+                    console.log(`[Socket] Sender (${userId}) has ${senderSocketsCount} socket(s) in room`);
+                    // Check if receiver is in room
+                    const receiverSocketsCount = socketsInConvRoom.filter((s) => s.userId === receiverId).length;
+                    console.log(`[Socket] Receiver (${receiverId}) has ${receiverSocketsCount} socket(s) in room`);
+                    if (receiverSocketsCount === 0) {
+                        console.log(`[Socket] ⚠️ WARNING: Receiver is NOT in conversation room! Message will not be delivered in real-time.`);
+                    }
+                    else {
+                        console.log(`[Socket] ✅ Receiver IS in conversation room - message will be delivered in real-time`);
+                    }
                     // Emit to everyone in the conversation room
                     io.to(convRoom).emit('new-message', savedMessage);
-                    console.log(`[Socket] Emitted 'new-message' to conversation room with message ID: ${savedMessage.id}`);
+                    console.log(`[Socket] ✅ Emitted 'new-message' to conversation room with message ID: ${savedMessage.id}`);
+                }
+                else {
+                    console.log(`[Socket] ⚠️ WARNING: No sockets in conversation room! Nobody will receive this message in real-time.`);
                 }
                 // If receiver is NOT in the conversation room, send notification to their user room
                 const receiverRoom = `user-${receiverId}`;
