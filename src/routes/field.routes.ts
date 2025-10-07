@@ -8,6 +8,7 @@ const router = Router();
 
 // Public routes (with optional auth for better data)
 router.get('/', optionalAuth, fieldController.getAllFields);
+router.get('/active', fieldController.getActiveFields); // Public endpoint for active fields only
 router.get('/suggestions', fieldController.getFieldSuggestions);
 router.get('/search/location', fieldController.searchByLocation);
 

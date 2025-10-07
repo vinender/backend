@@ -45,7 +45,7 @@ class FieldController {
             data: field,
         });
     });
-    // Get all fields with filters and pagination
+    // Get all fields with filters and pagination (admin - includes all fields)
     getAllFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
         const pageNum = Number(page);
@@ -55,6 +55,57 @@ class FieldController {
         const amenitiesArray = amenities
             ? amenities.split(',').map(a => a.trim())
             : undefined;
+        const result = await field_model_1.default.findAll({
+            search: search,
+            zipCode: zipCode,
+            lat: lat ? Number(lat) : undefined,
+            lng: lng ? Number(lng) : undefined,
+            city: city,
+            state: state,
+            type: type,
+            minPrice: minPrice ? Number(minPrice) : undefined,
+            maxPrice: maxPrice ? Number(maxPrice) : undefined,
+            amenities: amenitiesArray,
+            minRating: minRating ? Number(minRating) : undefined,
+            maxDistance: maxDistance ? Number(maxDistance) : undefined,
+            date: date ? new Date(date) : undefined,
+            startTime: startTime,
+            endTime: endTime,
+            numberOfDogs: numberOfDogs ? Number(numberOfDogs) : undefined,
+            size: size,
+            terrainType: terrainType,
+            fenceType: fenceType,
+            instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+            sortBy: sortBy,
+            sortOrder: sortOrder,
+            skip,
+            take: limitNum,
+        });
+        const totalPages = Math.ceil(result.total / limitNum);
+        res.json({
+            success: true,
+            data: result.fields,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total: result.total,
+                totalPages,
+                hasNextPage: pageNum < totalPages,
+                hasPrevPage: pageNum > 1,
+            },
+        });
+    });
+    // Get active fields only (public - for field listing/search)
+    getActiveFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
+        const pageNum = Number(page);
+        const limitNum = Number(limit);
+        const skip = (pageNum - 1) * limitNum;
+        // Parse amenities if it's a comma-separated string
+        const amenitiesArray = amenities
+            ? amenities.split(',').map(a => a.trim())
+            : undefined;
+        // This method already filters by isActive: true and isSubmitted: true
         const result = await field_model_1.default.findAll({
             search: search,
             zipCode: zipCode,
@@ -471,17 +522,15 @@ class FieldController {
             field.uploadImagesCompleted &&
             field.pricingAvailabilityCompleted &&
             field.bookingRulesCompleted;
-        // If all steps completed, activate the field
-        if (allStepsCompleted && !field.isActive) {
-            await field_model_1.default.update(fieldId, { isActive: true });
-        }
+        // Note: Field should only become active after submission via submitFieldForReview
+        // Do not auto-activate when steps are completed
         res.json({
             success: true,
             message: isNewField ? 'Field created and progress saved' : 'Progress saved',
             fieldId: field.id,
             stepCompleted: true,
             allStepsCompleted,
-            isActive: allStepsCompleted,
+            isActive: field.isActive, // Return actual isActive status
             isNewField
         });
     });
@@ -513,7 +562,7 @@ class FieldController {
         const ownerId = req.user.id;
         const { status = 'all', page = 1, limit = 10 } = req.query;
         try {
-            // First get the owner's field
+            // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
                 return res.status(404).json({
@@ -527,13 +576,14 @@ class FieldController {
                     }
                 });
             }
-            const fieldId = fields[0].id;
+            // Get all field IDs for this owner
+            const fieldIds = fields.map((field) => field.id);
             // Get bookings from database
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
-            let bookingFilter = { fieldId };
+            let bookingFilter = { fieldId: { in: fieldIds } };
             // Filter based on status
             if (status === 'today') {
                 bookingFilter.date = {
@@ -569,13 +619,13 @@ class FieldController {
                 }),
                 database_1.default.booking.count({ where: bookingFilter })
             ]);
-            // Get overall stats
+            // Get overall stats across all fields
             const totalBookings = await database_1.default.booking.count({
-                where: { fieldId }
+                where: { fieldId: { in: fieldIds } }
             });
             const todayBookings = await database_1.default.booking.count({
                 where: {
-                    fieldId,
+                    fieldId: { in: fieldIds },
                     date: {
                         gte: today,
                         lt: tomorrow
@@ -584,7 +634,7 @@ class FieldController {
             });
             const totalEarnings = await database_1.default.booking.aggregate({
                 where: {
-                    fieldId,
+                    fieldId: { in: fieldIds },
                     status: 'COMPLETED'
                 },
                 _sum: {
@@ -641,7 +691,7 @@ class FieldController {
         const ownerId = req.user.id;
         const { page = 1, limit = 12 } = req.query;
         try {
-            // First get the owner's field
+            // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
                 return res.status(404).json({
@@ -655,14 +705,15 @@ class FieldController {
                     }
                 });
             }
-            const fieldId = fields[0].id;
+            // Get all field IDs for this owner
+            const fieldIds = fields.map((field) => field.id);
             // Get today's date range
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
             const bookingFilter = {
-                fieldId,
+                fieldId: { in: fieldIds },
                 date: {
                     gte: today,
                     lt: tomorrow
@@ -671,12 +722,13 @@ class FieldController {
             const pageNum = Number(page);
             const limitNum = Number(limit);
             const skip = (pageNum - 1) * limitNum;
-            // Fetch bookings with user details and count
+            // Fetch bookings with user details, field details, and count
             const [bookings, totalFilteredBookings] = await Promise.all([
                 database_1.default.booking.findMany({
                     where: bookingFilter,
                     include: {
-                        user: true
+                        user: true,
+                        field: true
                     },
                     orderBy: {
                         date: 'asc'
@@ -686,12 +738,12 @@ class FieldController {
                 }),
                 database_1.default.booking.count({ where: bookingFilter })
             ]);
-            // Get overall stats
+            // Get overall stats across all fields
             const [totalBookings, totalEarnings] = await Promise.all([
-                database_1.default.booking.count({ where: { fieldId } }),
+                database_1.default.booking.count({ where: { fieldId: { in: fieldIds } } }),
                 database_1.default.booking.aggregate({
                     where: {
-                        fieldId,
+                        fieldId: { in: fieldIds },
                         status: 'COMPLETED'
                     },
                     _sum: {
@@ -714,8 +766,8 @@ class FieldController {
                 dogs: booking.numberOfDogs || 1,
                 amount: booking.totalPrice,
                 date: booking.date.toISOString(),
-                fieldName: fields[0].name,
-                fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+                fieldName: booking.field.name,
+                fieldAddress: `${booking.field.address}, ${booking.field.city}`,
                 notes: booking.notes || null
             }));
             res.status(200).json({
@@ -755,7 +807,7 @@ class FieldController {
         const ownerId = req.user.id;
         const { page = 1, limit = 12 } = req.query;
         try {
-            // First get the owner's field
+            // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
                 return res.status(404).json({
@@ -769,14 +821,15 @@ class FieldController {
                     }
                 });
             }
-            const fieldId = fields[0].id;
+            // Get all field IDs for this owner
+            const fieldIds = fields.map((field) => field.id);
             // Get tomorrow and beyond
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
             const bookingFilter = {
-                fieldId,
+                fieldId: { in: fieldIds },
                 date: {
                     gte: tomorrow
                 }
@@ -784,12 +837,13 @@ class FieldController {
             const pageNum = Number(page);
             const limitNum = Number(limit);
             const skip = (pageNum - 1) * limitNum;
-            // Fetch bookings with user details and count
+            // Fetch bookings with user and field details and count
             const [bookings, totalFilteredBookings] = await Promise.all([
                 database_1.default.booking.findMany({
                     where: bookingFilter,
                     include: {
-                        user: true
+                        user: true,
+                        field: true
                     },
                     orderBy: {
                         date: 'asc'
@@ -799,12 +853,12 @@ class FieldController {
                 }),
                 database_1.default.booking.count({ where: bookingFilter })
             ]);
-            // Get overall stats
+            // Get overall stats across all fields
             const [totalBookings, todayBookings, totalEarnings] = await Promise.all([
-                database_1.default.booking.count({ where: { fieldId } }),
+                database_1.default.booking.count({ where: { fieldId: { in: fieldIds } } }),
                 database_1.default.booking.count({
                     where: {
-                        fieldId,
+                        fieldId: { in: fieldIds },
                         date: {
                             gte: today,
                             lt: tomorrow
@@ -813,7 +867,7 @@ class FieldController {
                 }),
                 database_1.default.booking.aggregate({
                     where: {
-                        fieldId,
+                        fieldId: { in: fieldIds },
                         status: 'COMPLETED'
                     },
                     _sum: {
@@ -836,8 +890,8 @@ class FieldController {
                 dogs: booking.numberOfDogs || 1,
                 amount: booking.totalPrice,
                 date: booking.date.toISOString(),
-                fieldName: fields[0].name,
-                fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+                fieldName: booking.field.name,
+                fieldAddress: `${booking.field.address}, ${booking.field.city}`,
                 notes: booking.notes || null
             }));
             res.status(200).json({
@@ -877,7 +931,7 @@ class FieldController {
         const ownerId = req.user.id;
         const { page = 1, limit = 12 } = req.query;
         try {
-            // First get the owner's field
+            // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
                 return res.status(404).json({
@@ -891,12 +945,13 @@ class FieldController {
                     }
                 });
             }
-            const fieldId = fields[0].id;
+            // Get all field IDs for this owner
+            const fieldIds = fields.map((field) => field.id);
             // Get past bookings
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const bookingFilter = {
-                fieldId,
+                fieldId: { in: fieldIds },
                 date: {
                     lt: today
                 }
@@ -904,12 +959,13 @@ class FieldController {
             const pageNum = Number(page);
             const limitNum = Number(limit);
             const skip = (pageNum - 1) * limitNum;
-            // Fetch bookings with user details and count
+            // Fetch bookings with user and field details and count
             const [bookings, totalFilteredBookings] = await Promise.all([
                 database_1.default.booking.findMany({
                     where: bookingFilter,
                     include: {
-                        user: true
+                        user: true,
+                        field: true
                     },
                     orderBy: {
                         date: 'desc'
@@ -919,14 +975,14 @@ class FieldController {
                 }),
                 database_1.default.booking.count({ where: bookingFilter })
             ]);
-            // Get overall stats
+            // Get overall stats across all fields
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
             const [totalBookings, todayBookings, totalEarnings] = await Promise.all([
-                database_1.default.booking.count({ where: { fieldId } }),
+                database_1.default.booking.count({ where: { fieldId: { in: fieldIds } } }),
                 database_1.default.booking.count({
                     where: {
-                        fieldId,
+                        fieldId: { in: fieldIds },
                         date: {
                             gte: today,
                             lt: tomorrow
@@ -935,7 +991,7 @@ class FieldController {
                 }),
                 database_1.default.booking.aggregate({
                     where: {
-                        fieldId,
+                        fieldId: { in: fieldIds },
                         status: 'COMPLETED'
                     },
                     _sum: {
@@ -958,8 +1014,8 @@ class FieldController {
                 dogs: booking.numberOfDogs || 1,
                 amount: booking.totalPrice,
                 date: booking.date.toISOString(),
-                fieldName: fields[0].name,
-                fieldAddress: `${fields[0].address}, ${fields[0].city}`,
+                fieldName: booking.field.name,
+                fieldAddress: `${booking.field.address}, ${booking.field.city}`,
                 notes: booking.notes || null
             }));
             res.status(200).json({
