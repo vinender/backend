@@ -28,20 +28,7 @@ class BookingModel {
             data: {
                 ...rest,
                 userId: dogOwnerId,
-                status: 'PENDING',
-                // Store field snapshot data for historical accuracy
-                fieldName: field.name || '',
-                fieldAddress: field.address || '',
-                fieldLocation: field.location || null,
-                fieldImages: field.images || [],
-                fieldPrice: field.price || 0,
-                fieldAmenities: field.amenities || [],
-                fieldSize: field.size || '',
-                fieldType: field.type || '',
-                fieldOwnerName: field.owner?.name || '',
-                fieldOwnerEmail: field.owner?.email || '',
-                fieldRules: field.rules || [],
-                bookingDuration: field.bookingDuration || '',
+                status: 'PENDING'
             },
             include: {
                 field: {

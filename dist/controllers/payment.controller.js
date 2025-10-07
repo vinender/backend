@@ -320,20 +320,7 @@ class PaymentController {
                     paymentIntentId: paymentIntent.id,
                     payoutStatus,
                     payoutHeldReason,
-                    repeatBooking: repeatBooking || 'none',
-                    // Store field snapshot data for historical accuracy
-                    fieldName: field.name || '',
-                    fieldAddress: field.address || '',
-                    fieldLocation: field.location || null,
-                    fieldImages: field.images || [],
-                    fieldPrice: field.price || 0,
-                    fieldAmenities: field.amenities || [],
-                    fieldSize: field.size || '',
-                    fieldType: field.type || '',
-                    fieldOwnerName: fieldOwner?.name || '',
-                    fieldOwnerEmail: fieldOwner?.email || '',
-                    fieldRules: field.rules || [],
-                    bookingDuration: field.bookingDuration || ''
+                    repeatBooking: repeatBooking || 'none'
                 }
             });
             // If payment was auto-confirmed with saved card, create notifications

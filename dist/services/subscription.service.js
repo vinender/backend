@@ -206,20 +206,7 @@ class SubscriptionService {
                 repeatBooking: subscription.interval,
                 subscriptionId: subscription.id,
                 platformCommission: totalPrice * 0.20,
-                fieldOwnerAmount: totalPrice * 0.80,
-                // Store field snapshot data for historical accuracy
-                fieldName: field.name || '',
-                fieldAddress: field.address || '',
-                fieldLocation: field.location || null,
-                fieldImages: field.images || [],
-                fieldPrice: field.price || 0,
-                fieldAmenities: field.amenities || [],
-                fieldSize: field.size || '',
-                fieldType: field.type || '',
-                fieldOwnerName: fieldOwner?.name || '',
-                fieldOwnerEmail: fieldOwner?.email || '',
-                fieldRules: field.rules || [],
-                bookingDuration: field.bookingDuration || ''
+                fieldOwnerAmount: totalPrice * 0.80
             }
         });
         // Update subscription last booking date
