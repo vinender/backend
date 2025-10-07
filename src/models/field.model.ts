@@ -163,19 +163,24 @@ class FieldModel {
       isSubmitted: true,
     };
 
-    // Exclude fields from blocked field owners
-    const blockedOwners = await prisma.user.findMany({
-      where: {
-        role: 'FIELD_OWNER',
-        isBlocked: true
-      },
-      select: { id: true }
-    });
+    // Exclude fields from blocked field owners (if isBlocked field exists in DB)
+    try {
+      const blockedOwners = await prisma.user.findMany({
+        where: {
+          role: 'FIELD_OWNER',
+          isBlocked: true
+        },
+        select: { id: true }
+      });
 
-    if (blockedOwners.length > 0) {
-      whereClause.ownerId = {
-        notIn: blockedOwners.map(owner => owner.id)
-      };
+      if (blockedOwners.length > 0) {
+        whereClause.ownerId = {
+          notIn: blockedOwners.map(owner => owner.id)
+        };
+      }
+    } catch (error: any) {
+      // If isBlocked field doesn't exist in production DB yet, skip this filter
+      console.warn('Warning: isBlocked field not found in User model. Skipping blocked user filter.');
     }
 
     // Handle comprehensive search (field name, address, city, state, zipCode)
