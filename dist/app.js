@@ -107,7 +107,7 @@ app.get("/", (req, res) => {
         });
     }
 });
-// API Documentation - Also available at /api 
+// API Documentation - Also available at /api
 app.get("/api", (req, res) => {
     const acceptHeader = req.headers.accept || '';
     if (acceptHeader.includes('text/html')) {
@@ -131,7 +131,256 @@ app.get("/api", (req, res) => {
                 notifications: '/api/notifications',
                 payments: '/api/payments',
                 chat: '/api/chat',
+                socketDocs: '/api/socket-docs'
             },
+        });
+    }
+});
+// Socket Documentation for Mobile Developers
+app.get("/api/socket-docs", (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const marked = require('marked');
+    try {
+        // Read the markdown file
+        const mdPath = path.join(__dirname, '../../MOBILE_SOCKET_API_GUIDE.md');
+        const mdContent = fs.readFileSync(mdPath, 'utf-8');
+        // Convert markdown to HTML
+        const htmlContent = marked.parse(mdContent);
+        // Wrap in a styled HTML template
+        const styledHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Socket API Guide - Fieldsy</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        .nav-bar {
+            background: #f7fafc;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .nav-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            text-decoration: none;
+            color: #2d3748;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .content {
+            padding: 40px;
+        }
+        .markdown-body {
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        .markdown-body h1,
+        .markdown-body h2 {
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        .markdown-body h3 {
+            color: #667eea;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        .markdown-body pre {
+            background: #2d3748;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            position: relative;
+        }
+        .markdown-body code {
+            background: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+            color: #e2e8f0;
+        }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #e2e8f0;
+            padding: 12px;
+            text-align: left;
+        }
+        .markdown-body table th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        .markdown-body blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 20px;
+            color: #718096;
+            margin: 20px 0;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 6px 12px;
+            background: #4a5568;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .markdown-body pre:hover .copy-btn {
+            opacity: 1;
+        }
+        .copy-btn:hover {
+            background: #2b6cb0;
+        }
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 12px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .back-to-top.visible {
+            opacity: 1;
+        }
+        .back-to-top:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+        }
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8rem; }
+            .content { padding: 20px; }
+            .nav-bar { padding: 10px 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 Mobile Socket API Guide</h1>
+            <p>Complete guide for implementing real-time features in Fieldsy mobile app</p>
+        </div>
+        <div class="nav-bar">
+            <a href="/" class="nav-btn">← Back to API Docs</a>
+            <a href="/api" class="nav-btn">REST API Reference</a>
+        </div>
+        <div class="content">
+            <div class="markdown-body">
+                ${htmlContent}
+            </div>
+        </div>
+    </div>
+    <button class="back-to-top" onclick="scrollToTop()">↑ Top</button>
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            document.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightBlock(block);
+            });
+            document.querySelectorAll('pre').forEach((pre) => {
+                const button = document.createElement('button');
+                button.className = 'copy-btn';
+                button.textContent = 'Copy';
+                button.onclick = () => {
+                    const code = pre.querySelector('code').textContent;
+                    navigator.clipboard.writeText(code).then(() => {
+                        button.textContent = 'Copied!';
+                        setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+                    });
+                };
+                pre.appendChild(button);
+            });
+        });
+        window.addEventListener('scroll', () => {
+            const btn = document.querySelector('.back-to-top');
+            if (window.pageYOffset > 300) { btn.classList.add('visible'); }
+            else { btn.classList.remove('visible'); }
+        });
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
+    `;
+        res.setHeader('Content-Type', 'text/html');
+        res.send(styledHTML);
+    }
+    catch (error) {
+        console.error('Error serving socket docs:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to load socket documentation',
+            error: error.message
         });
     }
 });

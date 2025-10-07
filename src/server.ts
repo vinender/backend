@@ -205,7 +205,7 @@ class Server {
     this.app.get('/api', (req, res) => {
       // Check if client accepts HTML
       const acceptHeader = req.headers.accept || '';
-      
+
       if (acceptHeader.includes('text/html')) {
         // Serve HTML documentation
         res.setHeader('Content-Type', 'text/html');
@@ -226,10 +226,123 @@ class Server {
             notifications: '/api/notifications',
             payments: '/api/payments',
             chat: '/api/chat',
+            socketDocs: '/api/socket-docs'
           },
         });
       }
     });
+
+    // Socket Documentation for Mobile Developers
+    //
+    // This endpoint serves comprehensive Socket.IO documentation for mobile app development
+    //
+    // The guide includes:
+    // • 5-minute Quick Start (install → import → connect → authenticate → listen)
+    // • Complete Chat Implementation (join, send, receive, typing indicators, read receipts)
+    // • All Notification Types (bookings, payments, reviews, system announcements)
+    // • Reconnection Handling (for production reliability and offline scenarios)
+    // • Full Working Example (copy-paste SocketService class)
+    // • Troubleshooting Guide (common issues with step-by-step solutions)
+    //
+    // Each event documented with:
+    // - WHY you need it
+    // - WHEN to use it
+    // - WHAT payload to send
+    // - WHAT response you'll receive
+    //
+    // Perfect for mobile developers with no backend knowledge required!
+    this.app.get('/api/socket-docs', (req, res) => {
+      const fs = require('fs');
+      const path = require('path');
+      const marked = require('marked');
+    
+      try {
+        const mdPath = path.join(__dirname, '../MOBILE_SOCKET_API_GUIDE.md');
+        const mdContent = fs.readFileSync(mdPath, 'utf-8');
+        const htmlContent = marked.parse(mdContent);
+    
+        const styledHTML = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Mobile Socket API Guide - Fieldsy</title>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <style>
+        /* Core Layout */
+        body { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif; background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); padding:20px; min-height:100vh; }
+        .container { max-width: 1200px; margin:0 auto; background:white; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.2); overflow:hidden; }
+        .header { background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; padding:30px; text-align:center; }
+        .header h1 { font-size:2.5rem; margin-bottom:10px; }
+        .nav-bar { background:#f7fafc; padding:15px 30px; border-bottom:1px solid #e2e8f0; display:flex; gap:15px; flex-wrap:wrap; }
+        .nav-btn { padding:8px 16px; background:white; border:1px solid #e2e8f0; border-radius:6px; text-decoration:none; color:#2d3748; font-size:0.9rem; transition:all 0.2s; }
+        .nav-btn:hover { background:#667eea; color:white; border-color:#667eea; }
+        .content { padding:40px; }
+        .markdown-body h1, .markdown-body h2 { border-bottom:2px solid #667eea; padding-bottom:10px; margin-top:30px; margin-bottom:20px; }
+        .markdown-body h3 { color:#667eea; margin-top:25px; margin-bottom:15px; }
+        .markdown-body pre { background:#2d3748; border-radius:8px; padding:20px; overflow-x:auto; position:relative; }
+        .markdown-body pre code { color:#e2e8f0; background:transparent; }
+        .copy-btn { position:absolute; top:10px; right:10px; padding:6px 12px; background:#4a5568; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; opacity:0; transition:opacity 0.2s; }
+        .markdown-body pre:hover .copy-btn { opacity:1; }
+        .back-to-top { position:fixed; bottom:30px; right:30px; padding:12px 20px; background:#667eea; color:white; border:none; border-radius:50px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.2); font-size:0.9rem; opacity:0; transition:opacity 0.3s; }
+        .back-to-top.visible { opacity:1; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>📱 Mobile Socket API Guide</h1>
+          <p>Step-by-step implementation for Fieldsy mobile app</p>
+        </div>
+        <div class="nav-bar">
+          <a href="/" class="nav-btn">← Back</a>
+          <a href="/api" class="nav-btn">REST API Reference</a>
+        </div>
+        <div class="content">
+          <div class="markdown-body">${htmlContent}</div>
+        </div>
+      </div>
+      <button class="back-to-top" onclick="scrollToTop()">↑ Top</button>
+      <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          document.querySelectorAll('pre code').forEach(block => hljs.highlightBlock(block));
+          document.querySelectorAll('pre').forEach(pre => {
+            const btn = document.createElement('button');
+            btn.className = 'copy-btn';
+            btn.textContent = 'Copy';
+            btn.onclick = () => {
+              navigator.clipboard.writeText(pre.querySelector('code').textContent);
+              btn.textContent = 'Copied!';
+              setTimeout(() => btn.textContent = 'Copy', 2000);
+            };
+            pre.appendChild(btn);
+          });
+        });
+        window.addEventListener('scroll', () => {
+          const btn = document.querySelector('.back-to-top');
+          if (window.pageYOffset > 300) btn.classList.add('visible');
+          else btn.classList.remove('visible');
+        });
+        function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      </script>
+    </body>
+    </html>`;
+    
+        res.setHeader('Content-Type', 'text/html');
+        res.send(styledHTML);
+      } catch (error) {
+        console.error('Error serving socket docs:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Failed to load socket documentation',
+          error: error.message
+        });
+      }
+    });
+    
 
     // Stripe webhook route (must be before other routes due to raw body requirement)
     this.app.use('/api/stripe', stripeRoutes);

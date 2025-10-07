@@ -15,13 +15,23 @@ export const getOrCreateConversation = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Receiver ID is required' });
     }
 
-    // Check if conversation already exists
+    // Check if conversation already exists between these two users
+    // Important: Find ANY conversation between these users to prevent duplicates
+    // We search for both possible orderings of participants array
     let conversation = await prisma.conversation.findFirst({
       where: {
-        participants: {
-          hasEvery: [senderId, receiverId]
-        },
-        fieldId: fieldId || undefined
+        OR: [
+          {
+            participants: {
+              equals: [senderId, receiverId]
+            }
+          },
+          {
+            participants: {
+              equals: [receiverId, senderId]
+            }
+          }
+        ]
       },
       include: {
         field: {

@@ -3382,6 +3382,689 @@ exports.apiDocumentation = {
                     }
                 }
             ]
+        },
+        {
+            name: "WebSocket / Real-Time API",
+            description: `Real-time bidirectional communication using Socket.IO for instant chat and notifications.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 FOR MOBILE DEVELOPERS
+
+Complete step-by-step implementation guide available at:
+👉 /api/socket-docs
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 QUICK START (5 Steps)
+
+Step 1: Install Package
+  npm install socket.io-client
+
+Step 2: Import & Initialize
+  import io from 'socket.io-client';
+  const socket = io('https://fieldsy-api.indiitserver.in', {
+    transports: ['websocket'],
+    autoConnect: false
+  });
+
+Step 3: Connect After Login
+  socket.connect();
+
+Step 4: Authenticate (Required)
+  socket.emit('authenticate', { token: yourJWTToken });
+
+Step 5: Listen for Events
+  socket.on('new-message', (msg) => console.log(msg));
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 COMPLETE EVENT FLOW
+
+Connection Phase:
+  1. Connect to server → Receive 'connect' event
+  2. Emit 'authenticate' with JWT → Receive 'authenticated' event
+     ✓ Authentication successful - now you can use all features
+
+Chat Phase:
+  3. Emit 'join-conversation' → Receive 'conversation-joined' event
+     ✓ You're now in the chat room
+  4. Emit 'send-message' → Two things happen:
+     • You receive 'message-sent' confirmation
+     • Other user receives 'new-message' event
+
+Notification Phase:
+  5. Listen for real-time notifications:
+     • 'booking-notification' - Booking updates
+     • 'payment-notification' - Payment updates
+     • 'review-notification' - New reviews
+     • 'system-notification' - System announcements
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  IMPORTANT REQUIREMENTS
+
+Authentication:
+  • MUST authenticate immediately after connecting
+  • Required for ALL socket operations
+  • Use same JWT token from /api/auth/login or /api/auth/register
+
+Chat Requirements:
+  • MUST join conversation before sending/receiving messages
+  • Leave conversation when user exits chat screen
+  • Only one conversation at a time recommended
+
+Production Best Practices:
+  • Handle 'disconnect' event (network issues)
+  • Handle 'reconnect' event (auto-reconnect)
+  • Re-authenticate after reconnection
+  • Re-join conversations after reconnection
+
+Token Management:
+  • Store token securely (AsyncStorage/SecureStore)
+  • Token expires after 24 hours
+  • Refresh token before expiry
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔗 RESOURCES
+
+Detailed Mobile Guide: /api/socket-docs
+  • Complete implementation examples
+  • React Native SocketService class
+  • Error handling patterns
+  • Testing strategies
+  • Troubleshooting guide
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 ALL AVAILABLE EVENTS
+
+Below are detailed specifications for each WebSocket event:`,
+            endpoints: [
+                {
+                    method: "CONNECT",
+                    path: "ws://localhost:5000 (development) or wss://fieldsy-api.indiitserver.in (production)",
+                    description: `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Establish WebSocket Connection
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 Purpose
+  Creates a persistent connection for real-time bidirectional communication
+
+⏰ When to Use
+  • After user successfully logs in
+  • Do NOT connect if user is not authenticated
+
+📋 Prerequisites
+  • User must be logged in
+  • JWT token available in storage
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💻 Mobile Code Example
+
+import io from 'socket.io-client';
+
+const socket = io('https://fieldsy-api.indiitserver.in', {
+  transports: ['websocket'],  // WebSocket only (no polling)
+  autoConnect: false,         // Manual control
+  reconnection: true,         // Auto-reconnect if disconnected
+  reconnectionDelay: 1000,    // Wait 1 second before retry
+  reconnectionAttempts: 5     // Try 5 times before giving up
+});
+
+// Connect when user logs in
+socket.connect();
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ What Happens Next
+  Server accepts connection and you receive 'connect' event
+  → Proceed to STEP 2: Authenticate`,
+                    authentication: false,
+                    requestBody: {
+                        note: "No request body needed. Just call socket.connect()"
+                    },
+                    responses: {
+                        success: {
+                            status: "connected",
+                            body: {
+                                event: "connect",
+                                data: {
+                                    socketId: "xyz123abc456",
+                                    note: "Socket ID is auto-assigned by server. Listen for this event: socket.on('connect', () => console.log('Connected!'))"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "EMIT",
+                    path: "authenticate",
+                    description: `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 2: Authenticate WebSocket Connection (REQUIRED)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 Purpose
+  Server verification - proves you're a legitimate user before allowing any operations
+
+⏰ When to Use
+  • Immediately after receiving 'connect' event
+  • Must authenticate within 10 seconds or connection will timeout
+
+📋 Prerequisites
+  • Socket must be connected (STEP 1 complete)
+  • JWT token from /api/auth/login or /api/auth/register
+
+🔑 What You Need
+  JWT token (same token used for REST API authentication)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💻 Mobile Code Example
+
+socket.on('connect', async () => {
+  console.log('✅ Connected! Now authenticating...');
+
+  // Get token from storage (saved during login)
+  const token = await AsyncStorage.getItem('authToken');
+
+  // Send authentication request
+  socket.emit('authenticate', { token: token });
+});
+
+// Listen for success
+socket.on('authenticated', (data) => {
+  console.log('✅ Authenticated as user:', data.userId);
+  // Now you can send/receive messages and notifications
+  isAuthenticated = true;
+});
+
+// Listen for failure
+socket.on('authentication_error', (error) => {
+  console.error('❌ Auth failed:', error.message);
+  socket.disconnect();
+  // Redirect user to login screen
+  navigation.navigate('Login');
+});
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ What Happens Next
+
+Success Path:
+  You receive 'authenticated' event with userId
+  → Now you can use all socket features
+
+Failure Path:
+  You receive 'authentication_error' event
+  → Disconnect and redirect to login`,
+                    authentication: true,
+                    requestBody: {
+                        token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OGUxMjM0NTY3ODkwYWJjZGVmMTIzNDUiLCJpYXQiOjE3MDk1NTUyMDAsImV4cCI6MTcxMDc2NDgwMH0.abc123xyz789",
+                        note: "Same JWT token received from /api/auth/login or /api/auth/register"
+                    },
+                    responses: {
+                        success: {
+                            status: "authenticated",
+                            body: {
+                                event: "authenticated",
+                                data: {
+                                    success: true,
+                                    userId: "68e1234567890abcdef12345",
+                                    message: "Authentication successful"
+                                }
+                            }
+                        },
+                        error: {
+                            status: "authentication_error",
+                            body: {
+                                event: "authentication_error",
+                                data: {
+                                    message: "Invalid token or Token expired"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "EMIT",
+                    path: "join-conversation",
+                    description: `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 3A: Join Chat Conversation Room (FOR CHAT FEATURE)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 Purpose
+  Enter a specific chat room to send and receive messages
+
+⏰ When to Use
+  • When user opens a chat/conversation screen
+  • Before sending any messages
+
+📋 Prerequisites
+  • Must be authenticated (STEP 2 complete)
+  • Must have a valid conversationId
+
+🔍 How to Get conversationId
+  Use REST API: GET /api/chat/conversations
+  This returns list of user's conversations with IDs
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💻 Mobile Code Example
+
+function openChatScreen(conversationId) {
+  // Join the conversation room
+  socket.emit('join-conversation', {
+    conversationId: conversationId
+  });
+
+  // Listen for confirmation
+  socket.on('conversation-joined', (data) => {
+    console.log('✅ Joined chat:', data.conversationId);
+    // Now you can send/receive messages in this conversation
+
+    // Load previous messages from REST API
+    loadPreviousMessages(conversationId);
+  });
+}
+
+// When leaving chat screen
+function closeChatScreen() {
+  socket.emit('leave-conversation', {
+    conversationId: currentConversationId
+  });
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ Important Rules
+  • Join only ONE conversation at a time
+  • Leave previous conversation before joining a new one
+  • Always leave conversation when user exits chat screen
+
+✅ What Happens Next
+  Server adds you to the conversation room
+  → You'll now receive 'new-message' events for this conversation
+  → You can now send messages using 'send-message' event`,
+                    authentication: true,
+                    requestBody: {
+                        conversationId: "68e1234567890abcdef12345",
+                        note: "Get conversationId from GET /api/chat/conversations endpoint"
+                    },
+                    responses: {
+                        success: {
+                            status: "conversation-joined",
+                            body: {
+                                event: "conversation-joined",
+                                data: {
+                                    conversationId: "68e1234567890abcdef12345",
+                                    success: true,
+                                    message: "Joined conversation successfully"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "EMIT",
+                    path: "send-message",
+                    description: `STEP 3B: Send a chat message (FOR CHAT)
+
+WHY: Send real-time messages to another user
+WHEN: When user types and sends a message in chat
+PREREQUISITE: Must have joined the conversation first (Step 3A)
+
+Mobile Code Example:
+function sendMessage(text) {
+  // Send message
+  socket.emit('send-message', {
+    conversationId: currentConversationId,  // From Step 3A
+    text: text,
+    receiverId: otherUserId  // ID of the person you're chatting with
+  });
+
+  // Optimistically add to UI immediately (before server confirms)
+  const tempMessage = {
+    _id: 'temp-' + Date.now(),
+    text: text,
+    senderId: myUserId,
+    status: 'sending',
+    createdAt: new Date().toISOString()
+  };
+  addMessageToUI(tempMessage);
+
+  // Wait for server confirmation
+  socket.on('message-sent', (data) => {
+    console.log('✅ Message sent! ID:', data.message._id);
+    // Update temp message with real ID
+    updateMessageInUI(tempMessage._id, data.message);
+  });
+
+  // Handle errors
+  socket.on('message-error', (error) => {
+    console.error('❌ Failed to send:', error.error);
+    // Show error in UI, maybe retry
+    markMessageAsFailed(tempMessage._id);
+  });
+}
+
+What Happens Next:
+1. You receive 'message-sent' confirmation with message ID
+2. Other user receives 'new-message' event instantly
+3. Message is saved in database`,
+                    authentication: true,
+                    requestBody: {
+                        conversationId: "68e1234567890abcdef12345",
+                        text: "Hi! Is the field available tomorrow at 3 PM?",
+                        receiverId: "68e9876543210fedcba09876",
+                        note: "Get receiverId from conversation details or field owner profile"
+                    },
+                    responses: {
+                        success: {
+                            status: "message-sent",
+                            body: {
+                                event: "message-sent",
+                                data: {
+                                    success: true,
+                                    message: {
+                                        _id: "68eabcdef1234567890abcde",
+                                        conversationId: "68e1234567890abcdef12345",
+                                        senderId: "68e1234567890abcdef12345",
+                                        receiverId: "68e9876543210fedcba09876",
+                                        text: "Hi! Is the field available tomorrow at 3 PM?",
+                                        read: false,
+                                        createdAt: "2025-10-07T10:30:00.000Z",
+                                        updatedAt: "2025-10-07T10:30:00.000Z"
+                                    }
+                                }
+                            }
+                        },
+                        error: {
+                            status: "message-error",
+                            body: {
+                                event: "message-error",
+                                data: {
+                                    error: "Failed to send message: Not in conversation or Invalid receiverId"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "LISTEN",
+                    path: "new-message",
+                    description: `STEP 3C: Receive incoming chat messages (AUTOMATIC - LISTEN ONLY)
+
+WHY: Get messages from other users in real-time
+WHEN: Automatically when someone sends you a message
+ACTION: Set up listener once (usually in app initialization or socket service)
+
+Mobile Code Example:
+// Set up listener (do this once when app starts)
+socket.on('new-message', (message) => {
+  console.log('📩 New message:', message.text);
+  console.log('From user:', message.senderId);
+  console.log('In conversation:', message.conversationId);
+
+  // Check if user is viewing this conversation
+  if (currentConversationId === message.conversationId) {
+    // User is in this chat - add message to UI
+    addMessageToUI(message);
+
+    // Mark as read immediately
+    socket.emit('mark-messages-read', {
+      conversationId: message.conversationId,
+      userId: myUserId
+    });
+  } else {
+    // User is NOT in this chat - show notification
+    showInAppNotification({
+      title: 'New message',
+      body: message.text,
+      conversationId: message.conversationId
+    });
+
+    // Increment unread badge
+    incrementUnreadBadge(message.conversationId);
+
+    // If app is backgrounded, show push notification
+    if (appState === 'background') {
+      showPushNotification('New message', message.text);
+    }
+  }
+});
+
+When This Fires: When someone sends you a message (after you're authenticated)`,
+                    authentication: true,
+                    requestBody: null,
+                    responses: {
+                        success: {
+                            status: "message-received",
+                            body: {
+                                event: "new-message",
+                                data: {
+                                    _id: "68eabcdef1234567890abcde",
+                                    conversationId: "68e1234567890abcdef12345",
+                                    senderId: "68e9876543210fedcba09876",
+                                    receiverId: "68e1234567890abcdef12345",
+                                    text: "Yes! The field is available from 3 PM to 5 PM. Would you like to book it?",
+                                    read: false,
+                                    createdAt: "2025-10-07T10:31:00.000Z",
+                                    updatedAt: "2025-10-07T10:31:00.000Z"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "EMIT",
+                    path: "typing",
+                    description: "Send typing indicator",
+                    authentication: true,
+                    requestBody: {
+                        conversationId: "conversation_id",
+                        userId: "your_user_id"
+                    },
+                    responses: {
+                        success: {
+                            status: "ok",
+                            body: {
+                                note: "Other users in conversation will receive 'typing' event"
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "EMIT",
+                    path: "stop-typing",
+                    description: "Stop typing indicator",
+                    authentication: true,
+                    requestBody: {
+                        conversationId: "conversation_id",
+                        userId: "your_user_id"
+                    },
+                    responses: {
+                        success: {
+                            status: "ok",
+                            body: {
+                                note: "Other users will receive 'stop-typing' event"
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "EMIT",
+                    path: "mark-messages-read",
+                    description: "Mark messages as read",
+                    authentication: true,
+                    requestBody: {
+                        conversationId: "conversation_id",
+                        userId: "your_user_id"
+                    },
+                    responses: {
+                        success: {
+                            status: "messages-read",
+                            body: {
+                                event: "messages-read",
+                                data: {
+                                    conversationId: "conversation_id",
+                                    userId: "your_user_id",
+                                    updatedCount: 5
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "LISTEN",
+                    path: "notification",
+                    description: "Receive all types of notifications",
+                    authentication: true,
+                    requestBody: null,
+                    responses: {
+                        success: {
+                            status: "notification-received",
+                            body: {
+                                event: "notification",
+                                data: {
+                                    _id: "notification_id",
+                                    userId: "your_user_id",
+                                    type: "BOOKING_CREATED | BOOKING_CONFIRMED | BOOKING_CANCELLED | PAYMENT_RECEIVED | REVIEW_RECEIVED",
+                                    title: "Notification title",
+                                    message: "Notification message",
+                                    data: {
+                                        bookingId: "booking_id",
+                                        fieldId: "field_id",
+                                        amount: 25.00
+                                    },
+                                    read: false,
+                                    createdAt: "2025-10-07T10:00:00.000Z",
+                                    updatedAt: "2025-10-07T10:00:00.000Z"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "LISTEN",
+                    path: "booking-notification",
+                    description: `STEP 4: Receive booking notifications (AUTOMATIC - LISTEN ONLY)
+
+WHY: Get real-time updates about bookings (new bookings, confirmations, cancellations, completions)
+WHEN: Automatically when booking events occur
+WHO RECEIVES:
+- Field Owners: Get notified when someone books their field
+- Dog Owners: Get notified when booking is confirmed, cancelled, or completed
+
+Mobile Code Example:
+// Set up listener once (in app initialization)
+socket.on('booking-notification', (notification) => {
+  console.log('🔔 Booking update:', notification.title);
+  console.log('Type:', notification.type);
+  console.log('Details:', notification.data);
+
+  // Show notification
+  showNotification({
+    title: notification.title,
+    body: notification.message,
+    data: notification.data
+  });
+
+  // Update notification badge
+  incrementNotificationBadge();
+
+  // Handle based on type
+  switch (notification.type) {
+    case 'BOOKING_CREATED':
+      // Field owner received new booking request
+      playSound('new-booking.mp3');
+      break;
+    case 'BOOKING_CONFIRMED':
+      // Dog owner's booking was confirmed
+      playSound('success.mp3');
+      break;
+    case 'BOOKING_CANCELLED':
+      playSound('alert.mp3');
+      break;
+    case 'BOOKING_COMPLETED':
+      // Booking finished, prompt for review
+      showReviewPrompt(notification.data.bookingId);
+      break;
+  }
+
+  // If on bookings screen, refresh list
+  if (currentScreen === 'bookings') {
+    refreshBookingsList();
+  }
+});
+
+When This Fires: When booking status changes in the system`,
+                    authentication: true,
+                    requestBody: null,
+                    responses: {
+                        success: {
+                            status: "booking-notification-received",
+                            body: {
+                                event: "booking-notification",
+                                data: {
+                                    _id: "68eabcdef1234567890abcde",
+                                    userId: "68e1234567890abcdef12345",
+                                    type: "BOOKING_CREATED",
+                                    title: "New Booking Request",
+                                    message: "You have a new booking for Green Valley Field on Oct 8, 2025 from 3:00 PM to 5:00 PM",
+                                    data: {
+                                        bookingId: "68eabcdef1234567890abcde",
+                                        fieldId: "68e1234567890abcdef12345",
+                                        fieldName: "Green Valley Field",
+                                        date: "2025-10-08T00:00:00.000Z",
+                                        startTime: "15:00",
+                                        endTime: "17:00"
+                                    },
+                                    read: false,
+                                    createdAt: "2025-10-07T10:35:00.000Z"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    method: "LISTEN",
+                    path: "payment-notification",
+                    description: "Receive payment-related notifications",
+                    authentication: true,
+                    requestBody: null,
+                    responses: {
+                        success: {
+                            status: "payment-notification-received",
+                            body: {
+                                event: "payment-notification",
+                                data: {
+                                    _id: "notification_id",
+                                    userId: "your_user_id",
+                                    type: "PAYMENT_RECEIVED | PAYMENT_REFUNDED | PAYOUT_COMPLETED",
+                                    title: "Payment Received",
+                                    message: "You received $45.00 for your booking",
+                                    data: {
+                                        amount: 45.00,
+                                        currency: "USD",
+                                        bookingId: "booking_id"
+                                    },
+                                    read: false,
+                                    createdAt: "2025-10-07T10:00:00.000Z"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
         }
     ],
     authentication: {
