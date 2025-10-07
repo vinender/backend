@@ -16,11 +16,6 @@ class FieldController {
         if (userRole !== 'FIELD_OWNER' && userRole !== 'ADMIN') {
             throw new AppError_1.AppError('Only field owners can create fields', 403);
         }
-        // Check if owner already has a field (one field per owner restriction)
-        const existingFields = await field_model_1.default.findByOwner(ownerId);
-        if (existingFields && existingFields.length > 0) {
-            throw new AppError_1.AppError('Field owners can only have one field. Please update your existing field instead.', 400);
-        }
         // Validate minimum operating hours if times are provided
         if (req.body.openingTime && req.body.closingTime) {
             const settings = await database_1.default.systemSettings.findFirst();
@@ -270,15 +265,21 @@ class FieldController {
     // Save field progress (auto-save functionality)
     saveFieldProgress = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const ownerId = req.user.id;
-        const { step, data } = req.body;
-        // Check if field already exists for this owner
-        const existingFields = await field_model_1.default.findByOwner(ownerId);
+        const { step, data, fieldId: providedFieldId } = req.body;
+        // Check if we're updating an existing field or creating a new one
         let fieldId;
         let isNewField = false;
-        // If no field exists, create a new one with initial data
-        if (!existingFields || existingFields.length === 0) {
-            // Create a new field with the data from the first step
-            // This handles the case where the field was deleted or never created
+        // If fieldId is provided, use it; otherwise create a new field
+        if (providedFieldId) {
+            // Verify ownership
+            const existingField = await field_model_1.default.findById(providedFieldId);
+            if (!existingField || existingField.ownerId !== ownerId) {
+                throw new AppError_1.AppError('Field not found or you do not have permission', 403);
+            }
+            fieldId = providedFieldId;
+        }
+        else {
+            // Create a new field
             isNewField = true;
             // Prepare initial field data based on the step
             let initialFieldData = {
@@ -353,9 +354,6 @@ class FieldController {
                     isNewField: true
                 });
             }
-        }
-        else {
-            fieldId = existingFields[0].id;
         }
         let updateData = {};
         // Update based on which step is being saved

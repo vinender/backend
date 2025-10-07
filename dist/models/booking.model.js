@@ -8,11 +8,40 @@ class BookingModel {
     // Create a new booking
     async create(data) {
         const { dogOwnerId, ...rest } = data;
+        // Get field data for snapshot
+        const field = await database_1.default.field.findUnique({
+            where: { id: data.fieldId },
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+        });
+        if (!field) {
+            throw new Error('Field not found');
+        }
         return database_1.default.booking.create({
             data: {
                 ...rest,
                 userId: dogOwnerId,
                 status: 'PENDING',
+                // Store field snapshot data for historical accuracy
+                fieldName: field.name || '',
+                fieldAddress: field.address || '',
+                fieldLocation: field.location || null,
+                fieldImages: field.images || [],
+                fieldPrice: field.price || 0,
+                fieldAmenities: field.amenities || [],
+                fieldSize: field.size || '',
+                fieldType: field.type || '',
+                fieldOwnerName: field.owner?.name || '',
+                fieldOwnerEmail: field.owner?.email || '',
+                fieldRules: field.rules || [],
+                bookingDuration: field.bookingDuration || '',
             },
             include: {
                 field: {

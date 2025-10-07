@@ -323,6 +323,12 @@ export class PaymentController {
         }
       }
       
+      // Get field owner details for snapshot
+      const fieldOwner = await prisma.user.findUnique({
+        where: { id: field.ownerId },
+        select: { name: true, email: true }
+      });
+
       const booking = await prisma.booking.create({
         data: {
           fieldId,
@@ -340,7 +346,21 @@ export class PaymentController {
           paymentIntentId: paymentIntent.id,
           payoutStatus,
           payoutHeldReason,
-          repeatBooking: repeatBooking || 'none'
+          repeatBooking: repeatBooking || 'none',
+
+          // Store field snapshot data for historical accuracy
+          fieldName: field.name || '',
+          fieldAddress: field.address || '',
+          fieldLocation: field.location || null,
+          fieldImages: field.images || [],
+          fieldPrice: field.price || 0,
+          fieldAmenities: field.amenities || [],
+          fieldSize: field.size || '',
+          fieldType: field.type || '',
+          fieldOwnerName: fieldOwner?.name || '',
+          fieldOwnerEmail: fieldOwner?.email || '',
+          fieldRules: field.rules || [],
+          bookingDuration: field.bookingDuration || ''
         }
       });
 

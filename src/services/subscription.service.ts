@@ -224,7 +224,13 @@ export class SubscriptionService {
       totalPrice = pricePerUnit * durationHours * subscription.numberOfDogs;
     }
 
-    // Create booking
+    // Get field owner for snapshot
+    const fieldOwner = await prisma.user.findUnique({
+      where: { id: field.ownerId },
+      select: { name: true, email: true }
+    });
+
+    // Create booking with field snapshot
     const booking = await prisma.booking.create({
       data: {
         userId: subscription.userId,
@@ -240,7 +246,21 @@ export class SubscriptionService {
         repeatBooking: subscription.interval,
         subscriptionId: subscription.id,
         platformCommission: totalPrice * 0.20,
-        fieldOwnerAmount: totalPrice * 0.80
+        fieldOwnerAmount: totalPrice * 0.80,
+
+        // Store field snapshot data for historical accuracy
+        fieldName: field.name || '',
+        fieldAddress: field.address || '',
+        fieldLocation: field.location || null,
+        fieldImages: field.images || [],
+        fieldPrice: field.price || 0,
+        fieldAmenities: field.amenities || [],
+        fieldSize: field.size || '',
+        fieldType: field.type || '',
+        fieldOwnerName: fieldOwner?.name || '',
+        fieldOwnerEmail: fieldOwner?.email || '',
+        fieldRules: field.rules || [],
+        bookingDuration: field.bookingDuration || ''
       }
     });
 

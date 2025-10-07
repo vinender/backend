@@ -41,7 +41,7 @@ class EarningsController {
           fieldEarnings: []
         }
       });
-    }
+    } 
 
     const fieldIds = userFields.map(f => f.id);
     const now = new Date();

@@ -286,6 +286,11 @@ class PaymentController {
                     payoutHeldReason = 'WITHIN_CANCELLATION_WINDOW';
                 }
             }
+            // Get field owner details for snapshot
+            const fieldOwner = await database_1.default.user.findUnique({
+                where: { id: field.ownerId },
+                select: { name: true, email: true }
+            });
             const booking = await database_1.default.booking.create({
                 data: {
                     fieldId,
@@ -303,7 +308,20 @@ class PaymentController {
                     paymentIntentId: paymentIntent.id,
                     payoutStatus,
                     payoutHeldReason,
-                    repeatBooking: repeatBooking || 'none'
+                    repeatBooking: repeatBooking || 'none',
+                    // Store field snapshot data for historical accuracy
+                    fieldName: field.name || '',
+                    fieldAddress: field.address || '',
+                    fieldLocation: field.location || null,
+                    fieldImages: field.images || [],
+                    fieldPrice: field.price || 0,
+                    fieldAmenities: field.amenities || [],
+                    fieldSize: field.size || '',
+                    fieldType: field.type || '',
+                    fieldOwnerName: fieldOwner?.name || '',
+                    fieldOwnerEmail: fieldOwner?.email || '',
+                    fieldRules: field.rules || [],
+                    bookingDuration: field.bookingDuration || ''
                 }
             });
             // If payment was auto-confirmed with saved card, create notifications

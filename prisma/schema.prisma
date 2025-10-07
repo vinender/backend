@@ -213,6 +213,21 @@ model Booking {
   cancellationReason String?
   cancelledAt   DateTime?     // Track when booking was cancelled for refund eligibility
   subscriptionId String?      @db.ObjectId // Reference to subscription if from recurring booking
+
+  // Field snapshot data (stored at time of booking for historical accuracy)
+  fieldName     String?       // Field name at time of booking
+  fieldAddress  String?       // Field address at time of booking
+  fieldLocation Json?         // Complete location object at time of booking
+  fieldImages   String[]      @default([]) // Field images at time of booking
+  fieldPrice    Float?        // Price per slot at time of booking
+  fieldAmenities String[]     @default([]) // Amenities at time of booking
+  fieldSize     String?       // Field size at time of booking
+  fieldType     String?       // Field type at time of booking (PRIVATE, PUBLIC, TRAINING)
+  fieldOwnerName String?      // Field owner name at time of booking
+  fieldOwnerEmail String?     // Field owner email at time of booking
+  fieldRules    String[]      @default([]) // Field rules at time of booking
+  bookingDuration String?     // Booking duration (e.g., "30min", "1hour") at time of booking
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
