@@ -28,24 +28,36 @@ export class PaymentController {
         return res.status(401).json({ error: 'User not authenticated' });
       }
 
-      // Check if user is blocked and get user for Stripe customer
+      // Get user for Stripe customer
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
           id: true,
           email: true,
           name: true,
-          stripeCustomerId: true,
-          isBlocked: true,
-          blockReason: true
+          stripeCustomerId: true
         }
       });
 
-      if (user?.isBlocked) {
-        return res.status(403).json({
-          error: 'Your account has been blocked',
-          reason: user.blockReason || 'Please contact support for more information'
+      // Check if user is blocked (field might not exist in production yet)
+      try {
+        const userBlockStatus = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            isBlocked: true,
+            blockReason: true
+          }
         });
+
+        if (userBlockStatus?.isBlocked) {
+          return res.status(403).json({
+            error: 'Your account has been blocked',
+            reason: userBlockStatus.blockReason || 'Please contact support for more information'
+          });
+        }
+      } catch (error) {
+        // isBlocked field doesn't exist in production yet, skip check
+        console.warn('Warning: isBlocked field not found in User model.');
       }
 
       // Create idempotency key to prevent duplicate bookings

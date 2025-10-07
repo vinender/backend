@@ -16,17 +16,22 @@ class BookingController {
     const dogOwnerId = (req as any).user.id;
     const { fieldId, date, startTime, endTime, notes, numberOfDogs = 1 } = req.body;
 
-    // Check if user is blocked
-    const user = await prisma.user.findUnique({
-      where: { id: dogOwnerId },
-      select: { isBlocked: true, blockReason: true }
-    });
+    // Check if user is blocked (field might not exist in production yet)
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: dogOwnerId },
+        select: { isBlocked: true, blockReason: true }
+      });
 
-    if (user?.isBlocked) {
-      throw new AppError(
-        `Your account has been blocked. ${user.blockReason || 'Please contact support for more information'}`,
-        403
-      );
+      if (user?.isBlocked) {
+        throw new AppError(
+          `Your account has been blocked. ${user.blockReason || 'Please contact support for more information'}`,
+          403
+        );
+      }
+    } catch (error) {
+      // isBlocked field doesn't exist in production yet, skip check
+      console.warn('Warning: isBlocked field not found in User model.');
     }
 
     // Verify field exists and is active

@@ -50,13 +50,19 @@ class BookingController {
     createBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const dogOwnerId = req.user.id;
         const { fieldId, date, startTime, endTime, notes, numberOfDogs = 1 } = req.body;
-        // Check if user is blocked
-        const user = await database_1.default.user.findUnique({
-            where: { id: dogOwnerId },
-            select: { isBlocked: true, blockReason: true }
-        });
-        if (user?.isBlocked) {
-            throw new AppError_1.AppError(`Your account has been blocked. ${user.blockReason || 'Please contact support for more information'}`, 403);
+        // Check if user is blocked (field might not exist in production yet)
+        try {
+            const user = await database_1.default.user.findUnique({
+                where: { id: dogOwnerId },
+                select: { isBlocked: true, blockReason: true }
+            });
+            if (user?.isBlocked) {
+                throw new AppError_1.AppError(`Your account has been blocked. ${user.blockReason || 'Please contact support for more information'}`, 403);
+            }
+        }
+        catch (error) {
+            // isBlocked field doesn't exist in production yet, skip check
+            console.warn('Warning: isBlocked field not found in User model.');
         }
         // Verify field exists and is active
         const field = await field_model_1.default.findById(fieldId);
