@@ -681,134 +681,125 @@ class BookingController {
         }
         else if (!isRefundEligible && isDogOwner) {
             // If not eligible for refund, transfer full amount to field owner after cancellation period
-            try {
-                await refund_service_1.default.processFieldOwnerPayout(booking, 0);
-            }
-            catch (payoutError) {
+            // Run in background - don't block response
+            refund_service_1.default.processFieldOwnerPayout(booking, 0).catch((payoutError) => {
                 console.error('Payout processing error:', payoutError);
-            }
+            });
         }
-        // Send cancellation notifications
+        // Send cancellation notifications and emails in background (non-blocking)
         const field = booking.field;
-        if (isDogOwner) {
-            // Dog owner cancelled - notify field owner
-            if (field.ownerId) {
-                await (0, notification_controller_1.createNotification)({
-                    userId: field.ownerId,
-                    type: 'booking_cancelled_by_customer',
-                    title: 'Booking Cancelled',
-                    message: `A booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the customer.`,
-                    data: {
-                        bookingId: booking.id,
-                        fieldId: field.id,
-                        fieldName: field.name,
-                        date: booking.date,
-                        startTime: booking.startTime,
-                        endTime: booking.endTime,
-                    },
-                });
-                // Send email to field owner
-                try {
-                    const fieldOwner = await database_1.default.user.findUnique({
-                        where: { id: field.ownerId },
+        // Run notifications and emails in background - don't await
+        (async () => {
+            try {
+                if (isDogOwner) {
+                    // Dog owner cancelled - notify field owner
+                    if (field.ownerId) {
+                        // Create notification
+                        await (0, notification_controller_1.createNotification)({
+                            userId: field.ownerId,
+                            type: 'booking_cancelled_by_customer',
+                            title: 'Booking Cancelled',
+                            message: `A booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the customer.`,
+                            data: {
+                                bookingId: booking.id,
+                                fieldId: field.id,
+                                fieldName: field.name,
+                                date: booking.date,
+                                startTime: booking.startTime,
+                                endTime: booking.endTime,
+                            },
+                        });
+                        // Fetch both users in parallel
+                        const [fieldOwner, dogOwner] = await Promise.all([
+                            database_1.default.user.findUnique({
+                                where: { id: field.ownerId },
+                                select: { email: true, name: true }
+                            }),
+                            database_1.default.user.findUnique({
+                                where: { id: booking.userId },
+                                select: { name: true, email: true }
+                            })
+                        ]);
+                        // Send email to field owner
+                        if (fieldOwner?.email) {
+                            email_service_1.emailService.sendBookingStatusChangeEmail({
+                                email: fieldOwner.email,
+                                userName: fieldOwner.name || 'Field Owner',
+                                bookingId: booking.id,
+                                fieldName: field.name,
+                                date: new Date(booking.date),
+                                startTime: booking.startTime,
+                                endTime: booking.endTime,
+                                newStatus: 'CANCELLED',
+                                reason: `Cancelled by customer: ${dogOwner?.name || dogOwner?.email || 'Customer'}. ${reason || ''}`
+                            }).catch((err) => console.error('Error sending email to field owner:', err));
+                        }
+                        // Send email to dog owner
+                        if (dogOwner?.email) {
+                            email_service_1.emailService.sendBookingStatusChangeEmail({
+                                email: dogOwner.email,
+                                userName: dogOwner.name || 'Valued Customer',
+                                bookingId: booking.id,
+                                fieldName: field.name,
+                                date: new Date(booking.date),
+                                startTime: booking.startTime,
+                                endTime: booking.endTime,
+                                newStatus: 'CANCELLED',
+                                reason: reason || 'You cancelled this booking'
+                            }).catch((err) => console.error('Error sending email to dog owner:', err));
+                        }
+                    }
+                    // Send confirmation notification to dog owner
+                    await (0, notification_controller_1.createNotification)({
+                        userId: booking.userId,
+                        type: 'booking_cancelled_success',
+                        title: 'Booking Cancelled',
+                        message: `Your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled successfully.`,
+                        data: {
+                            bookingId: booking.id,
+                            fieldId: field.id,
+                            fieldName: field.name,
+                        },
+                    });
+                }
+                else if (isFieldOwner) {
+                    // Field owner cancelled - notify dog owner
+                    await (0, notification_controller_1.createNotification)({
+                        userId: booking.userId,
+                        type: 'booking_cancelled_by_owner',
+                        title: 'Booking Cancelled by Field Owner',
+                        message: `Unfortunately, your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the field owner.`,
+                        data: {
+                            bookingId: booking.id,
+                            fieldId: field.id,
+                            fieldName: field.name,
+                            date: booking.date,
+                        },
+                    });
+                    // Send email to dog owner
+                    const dogOwner = await database_1.default.user.findUnique({
+                        where: { id: booking.userId },
                         select: { email: true, name: true }
                     });
-                    if (fieldOwner?.email) {
-                        const dogOwner = await database_1.default.user.findUnique({
-                            where: { id: booking.userId },
-                            select: { name: true, email: true }
-                        });
-                        await email_service_1.emailService.sendBookingStatusChangeEmail({
-                            email: fieldOwner.email,
-                            userName: fieldOwner.name || 'Field Owner',
+                    if (dogOwner?.email) {
+                        email_service_1.emailService.sendBookingStatusChangeEmail({
+                            email: dogOwner.email,
+                            userName: dogOwner.name || 'Valued Customer',
                             bookingId: booking.id,
                             fieldName: field.name,
                             date: new Date(booking.date),
                             startTime: booking.startTime,
                             endTime: booking.endTime,
                             newStatus: 'CANCELLED',
-                            reason: `Cancelled by customer: ${dogOwner?.name || dogOwner?.email || 'Customer'}. ${reason || ''}`
-                        });
+                            reason: reason || 'The field owner cancelled this booking'
+                        }).catch((err) => console.error('Error sending email to dog owner:', err));
                     }
                 }
-                catch (emailError) {
-                    console.error('Error sending cancellation email to field owner:', emailError);
-                }
             }
-            // Send confirmation to dog owner
-            await (0, notification_controller_1.createNotification)({
-                userId: booking.userId,
-                type: 'booking_cancelled_success',
-                title: 'Booking Cancelled',
-                message: `Your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled successfully.`,
-                data: {
-                    bookingId: booking.id,
-                    fieldId: field.id,
-                    fieldName: field.name,
-                },
-            });
-            // Send email to dog owner
-            try {
-                const dogOwner = await database_1.default.user.findUnique({
-                    where: { id: booking.userId },
-                    select: { email: true, name: true }
-                });
-                if (dogOwner?.email) {
-                    await email_service_1.emailService.sendBookingStatusChangeEmail({
-                        email: dogOwner.email,
-                        userName: dogOwner.name || 'Valued Customer',
-                        bookingId: booking.id,
-                        fieldName: field.name,
-                        date: new Date(booking.date),
-                        startTime: booking.startTime,
-                        endTime: booking.endTime,
-                        newStatus: 'CANCELLED',
-                        reason: reason || 'You cancelled this booking'
-                    });
-                }
+            catch (error) {
+                console.error('Error in background cancellation tasks:', error);
             }
-            catch (emailError) {
-                console.error('Error sending cancellation confirmation email:', emailError);
-            }
-        }
-        else if (isFieldOwner) {
-            // Field owner cancelled - notify dog owner
-            await (0, notification_controller_1.createNotification)({
-                userId: booking.userId,
-                type: 'booking_cancelled_by_owner',
-                title: 'Booking Cancelled by Field Owner',
-                message: `Unfortunately, your booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} has been cancelled by the field owner.`,
-                data: {
-                    bookingId: booking.id,
-                    fieldId: field.id,
-                    fieldName: field.name,
-                    date: booking.date,
-                },
-            });
-            // Send email to dog owner
-            try {
-                const dogOwner = await database_1.default.user.findUnique({
-                    where: { id: booking.userId },
-                    select: { email: true, name: true }
-                });
-                if (dogOwner?.email) {
-                    await email_service_1.emailService.sendBookingStatusChangeEmail({
-                        email: dogOwner.email,
-                        userName: dogOwner.name || 'Valued Customer',
-                        bookingId: booking.id,
-                        fieldName: field.name,
-                        date: new Date(booking.date),
-                        startTime: booking.startTime,
-                        endTime: booking.endTime,
-                        newStatus: 'CANCELLED',
-                        reason: reason || 'The field owner cancelled this booking'
-                    });
-                }
-            }
-            catch (emailError) {
-                console.error('Error sending cancellation email to dog owner:', emailError);
-            }
-        }
+        })();
         res.json({
             success: true,
             message: 'Booking cancelled successfully',

@@ -28,8 +28,13 @@ exports.protect = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
     try {
         // Verify token
         const decoded = jsonwebtoken_1.default.verify(token, constants_1.JWT_SECRET);
+        // Get user ID from token (support both 'id' and 'userId' fields)
+        const userId = decoded.userId || decoded.id;
+        if (!userId) {
+            throw new AppError_1.AppError('Invalid token format', 401);
+        }
         // Check if user still exists
-        const user = await user_model_1.default.findById(decoded.id);
+        const user = await user_model_1.default.findById(userId);
         if (!user) {
             throw new AppError_1.AppError('The user belonging to this token no longer exists', 401);
         }
@@ -73,10 +78,14 @@ exports.optionalAuth = (0, asyncHandler_1.asyncHandler)(async (req, res, next) =
         try {
             // Verify token
             const decoded = jsonwebtoken_1.default.verify(token, constants_1.JWT_SECRET);
-            // Check if user still exists
-            const user = await user_model_1.default.findById(decoded.id);
-            if (user) {
-                req.user = user;
+            // Get user ID from token (support both 'id' and 'userId' fields)
+            const userId = decoded.userId || decoded.id;
+            if (userId) {
+                // Check if user still exists
+                const user = await user_model_1.default.findById(userId);
+                if (user) {
+                    req.user = user;
+                }
             }
         }
         catch (error) {

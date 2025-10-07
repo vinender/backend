@@ -37,8 +37,15 @@ export const protect = asyncHandler(async (req: Request, res: Response, next: Ne
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET) as any;
 
+    // Get user ID from token (support both 'id' and 'userId' fields)
+    const userId = decoded.userId || decoded.id;
+
+    if (!userId) {
+      throw new AppError('Invalid token format', 401);
+    }
+
     // Check if user still exists
-    const user = await UserModel.findById(decoded.id);
+    const user = await UserModel.findById(userId);
     if (!user) {
       throw new AppError('The user belonging to this token no longer exists', 401);
     }
@@ -88,10 +95,15 @@ export const optionalAuth = asyncHandler(async (req: Request, res: Response, nex
       // Verify token
       const decoded = jwt.verify(token, JWT_SECRET) as any;
 
-      // Check if user still exists
-      const user = await UserModel.findById(decoded.id);
-      if (user) {
-        req.user = user;
+      // Get user ID from token (support both 'id' and 'userId' fields)
+      const userId = decoded.userId || decoded.id;
+
+      if (userId) {
+        // Check if user still exists
+        const user = await UserModel.findById(userId);
+        if (user) {
+          req.user = user;
+        }
       }
     } catch (error) {
       // Invalid token, but continue without user
