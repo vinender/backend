@@ -48,6 +48,7 @@ const settings_routes_1 = __importDefault(require("./routes/settings.routes"));
 const faq_routes_1 = __importDefault(require("./routes/faq.routes"));
 const upload_routes_1 = __importDefault(require("./routes/upload.routes"));
 const about_page_routes_1 = __importDefault(require("./routes/about-page.routes"));
+const amenity_routes_1 = __importDefault(require("./routes/amenity.routes"));
 // Import API documentation
 const api_documentation_1 = require("./utils/api-documentation");
 const api_docs_template_1 = require("./utils/api-docs-template");
@@ -243,6 +244,8 @@ class Server {
         // Upload routes - 20 uploads per minute
         this.app.use('/api/upload', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.uploadLimiter), upload_routes_1.default);
         this.app.use('/api/about-page', about_page_routes_1.default);
+        // Amenities routes
+        this.app.use('/api/amenities', amenity_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }

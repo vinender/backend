@@ -17,6 +17,8 @@ router.get('/search/location', field_controller_1.default.searchByLocation);
 // These are NOT for booking - they're for claiming ownership of unclaimed fields
 router.get('/unclaimed', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getFieldForClaim);
 router.post('/claim-ownership', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.claimField);
+// My fields route (must come before /:id to avoid conflict)
+router.get('/my-fields', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.getMyFields);
 // Public route with ID parameter (must come after specific routes)
 router.get('/:id', auth_middleware_2.optionalAuth, field_controller_1.default.getField);
 // All remaining routes require authentication
@@ -30,7 +32,6 @@ router.get('/owner/bookings/upcoming', (0, auth_middleware_1.restrictTo)('FIELD_
 router.get('/owner/bookings/previous', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getPreviousBookings);
 router.post('/save-progress', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.saveFieldProgress);
 router.post('/submit-for-review', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.submitFieldForReview);
-router.get('/my-fields', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.getMyFields);
 router.post('/', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.createField);
 // Field management routes
 router

@@ -6,6 +6,9 @@ const upload_controller_1 = require("../controllers/upload.controller");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const admin_middleware_1 = require("../middleware/admin.middleware");
 const router = (0, express_1.Router)();
+// Upload single file - generic endpoint (accepts both user and admin auth)
+router.post('/single', admin_middleware_1.authenticateAdmin, // Use admin auth for admin panel
+upload_controller_1.upload.single('file'), upload_controller_1.uploadDirect);
 // Upload single file - for regular users
 router.post('/direct', auth_middleware_1.protect, upload_controller_1.upload.single('file'), upload_controller_1.uploadDirect);
 // Upload single file - for admin users

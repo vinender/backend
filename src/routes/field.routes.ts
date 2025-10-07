@@ -16,6 +16,9 @@ router.get('/search/location', fieldController.searchByLocation);
 router.get('/unclaimed', protect, restrictTo('FIELD_OWNER'), fieldController.getFieldForClaim);
 router.post('/claim-ownership', protect, restrictTo('FIELD_OWNER'), fieldController.claimField);
 
+// My fields route (must come before /:id to avoid conflict)
+router.get('/my-fields', protect, restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.getMyFields);
+
 // Public route with ID parameter (must come after specific routes)
 router.get('/:id', optionalAuth, fieldController.getField);
 
@@ -31,7 +34,6 @@ router.get('/owner/bookings/upcoming', restrictTo('FIELD_OWNER'), fieldControlle
 router.get('/owner/bookings/previous', restrictTo('FIELD_OWNER'), fieldController.getPreviousBookings);
 router.post('/save-progress', restrictTo('FIELD_OWNER'), fieldController.saveFieldProgress);
 router.post('/submit-for-review', restrictTo('FIELD_OWNER'), fieldController.submitFieldForReview);
-router.get('/my-fields', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.getMyFields);
 router.post('/', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.createField);
 
 // Field management routes

@@ -57,6 +57,7 @@ import settingsRoutes from './routes/settings.routes';
 import faqRoutes from './routes/faq.routes';
 import uploadRoutes from './routes/upload.routes';
 import aboutPageRoutes from './routes/about-page.routes';
+import amenityRoutes from './routes/amenity.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -286,8 +287,11 @@ class Server {
     
     // Upload routes - 20 uploads per minute
     this.app.use('/api/upload', bypassInDevelopment(uploadLimiter), uploadRoutes);
-    
+
     this.app.use('/api/about-page', aboutPageRoutes);
+
+    // Amenities routes
+    this.app.use('/api/amenities', amenityRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

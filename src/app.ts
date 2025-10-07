@@ -23,6 +23,7 @@ import payoutRoutes from "./routes/payout.routes"
 import commissionRoutes from "./routes/commission.routes"
 import adminRoutes from "./routes/admin.routes"
 import chatRoutes from "./routes/chat.routes"
+import amenityRoutes from "./routes/amenity.routes"
 // Load environment variables
 
 
@@ -156,6 +157,7 @@ app.use("/api/payouts", payoutRoutes)
 app.use("/api/commission", commissionRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/amenities', amenityRoutes)
 
 
 // Health check endpoint

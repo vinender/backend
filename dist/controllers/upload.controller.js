@@ -75,7 +75,8 @@ const uploadDirect = async (req, res) => {
         const fileUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
         res.status(200).json({
             success: true,
-            fileUrl,
+            url: fileUrl, // Return 'url' field for consistency
+            fileUrl, // Keep fileUrl for backward compatibility
             key,
         });
     }

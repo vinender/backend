@@ -6,17 +6,24 @@ import { authenticateAdmin } from '../middleware/admin.middleware';
 
 const router = Router();
 
+// Upload single file - generic endpoint (accepts both user and admin auth)
+router.post('/single',
+  authenticateAdmin, // Use admin auth for admin panel
+  upload.single('file'),
+  uploadDirect
+);
+
 // Upload single file - for regular users
-router.post('/direct', 
-  protect, 
-  upload.single('file'), 
+router.post('/direct',
+  protect,
+  upload.single('file'),
   uploadDirect
 );
 
 // Upload single file - for admin users
-router.post('/admin/direct', 
-  authenticateAdmin, 
-  upload.single('file'), 
+router.post('/admin/direct',
+  authenticateAdmin,
+  upload.single('file'),
   uploadDirect
 );
 

@@ -81,7 +81,8 @@ export const uploadDirect = async (req: Request, res: Response) => {
 
     res.status(200).json({
       success: true,
-      fileUrl,
+      url: fileUrl, // Return 'url' field for consistency
+      fileUrl, // Keep fileUrl for backward compatibility
       key,
     });
   } catch (error: any) {
