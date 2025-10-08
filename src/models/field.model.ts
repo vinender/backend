@@ -513,21 +513,74 @@ class FieldModel {
 
   // Submit field for review
   async submitField(id: string) {
-    return prisma.field.update({
+    // Get the field to get the ownerId
+    const field = await prisma.field.findUnique({
       where: { id },
-      data: {
-        isSubmitted: true,
-        submittedAt: new Date(),
-        isActive: true, // Activate field on submission
-      },
+      select: { ownerId: true }
     });
+
+    if (!field) {
+      throw new Error('Field not found');
+    }
+
+    // Update field and user in a transaction
+    const [updatedField] = await prisma.$transaction([
+      prisma.field.update({
+        where: { id },
+        data: {
+          isSubmitted: true,
+          submittedAt: new Date(),
+          isActive: true, // Activate field on submission
+        },
+      }),
+      // Set hasField to true for the field owner
+      prisma.user.update({
+        where: { id: field.ownerId },
+        data: {
+          hasField: true,
+        },
+      }),
+    ]);
+
+    return updatedField;
   }
 
   // Delete field
   async delete(id: string) {
-    return prisma.field.delete({
+    // Get the field to get the ownerId before deletion
+    const field = await prisma.field.findUnique({
+      where: { id },
+      select: { ownerId: true }
+    });
+
+    if (!field) {
+      throw new Error('Field not found');
+    }
+
+    // Delete the field
+    const deletedField = await prisma.field.delete({
       where: { id },
     });
+
+    // Check if the owner has any other submitted fields
+    const remainingSubmittedFields = await prisma.field.count({
+      where: {
+        ownerId: field.ownerId,
+        isSubmitted: true,
+      },
+    });
+
+    // If no submitted fields remain, set hasField to false
+    if (remainingSubmittedFields === 0) {
+      await prisma.user.update({
+        where: { id: field.ownerId },
+        data: {
+          hasField: false,
+        },
+      });
+    }
+
+    return deletedField;
   }
 
   // Toggle field active status

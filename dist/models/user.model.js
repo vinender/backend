@@ -80,6 +80,7 @@ class UserModel {
                 googleImage: true,
                 provider: true,
                 emailVerified: true,
+                hasField: true,
                 createdAt: true,
                 updatedAt: true,
             },

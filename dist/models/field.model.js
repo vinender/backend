@@ -409,20 +409,65 @@ class FieldModel {
     }
     // Submit field for review
     async submitField(id) {
-        return database_1.default.field.update({
+        // Get the field to get the ownerId
+        const field = await database_1.default.field.findUnique({
             where: { id },
-            data: {
-                isSubmitted: true,
-                submittedAt: new Date(),
-                isActive: true, // Activate field on submission
-            },
+            select: { ownerId: true }
         });
+        if (!field) {
+            throw new Error('Field not found');
+        }
+        // Update field and user in a transaction
+        const [updatedField] = await database_1.default.$transaction([
+            database_1.default.field.update({
+                where: { id },
+                data: {
+                    isSubmitted: true,
+                    submittedAt: new Date(),
+                    isActive: true, // Activate field on submission
+                },
+            }),
+            // Set hasField to true for the field owner
+            database_1.default.user.update({
+                where: { id: field.ownerId },
+                data: {
+                    hasField: true,
+                },
+            }),
+        ]);
+        return updatedField;
     }
     // Delete field
     async delete(id) {
-        return database_1.default.field.delete({
+        // Get the field to get the ownerId before deletion
+        const field = await database_1.default.field.findUnique({
+            where: { id },
+            select: { ownerId: true }
+        });
+        if (!field) {
+            throw new Error('Field not found');
+        }
+        // Delete the field
+        const deletedField = await database_1.default.field.delete({
             where: { id },
         });
+        // Check if the owner has any other submitted fields
+        const remainingSubmittedFields = await database_1.default.field.count({
+            where: {
+                ownerId: field.ownerId,
+                isSubmitted: true,
+            },
+        });
+        // If no submitted fields remain, set hasField to false
+        if (remainingSubmittedFields === 0) {
+            await database_1.default.user.update({
+                where: { id: field.ownerId },
+                data: {
+                    hasField: false,
+                },
+            });
+        }
+        return deletedField;
     }
     // Toggle field active status
     async toggleActive(id) {

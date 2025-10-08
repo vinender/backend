@@ -47,6 +47,7 @@ model User {
   blockedAt     DateTime? // When the user was blocked
   blockReason   String?   // Reason for blocking
   commissionRate Float?    // Custom commission rate for field owners (0-100)
+  hasField      Boolean   @default(false) // True if field owner has at least one submitted field
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
