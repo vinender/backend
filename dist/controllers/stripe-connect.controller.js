@@ -98,7 +98,7 @@ class StripeConnectController {
     // Generate Stripe Connect onboarding link
     getOnboardingLink = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const userId = req.user.id;
-        const { returnUrl, refreshUrl } = req.body;
+        const { returnUrl, refreshUrl, isMobile } = req.body;
         // Get Stripe account
         const stripeAccount = await database_1.default.stripeAccount.findUnique({
             where: { userId }
@@ -108,13 +108,36 @@ class StripeConnectController {
         }
         // Check if account needs updating or initial onboarding
         const account = await stripe.accounts.retrieve(stripeAccount.stripeAccountId);
+        // Stripe requires HTTPS URLs - app deep links are not supported
+        // For mobile apps, we need to use a web redirect page that then deep links back to the app
+        let finalReturnUrl;
+        let finalRefreshUrl;
+        if (isMobile) {
+            // For mobile, use web-based redirect URLs that will deep link back to app
+            // The web pages will handle the deep link redirect
+            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+            finalReturnUrl = `${baseUrl}/stripe-redirect?status=success&type=mobile`;
+            finalRefreshUrl = `${baseUrl}/stripe-redirect?status=refresh&type=mobile`;
+            console.log(`Mobile redirect URLs: return=${finalReturnUrl}, refresh=${finalRefreshUrl}`);
+        }
+        else {
+            // For web, use provided URLs or defaults
+            finalReturnUrl = returnUrl || `${process.env.FRONTEND_URL}/field-owner/payouts?success=true`;
+            finalRefreshUrl = refreshUrl || `${process.env.FRONTEND_URL}/field-owner/payouts?refresh=true`;
+        }
+        // Validate URLs are HTTPS in production
+        if (process.env.NODE_ENV === 'production') {
+            if (!finalReturnUrl.startsWith('https://') || !finalRefreshUrl.startsWith('https://')) {
+                throw new AppError_1.AppError('Return and refresh URLs must use HTTPS in production', 400);
+            }
+        }
         // For Express accounts, we always use 'account_onboarding' type
         // The onboarding flow will automatically show only the required fields
         // based on what's missing or needs to be updated
         const accountLink = await stripe.accountLinks.create({
             account: stripeAccount.stripeAccountId,
-            refresh_url: refreshUrl || `${process.env.FRONTEND_URL}/field-owner/payouts?refresh=true`,
-            return_url: returnUrl || `${process.env.FRONTEND_URL}/field-owner/payouts?success=true`,
+            refresh_url: finalRefreshUrl,
+            return_url: finalReturnUrl,
             type: 'account_onboarding', // Always use account_onboarding for Express accounts
             // Collection options can be specified to focus on specific requirements
             collection_options: {
@@ -122,12 +145,13 @@ class StripeConnectController {
                 future_requirements: 'include' // Include future requirements in the collection
             }
         });
-        console.log(`Created onboarding link for user ${userId}, account ${stripeAccount.stripeAccountId}`);
+        console.log(`Created onboarding link for user ${userId}, account ${stripeAccount.stripeAccountId}, isMobile: ${isMobile}`);
         res.json({
             success: true,
             data: {
                 url: accountLink.url,
-                type: 'account_onboarding'
+                type: 'account_onboarding',
+                isMobile: isMobile || false
             }
         });
     });
