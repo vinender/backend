@@ -753,5 +753,5 @@ model FieldOption {
 
   @@unique([category, value])
   @@index([category, isActive, order])
-  @@map("field_options")
+  @@map("field_properties")
 }
