@@ -740,3 +740,18 @@ model Amenity {
   @@index([isActive, order])
   @@map("amenities")
 }
+
+model FieldOption {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  category    String    // e.g., "fieldSize", "terrainType", "fenceType", "fenceSize", "surfaceType", "openingDays"
+  value       String    // Slug value e.g., "small", "soft-grass"
+  label       String    // Display label e.g., "Small (1 acre or less)", "Soft Grass"
+  isActive    Boolean   @default(true)
+  order       Int       @default(0) // Display order within category
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([category, value])
+  @@index([category, isActive, order])
+  @@map("field_options")
+}

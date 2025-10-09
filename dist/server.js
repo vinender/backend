@@ -49,6 +49,7 @@ const faq_routes_1 = __importDefault(require("./routes/faq.routes"));
 const upload_routes_1 = __importDefault(require("./routes/upload.routes"));
 const about_page_routes_1 = __importDefault(require("./routes/about-page.routes"));
 const amenity_routes_1 = __importDefault(require("./routes/amenity.routes"));
+const field_properties_routes_1 = __importDefault(require("./routes/field-properties.routes"));
 // Import API documentation
 const api_documentation_1 = require("./utils/api-documentation");
 const api_docs_template_1 = require("./utils/api-docs-template");
@@ -355,6 +356,8 @@ class Server {
         this.app.use('/api/about-page', about_page_routes_1.default);
         // Amenities routes
         this.app.use('/api/amenities', amenity_routes_1.default);
+        // Field Options routes
+        this.app.use('/api/field-properties', field_properties_routes_1.default);
         // Serve static files (if any)
         // this.app.use('/uploads', express.static('uploads'));
     }

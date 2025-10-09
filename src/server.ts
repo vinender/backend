@@ -58,6 +58,7 @@ import faqRoutes from './routes/faq.routes';
 import uploadRoutes from './routes/upload.routes';
 import aboutPageRoutes from './routes/about-page.routes';
 import amenityRoutes from './routes/amenity.routes';
+import fieldPropertiesRoutes from './routes/field-properties.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -405,6 +406,9 @@ class Server {
 
     // Amenities routes
     this.app.use('/api/amenities', amenityRoutes);
+
+    // Field Options routes
+    this.app.use('/api/field-properties', fieldPropertiesRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));

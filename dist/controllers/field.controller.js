@@ -537,8 +537,19 @@ class FieldController {
     // Submit field for review
     submitFieldForReview = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const ownerId = req.user.id;
-        // Get the field
-        const field = await field_model_1.default.findOneByOwner(ownerId);
+        const { fieldId } = req.body;
+        // Get the field - use fieldId if provided, otherwise get first field
+        let field;
+        if (fieldId) {
+            field = await field_model_1.default.findById(fieldId);
+            // Verify ownership
+            if (field && field.ownerId !== ownerId) {
+                throw new AppError_1.AppError('You can only submit your own fields', 403);
+            }
+        }
+        else {
+            field = await field_model_1.default.findOneByOwner(ownerId);
+        }
         if (!field) {
             throw new AppError_1.AppError('No field found for this owner', 404);
         }
