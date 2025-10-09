@@ -6,7 +6,7 @@ const AppError_1 = require("../utils/AppError");
 class FieldPropertiesController {
     // GET /field-properties - Get all field properties with their options
     getAllFieldProperties = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
-        const options = await database_1.prisma.fieldOption.findMany({
+        const options = await database_1.prisma.fieldProperty.findMany({
             where: { isActive: true },
             orderBy: [
                 { category: 'asc' },
@@ -45,7 +45,7 @@ class FieldPropertiesController {
             throw new AppError_1.AppError('Property slug is required', 400);
         }
         // Get all options for this category/property
-        const options = await database_1.prisma.fieldOption.findMany({
+        const options = await database_1.prisma.fieldProperty.findMany({
             where: {
                 category: property,
                 isActive: true
@@ -79,7 +79,7 @@ class FieldPropertiesController {
             filter.category = category;
         }
         const [options, total] = await Promise.all([
-            database_1.prisma.fieldOption.findMany({
+            database_1.prisma.fieldProperty.findMany({
                 where: filter,
                 orderBy: [
                     { category: 'asc' },
@@ -88,7 +88,7 @@ class FieldPropertiesController {
                 skip: (Number(page) - 1) * Number(limit),
                 take: Number(limit)
             }),
-            database_1.prisma.fieldOption.count({ where: filter })
+            database_1.prisma.fieldProperty.count({ where: filter })
         ]);
         res.json({
             success: true,
@@ -114,7 +114,7 @@ class FieldPropertiesController {
             throw new AppError_1.AppError('Category, value, and label are required', 400);
         }
         // Check if option already exists
-        const existing = await database_1.prisma.fieldOption.findUnique({
+        const existing = await database_1.prisma.fieldProperty.findUnique({
             where: {
                 category_value: {
                     category,
@@ -125,7 +125,7 @@ class FieldPropertiesController {
         if (existing) {
             throw new AppError_1.AppError('Field option with this category and value already exists', 400);
         }
-        const option = await database_1.prisma.fieldOption.create({
+        const option = await database_1.prisma.fieldProperty.create({
             data: {
                 category,
                 value,
@@ -148,13 +148,13 @@ class FieldPropertiesController {
         }
         const { id } = req.params;
         const { label, isActive, order } = req.body;
-        const option = await database_1.prisma.fieldOption.findUnique({
+        const option = await database_1.prisma.fieldProperty.findUnique({
             where: { id }
         });
         if (!option) {
             throw new AppError_1.AppError('Field option not found', 404);
         }
-        const updated = await database_1.prisma.fieldOption.update({
+        const updated = await database_1.prisma.fieldProperty.update({
             where: { id },
             data: {
                 ...(label && { label }),
@@ -175,13 +175,13 @@ class FieldPropertiesController {
             throw new AppError_1.AppError('Access denied. Admin only.', 403);
         }
         const { id } = req.params;
-        const option = await database_1.prisma.fieldOption.findUnique({
+        const option = await database_1.prisma.fieldProperty.findUnique({
             where: { id }
         });
         if (!option) {
             throw new AppError_1.AppError('Field option not found', 404);
         }
-        await database_1.prisma.fieldOption.delete({
+        await database_1.prisma.fieldProperty.delete({
             where: { id }
         });
         res.json({
@@ -200,7 +200,7 @@ class FieldPropertiesController {
             throw new AppError_1.AppError('Updates array is required', 400);
         }
         // Bulk update
-        await Promise.all(updates.map(({ id, order }) => database_1.prisma.fieldOption.update({
+        await Promise.all(updates.map(({ id, order }) => database_1.prisma.fieldProperty.update({
             where: { id },
             data: { order }
         })));

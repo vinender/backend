@@ -55,12 +55,12 @@ async function main() {
 
   try {
     // Delete existing field options
-    await prisma.fieldOption.deleteMany({});
+    await prisma.fieldProperty.deleteMany({});
     console.log('Cleared existing field options');
 
     // Insert new field options
     for (const option of fieldOptions) {
-      await prisma.fieldOption.create({
+      await prisma.fieldProperty.create({
         data: option
       });
     }

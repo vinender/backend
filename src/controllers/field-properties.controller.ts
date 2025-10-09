@@ -7,7 +7,7 @@ import { AppError } from '../utils/AppError';
 class FieldPropertiesController {
   // GET /field-properties - Get all field properties with their options
   getAllFieldProperties = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    const options = await prisma.fieldOption.findMany({
+    const options = await prisma.fieldProperty.findMany({
       where: { isActive: true },
       orderBy: [
         { category: 'asc' },
@@ -51,7 +51,7 @@ class FieldPropertiesController {
     }
 
     // Get all options for this category/property
-    const options = await prisma.fieldOption.findMany({
+    const options = await prisma.fieldProperty.findMany({
       where: {
         category: property,
         isActive: true
@@ -92,7 +92,7 @@ class FieldPropertiesController {
     }
 
     const [options, total] = await Promise.all([
-      prisma.fieldOption.findMany({
+      prisma.fieldProperty.findMany({
         where: filter,
         orderBy: [
           { category: 'asc' },
@@ -101,7 +101,7 @@ class FieldPropertiesController {
         skip: (Number(page) - 1) * Number(limit),
         take: Number(limit)
       }),
-      prisma.fieldOption.count({ where: filter })
+      prisma.fieldProperty.count({ where: filter })
     ]);
 
     res.json({
@@ -133,7 +133,7 @@ class FieldPropertiesController {
     }
 
     // Check if option already exists
-    const existing = await prisma.fieldOption.findUnique({
+    const existing = await prisma.fieldProperty.findUnique({
       where: {
         category_value: {
           category,
@@ -146,7 +146,7 @@ class FieldPropertiesController {
       throw new AppError('Field option with this category and value already exists', 400);
     }
 
-    const option = await prisma.fieldOption.create({
+    const option = await prisma.fieldProperty.create({
       data: {
         category,
         value,
@@ -174,7 +174,7 @@ class FieldPropertiesController {
     const { id } = req.params;
     const { label, isActive, order } = req.body;
 
-    const option = await prisma.fieldOption.findUnique({
+    const option = await prisma.fieldProperty.findUnique({
       where: { id }
     });
 
@@ -182,7 +182,7 @@ class FieldPropertiesController {
       throw new AppError('Field option not found', 404);
     }
 
-    const updated = await prisma.fieldOption.update({
+    const updated = await prisma.fieldProperty.update({
       where: { id },
       data: {
         ...(label && { label }),
@@ -208,7 +208,7 @@ class FieldPropertiesController {
 
     const { id } = req.params;
 
-    const option = await prisma.fieldOption.findUnique({
+    const option = await prisma.fieldProperty.findUnique({
       where: { id }
     });
 
@@ -216,7 +216,7 @@ class FieldPropertiesController {
       throw new AppError('Field option not found', 404);
     }
 
-    await prisma.fieldOption.delete({
+    await prisma.fieldProperty.delete({
       where: { id }
     });
 
@@ -243,7 +243,7 @@ class FieldPropertiesController {
     // Bulk update
     await Promise.all(
       updates.map(({ id, order }) =>
-        prisma.fieldOption.update({
+        prisma.fieldProperty.update({
           where: { id },
           data: { order }
         })

@@ -741,7 +741,7 @@ model Amenity {
   @@map("amenities")
 }
 
-model FieldOption {
+model FieldProperty {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   category    String    // e.g., "fieldSize", "terrainType", "fenceType", "fenceSize", "surfaceType", "openingDays"
   value       String    // Slug value e.g., "small", "soft-grass"
