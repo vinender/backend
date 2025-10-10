@@ -87,6 +87,9 @@ class Server {
   }
 
   private configureMiddleware(): void {
+    // Trust proxy - Required for rate limiting behind nginx/reverse proxy
+    this.app.set('trust proxy', 1);
+
     // CORS configuration - MUST come before other middleware
     this.app.use(cors({
       origin: (origin, callback) => {
