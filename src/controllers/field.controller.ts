@@ -391,6 +391,62 @@ class FieldController {
     });
   });
 
+  // Get nearby fields based on lat/lng
+  getNearbyFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { lat, lng, radius = 10, page = 1, limit = 12 } = req.query;
+
+    // Validate required parameters
+    if (!lat || !lng) {
+      throw new AppError('Latitude and longitude are required', 400);
+    }
+
+    // Validate lat/lng values
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      throw new AppError('Invalid latitude or longitude values', 400);
+    }
+
+    if (latitude < -90 || latitude > 90) {
+      throw new AppError('Latitude must be between -90 and 90', 400);
+    }
+
+    if (longitude < -180 || longitude > 180) {
+      throw new AppError('Longitude must be between -180 and 180', 400);
+    }
+
+    const radiusNum = Number(radius);
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Search for nearby fields
+    const nearbyFields = await FieldModel.searchByLocation(
+      latitude,
+      longitude,
+      radiusNum
+    );
+
+    // Apply pagination to results
+    const total = nearbyFields.length;
+    const paginatedFields = nearbyFields.slice(skip, skip + limitNum);
+    const totalPages = Math.ceil(total / limitNum);
+
+    res.json({
+      success: true,
+      data: paginatedFields,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  });
+
   // Get field owner's single field (since they can only have one)
   getOwnerField = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const ownerId = (req as any).user.id;
