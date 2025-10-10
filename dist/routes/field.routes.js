@@ -15,6 +15,7 @@ router.get('/active', field_controller_1.default.getActiveFields); // Public end
 router.get('/suggestions', field_controller_1.default.getFieldSuggestions);
 router.get('/search/location', field_controller_1.default.searchByLocation);
 router.get('/nearby', field_controller_1.default.getNearbyFields);
+router.get('/popular', field_controller_1.default.getPopularFields);
 // Field ownership claiming routes (for field owners to claim unclaimed fields)
 // These are NOT for booking - they're for claiming ownership of unclaimed fields
 router.get('/unclaimed', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.getFieldForClaim);

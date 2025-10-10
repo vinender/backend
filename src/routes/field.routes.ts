@@ -12,6 +12,7 @@ router.get('/active', fieldController.getActiveFields); // Public endpoint for a
 router.get('/suggestions', fieldController.getFieldSuggestions);
 router.get('/search/location', fieldController.searchByLocation);
 router.get('/nearby', fieldController.getNearbyFields);
+router.get('/popular', fieldController.getPopularFields);
 
 // Field ownership claiming routes (for field owners to claim unclaimed fields)
 // These are NOT for booking - they're for claiming ownership of unclaimed fields

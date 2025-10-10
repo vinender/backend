@@ -447,6 +447,88 @@ class FieldController {
     });
   });
 
+  // Get popular fields based on highest rating and most bookings
+  getPopularFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { page = 1, limit = 12 } = req.query;
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get active fields with booking counts and ratings
+    const fields = await prisma.field.findMany({
+      where: {
+        isActive: true,
+        isSubmitted: true,
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            bookings: {
+              where: {
+                status: {
+                  in: ['CONFIRMED', 'COMPLETED']
+                }
+              }
+            },
+          },
+        },
+      },
+    });
+
+    // Calculate popularity score and sort
+    const fieldsWithScore = fields.map((field: any) => {
+      const bookingCount = field._count.bookings || 0;
+      const rating = field.averageRating || 0;
+      const reviewCount = field.reviewCount || 0;
+
+      // Popularity score formula: (rating * 0.4) + (bookingCount * 0.4) + (reviewCount * 0.2)
+      // Normalize booking count (assuming max 100 bookings gives full score)
+      const normalizedBookings = Math.min(bookingCount / 100, 1) * 5;
+      // Normalize review count (assuming 50 reviews gives full score)
+      const normalizedReviews = Math.min(reviewCount / 50, 1) * 5;
+
+      const popularityScore = (rating * 0.4) + (normalizedBookings * 0.4) + (normalizedReviews * 0.2);
+
+      return {
+        ...field,
+        bookingCount,
+        popularityScore,
+      };
+    });
+
+    // Sort by popularity score (highest first)
+    fieldsWithScore.sort((a, b) => b.popularityScore - a.popularityScore);
+
+    // Apply pagination
+    const total = fieldsWithScore.length;
+    const paginatedFields = fieldsWithScore.slice(skip, skip + limitNum);
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Remove internal scoring fields before sending response
+    const cleanedFields = paginatedFields.map(({ popularityScore, ...field }) => field);
+
+    res.json({
+      success: true,
+      data: cleanedFields,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  });
+
   // Get field owner's single field (since they can only have one)
   getOwnerField = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const ownerId = (req as any).user.id;
