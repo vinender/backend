@@ -181,19 +181,10 @@ class FieldModel {
                 whereClause.zipCode = where.zipCode;
             }
         }
-        // Handle location-based search
-        if (where.lat && where.lng) {
-            // Simple proximity search (within ~10km radius)
-            const radius = 0.09; // ~10km in degrees
-            whereClause.latitude = {
-                gte: where.lat - radius,
-                lte: where.lat + radius,
-            };
-            whereClause.longitude = {
-                gte: where.lng - radius,
-                lte: where.lng + radius,
-            };
-        }
+        // Note: We don't filter by lat/lng in the database query.
+        // Instead, we fetch ALL fields and calculate distance in the controller.
+        // This ensures fields without coordinates are still returned (they just won't have distanceMiles).
+        // The lat/lng parameters are used by the controller for distance calculation only.
         if (where.city)
             whereClause.city = where.city;
         if (where.state)
@@ -552,19 +543,11 @@ class FieldModel {
     }
     // Search fields by location
     async searchByLocation(lat, lng, radius = 10) {
-        // This is a simplified version. In production, you'd use PostGIS or similar
-        // for proper geospatial queries
-        return database_1.default.field.findMany({
+        // Get all active fields
+        const allFields = await database_1.default.field.findMany({
             where: {
                 isActive: true,
-                latitude: {
-                    gte: lat - radius / 111, // rough conversion: 1 degree ≈ 111 km
-                    lte: lat + radius / 111,
-                },
-                longitude: {
-                    gte: lng - radius / 111,
-                    lte: lng + radius / 111,
-                },
+                isSubmitted: true,
             },
             include: {
                 owner: {
@@ -581,6 +564,29 @@ class FieldModel {
                 },
             },
         });
+        // Calculate distance for fields with coordinates and filter by radius
+        const R = 3959; // Earth's radius in miles
+        const fieldsWithDistance = allFields
+            .map((field) => {
+            if (field.latitude && field.longitude) {
+                // Haversine formula
+                const dLat = (field.latitude - lat) * Math.PI / 180;
+                const dLng = (field.longitude - lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(lat * Math.PI / 180) * Math.cos(field.latitude * Math.PI / 180) *
+                        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                const distanceMiles = R * c;
+                return {
+                    ...field,
+                    distanceMiles: Number(distanceMiles.toFixed(1))
+                };
+            }
+            return null;
+        })
+            .filter((field) => field !== null && field.distanceMiles !== undefined && field.distanceMiles <= radius)
+            .sort((a, b) => a.distanceMiles - b.distanceMiles);
+        return fieldsWithDistance;
     }
     // Helper method to build orderBy clause
     buildOrderBy(sortBy, sortOrder) {

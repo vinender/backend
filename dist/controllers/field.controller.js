@@ -132,10 +132,35 @@ class FieldController {
             skip,
             take: limitNum,
         });
+        // Calculate distance for each field if user location is provided
+        let fieldsWithDistance = result.fields;
+        if (lat && lng) {
+            const userLat = Number(lat);
+            const userLng = Number(lng);
+            fieldsWithDistance = result.fields.map((field) => {
+                // Only calculate distance if field has coordinates
+                if (field.latitude && field.longitude) {
+                    // Haversine formula to calculate distance in miles
+                    const R = 3959; // Earth's radius in miles
+                    const dLat = (field.latitude - userLat) * Math.PI / 180;
+                    const dLng = (field.longitude - userLng) * Math.PI / 180;
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(userLat * Math.PI / 180) * Math.cos(field.latitude * Math.PI / 180) *
+                            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distanceMiles = R * c;
+                    return {
+                        ...field,
+                        distanceMiles: Number(distanceMiles.toFixed(1))
+                    };
+                }
+                return field;
+            });
+        }
         const totalPages = Math.ceil(result.total / limitNum);
         res.json({
             success: true,
-            data: result.fields,
+            data: fieldsWithDistance,
             pagination: {
                 page: pageNum,
                 limit: limitNum,
@@ -164,9 +189,26 @@ class FieldController {
     // Get field by ID
     getField = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const { id } = req.params;
+        const { lat, lng } = req.query;
         const field = await field_model_1.default.findById(id);
         if (!field) {
             throw new AppError_1.AppError('Field not found', 404);
+        }
+        // Calculate distance if user location (lat/lng) is provided
+        if (lat && lng && field.latitude && field.longitude) {
+            const userLat = Number(lat);
+            const userLng = Number(lng);
+            // Haversine formula to calculate distance in miles
+            const R = 3959; // Earth's radius in miles
+            const dLat = (field.latitude - userLat) * Math.PI / 180;
+            const dLng = (field.longitude - userLng) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(userLat * Math.PI / 180) * Math.cos(field.latitude * Math.PI / 180) *
+                    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distanceMiles = R * c;
+            // Add distanceMiles to field response
+            field.distanceMiles = Number(distanceMiles.toFixed(1));
         }
         res.json({
             success: true,
@@ -327,6 +369,7 @@ class FieldController {
             latitude: field.latitude,
             longitude: field.longitude,
             location: field.location,
+            distanceMiles: field.distanceMiles,
         }));
         res.json({
             success: true,
@@ -343,10 +386,12 @@ class FieldController {
     });
     // Get popular fields based on highest rating and most bookings
     getPopularFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
-        const { page = 1, limit = 12 } = req.query;
+        const { page = 1, limit = 12, lat, lng } = req.query;
         const pageNum = Number(page);
         const limitNum = Number(limit);
         const skip = (pageNum - 1) * limitNum;
+        const userLat = lat ? Number(lat) : null;
+        const userLng = lng ? Number(lng) : null;
         // Get active fields with booking counts and ratings
         const fields = await database_1.default.field.findMany({
             where: {
@@ -383,7 +428,7 @@ class FieldController {
                 },
             },
         });
-        // Calculate popularity score and sort
+        // Calculate popularity score and distance
         const fieldsWithScore = fields.map((field) => {
             const bookingCount = field._count.bookings || 0;
             const rating = field.averageRating || 0;
@@ -394,10 +439,23 @@ class FieldController {
             // Normalize review count (assuming 50 reviews gives full score)
             const normalizedReviews = Math.min(reviewCount / 50, 1) * 5;
             const popularityScore = (rating * 0.4) + (normalizedBookings * 0.4) + (normalizedReviews * 0.2);
+            // Calculate distance if user location is provided
+            let distanceMiles = undefined;
+            if (userLat !== null && userLng !== null && field.latitude && field.longitude) {
+                const R = 3959; // Earth's radius in miles
+                const dLat = (field.latitude - userLat) * Math.PI / 180;
+                const dLng = (field.longitude - userLng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(userLat * Math.PI / 180) * Math.cos(field.latitude * Math.PI / 180) *
+                        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                distanceMiles = Number((R * c).toFixed(1));
+            }
             return {
                 ...field,
                 bookingCount,
                 popularityScore,
+                distanceMiles,
             };
         });
         // Sort by popularity score (highest first)
@@ -424,6 +482,7 @@ class FieldController {
             longitude: field.longitude,
             location: field.location,
             bookingCount: field.bookingCount,
+            distanceMiles: field.distanceMiles,
         }));
         res.json({
             success: true,
@@ -477,7 +536,7 @@ class FieldController {
         // Check if we're updating an existing field or creating a new one
         let fieldId;
         let isNewField = false;
-        // If fieldId is provided, use it; otherwise create a new field
+        // If fieldId is provided, use it; otherwise find or create a field
         if (providedFieldId) {
             // Verify ownership
             const existingField = await field_model_1.default.findById(providedFieldId);
@@ -487,80 +546,105 @@ class FieldController {
             fieldId = providedFieldId;
         }
         else {
-            // Create a new field
-            isNewField = true;
-            // Prepare initial field data based on the step
-            let initialFieldData = {
-                ownerId,
-                isActive: false,
-                fieldDetailsCompleted: false,
-                uploadImagesCompleted: false,
-                pricingAvailabilityCompleted: false,
-                bookingRulesCompleted: false,
-            };
-            // If the first step is field-details, include that data
-            if (step === 'field-details') {
-                // Validate minimum operating hours
-                if (data.startTime && data.endTime) {
-                    const settings = await database_1.default.systemSettings.findFirst();
-                    const minimumHours = settings?.minimumFieldOperatingHours || 4;
-                    const timeToMinutes = (timeStr) => {
-                        const [hours, minutes] = timeStr.split(':').map(Number);
-                        return hours * 60 + (minutes || 0);
-                    };
-                    const openingMinutes = timeToMinutes(data.startTime);
-                    const closingMinutes = timeToMinutes(data.endTime);
-                    const diffHours = (closingMinutes - openingMinutes) / 60;
-                    if (diffHours < 0) {
-                        throw new AppError_1.AppError('Closing time must be after opening time', 400);
-                    }
-                    if (diffHours < minimumHours) {
-                        throw new AppError_1.AppError(`Field must be open for at least ${minimumHours} hours`, 400);
-                    }
+            // No fieldId provided
+            // For steps after field-details, try to find the most recent incomplete field
+            // This handles cases where fieldId was lost due to page refresh or state issues
+            if (step !== 'field-details') {
+                const ownerFields = await field_model_1.default.findByOwner(ownerId);
+                const incompleteField = ownerFields
+                    .filter((f) => !f.isSubmitted)
+                    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+                if (incompleteField) {
+                    // Use the most recent incomplete field
+                    fieldId = incompleteField.id;
+                    console.log(`[SaveProgress] Using most recent incomplete field ${fieldId} for step ${step}`);
                 }
-                initialFieldData = {
-                    ...initialFieldData,
-                    name: data.fieldName,
-                    size: data.fieldSize,
-                    terrainType: data.terrainType,
-                    fenceType: data.fenceType,
-                    fenceSize: data.fenceSize,
-                    surfaceType: data.surfaceType,
-                    type: 'PRIVATE',
-                    description: data.description,
-                    maxDogs: parseInt(data.maxDogs) || 10,
-                    openingTime: data.startTime,
-                    closingTime: data.endTime,
-                    operatingDays: data.openingDays ? [data.openingDays] : [],
-                    amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
-                    // Store location object if provided
-                    location: data.location || null,
-                    // Also store legacy fields for backward compatibility
-                    address: data.streetAddress,
-                    // apartment field removed - doesn't exist in schema
-                    city: data.city,
-                    state: data.county,
-                    zipCode: data.postalCode,
-                    // Extract lat/lng from location object if available
-                    latitude: data.location?.lat || null,
-                    longitude: data.location?.lng || null,
-                    fieldDetailsCompleted: true
-                };
+                else {
+                    // No incomplete fields found - create a new one
+                    isNewField = true;
+                    console.log(`[SaveProgress] No incomplete field found. Creating new field for step ${step}`);
+                }
             }
-            // Create the new field
-            const newField = await field_model_1.default.create(initialFieldData);
-            fieldId = newField.id;
-            // If we've already processed the data in field creation, we're done
-            if (step === 'field-details') {
-                return res.json({
-                    success: true,
-                    message: 'Field created and progress saved',
-                    fieldId: newField.id,
-                    stepCompleted: true,
-                    allStepsCompleted: false,
+            else {
+                // For field-details step, always create a new field when no fieldId is provided
+                isNewField = true;
+                console.log(`[SaveProgress] Creating new field for field-details step`);
+            }
+            // Only create a new field if we didn't find an incomplete one
+            if (isNewField) {
+                // Prepare initial field data based on the step
+                let initialFieldData = {
+                    ownerId,
                     isActive: false,
-                    isNewField: true
-                });
+                    fieldDetailsCompleted: false,
+                    uploadImagesCompleted: false,
+                    pricingAvailabilityCompleted: false,
+                    bookingRulesCompleted: false,
+                };
+                // If the first step is field-details, include that data
+                if (step === 'field-details') {
+                    // Validate minimum operating hours
+                    if (data.startTime && data.endTime) {
+                        const settings = await database_1.default.systemSettings.findFirst();
+                        const minimumHours = settings?.minimumFieldOperatingHours || 4;
+                        const timeToMinutes = (timeStr) => {
+                            const [hours, minutes] = timeStr.split(':').map(Number);
+                            return hours * 60 + (minutes || 0);
+                        };
+                        const openingMinutes = timeToMinutes(data.startTime);
+                        const closingMinutes = timeToMinutes(data.endTime);
+                        const diffHours = (closingMinutes - openingMinutes) / 60;
+                        if (diffHours < 0) {
+                            throw new AppError_1.AppError('Closing time must be after opening time', 400);
+                        }
+                        if (diffHours < minimumHours) {
+                            throw new AppError_1.AppError(`Field must be open for at least ${minimumHours} hours`, 400);
+                        }
+                    }
+                    initialFieldData = {
+                        ...initialFieldData,
+                        name: data.fieldName,
+                        size: data.fieldSize,
+                        terrainType: data.terrainType,
+                        fenceType: data.fenceType,
+                        fenceSize: data.fenceSize,
+                        surfaceType: data.surfaceType,
+                        type: 'PRIVATE',
+                        description: data.description,
+                        maxDogs: parseInt(data.maxDogs) || 10,
+                        openingTime: data.startTime,
+                        closingTime: data.endTime,
+                        operatingDays: data.openingDays ? [data.openingDays] : [],
+                        amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+                        // Store location object if provided
+                        location: data.location || null,
+                        // Also store legacy fields for backward compatibility
+                        address: data.streetAddress,
+                        // apartment field removed - doesn't exist in schema
+                        city: data.city,
+                        state: data.county,
+                        zipCode: data.postalCode,
+                        // Extract lat/lng from location object if available
+                        latitude: data.location?.lat || null,
+                        longitude: data.location?.lng || null,
+                        fieldDetailsCompleted: true
+                    };
+                }
+                // Create the new field
+                const newField = await field_model_1.default.create(initialFieldData);
+                fieldId = newField.id;
+                // If we've already processed the data in field creation, we're done
+                if (step === 'field-details') {
+                    return res.json({
+                        success: true,
+                        message: 'Field created and progress saved',
+                        fieldId: newField.id,
+                        stepCompleted: true,
+                        allStepsCompleted: false,
+                        isActive: false,
+                        isNewField: true
+                    });
+                }
             }
         }
         let updateData = {};

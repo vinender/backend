@@ -149,7 +149,6 @@ exports.paymentMethodController = {
             const paymentMethods = await database_1.default.paymentMethod.findMany({
                 where: { userId },
                 orderBy: [
-                    { isDefault: 'desc' },
                     { createdAt: 'desc' }
                 ]
             });

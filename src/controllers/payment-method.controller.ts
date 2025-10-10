@@ -166,7 +166,6 @@ export const paymentMethodController = {
       const paymentMethods = await prisma.paymentMethod.findMany({
         where: { userId },
         orderBy: [
-          { isDefault: 'desc' },
           { createdAt: 'desc' }
         ]
       });
