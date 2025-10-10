@@ -362,7 +362,7 @@ class FieldController {
                 price: true,
                 bookingDuration: true,
                 averageRating: true,
-                reviewCount: true,
+                totalReviews: true,
                 images: true,
                 amenities: true,
                 isClaimed: true,
@@ -387,7 +387,7 @@ class FieldController {
         const fieldsWithScore = fields.map((field) => {
             const bookingCount = field._count.bookings || 0;
             const rating = field.averageRating || 0;
-            const reviewCount = field.reviewCount || 0;
+            const reviewCount = field.totalReviews || 0;
             // Popularity score formula: (rating * 0.4) + (bookingCount * 0.4) + (reviewCount * 0.2)
             // Normalize booking count (assuming max 100 bookings gives full score)
             const normalizedBookings = Math.min(bookingCount / 100, 1) * 5;
