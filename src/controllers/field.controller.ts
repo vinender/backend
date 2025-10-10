@@ -433,9 +433,28 @@ class FieldController {
     const paginatedFields = nearbyFields.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
+    // Map to only include FieldCard required fields
+    const minimizedFields = paginatedFields.map((field: any) => ({
+      id: field.id,
+      name: field.name,
+      city: field.city,
+      state: field.state,
+      address: field.address,
+      price: field.price,
+      bookingDuration: field.bookingDuration,
+      averageRating: field.averageRating || 0,
+      images: field.images && field.images.length > 0 ? [field.images[0]] : [],
+      amenities: field.amenities || [],
+      isClaimed: field.isClaimed,
+      ownerName: field.ownerName,
+      latitude: field.latitude,
+      longitude: field.longitude,
+      location: field.location,
+    }));
+
     res.json({
       success: true,
-      data: paginatedFields,
+      data: minimizedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -461,14 +480,23 @@ class FieldController {
         isActive: true,
         isSubmitted: true,
       },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+      select: {
+        id: true,
+        name: true,
+        city: true,
+        state: true,
+        address: true,
+        price: true,
+        bookingDuration: true,
+        averageRating: true,
+        reviewCount: true,
+        images: true,
+        amenities: true,
+        isClaimed: true,
+        ownerName: true,
+        latitude: true,
+        longitude: true,
+        location: true,
         _count: {
           select: {
             bookings: {
@@ -512,12 +540,29 @@ class FieldController {
     const paginatedFields = fieldsWithScore.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
-    // Remove internal scoring fields before sending response
-    const cleanedFields = paginatedFields.map(({ popularityScore, ...field }) => field);
+    // Map to only include FieldCard required fields
+    const minimizedFields = paginatedFields.map(({ popularityScore, _count, ...field }) => ({
+      id: field.id,
+      name: field.name,
+      city: field.city,
+      state: field.state,
+      address: field.address,
+      price: field.price,
+      bookingDuration: field.bookingDuration,
+      averageRating: field.averageRating || 0,
+      images: field.images && field.images.length > 0 ? [field.images[0]] : [],
+      amenities: field.amenities || [],
+      isClaimed: field.isClaimed,
+      ownerName: field.ownerName,
+      latitude: field.latitude,
+      longitude: field.longitude,
+      location: field.location,
+      bookingCount: (field as any).bookingCount,
+    }));
 
     res.json({
       success: true,
-      data: cleanedFields,
+      data: minimizedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,
