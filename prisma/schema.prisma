@@ -728,6 +728,21 @@ model AboutPage {
   @@map("about_pages")
 }
 
+model ContactQuery {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  name       String
+  email      String
+  phone      String?
+  subject    String
+  message    String
+  status     String   @default("new") // new, in-progress, resolved
+  adminNotes String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("contact_queries")
+}
+
 model Amenity {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   name        String    @unique // e.g., "Water bowls", "Agility equipment"

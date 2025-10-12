@@ -29,6 +29,7 @@ const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
 const amenity_routes_1 = __importDefault(require("./routes/amenity.routes"));
 const field_properties_routes_1 = __importDefault(require("./routes/field-properties.routes"));
+const contact_query_routes_1 = __importDefault(require("./routes/contact-query.routes"));
 // Load environment variables
 dotenv_1.default.config();
 // Initialize Express app
@@ -398,6 +399,7 @@ app.use('/api/admin', admin_routes_1.default);
 app.use('/api/chat', chat_routes_1.default);
 app.use('/api/amenities', amenity_routes_1.default);
 app.use('/api/field-properties', field_properties_routes_1.default);
+app.use('/api/contact-queries', contact_query_routes_1.default);
 // Health check endpoint
 app.get("/health", (req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });

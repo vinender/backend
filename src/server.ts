@@ -59,6 +59,7 @@ import uploadRoutes from './routes/upload.routes';
 import aboutPageRoutes from './routes/about-page.routes';
 import amenityRoutes from './routes/amenity.routes';
 import fieldPropertiesRoutes from './routes/field-properties.routes';
+import contactQueryRoutes from './routes/contact-query.routes';
 
 // Import middleware
 import { errorHandler, notFound } from './middleware/error.middleware';
@@ -412,6 +413,9 @@ class Server {
 
     // Field Options routes
     this.app.use('/api/field-properties', fieldPropertiesRoutes);
+
+    // Contact Query routes
+    this.app.use('/api/contact-queries', contactQueryRoutes);
 
     // Serve static files (if any)
     // this.app.use('/uploads', express.static('uploads'));
