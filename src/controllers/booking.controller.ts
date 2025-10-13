@@ -1481,6 +1481,123 @@ class BookingController {
     });
   });
 
+  // Get cancelled bookings for field owners
+  getCancelledBookings = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+    const { page = 1, limit = 10 } = req.query;
+
+    // Only field owners can access this endpoint
+    if (userRole !== 'FIELD_OWNER') {
+      throw new AppError('Only field owners can access cancelled bookings', 403);
+    }
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get all fields owned by this user
+    const fields = await prisma.field.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+
+    if (fields.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPrevPage: false,
+        },
+      });
+    }
+
+    // Get cancelled bookings for these fields
+    const whereClause = {
+      fieldId: { in: fields.map(f => f.id) },
+      status: 'CANCELLED'
+    };
+
+    const [bookings, total] = await Promise.all([
+      prisma.booking.findMany({
+        where: whereClause,
+        skip,
+        take: limitNum,
+        include: {
+          field: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+        orderBy: {
+          updatedAt: 'desc', // Show most recently cancelled first
+        },
+      }),
+      prisma.booking.count({ where: whereClause }),
+    ]);
+
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Format bookings to match field owner booking format
+    const formattedBookings = bookings.map(booking => ({
+      id: booking.id,
+      userId: booking.userId,
+      userName: booking.user?.name || 'Unknown',
+      userAvatar: booking.user?.avatar || null,
+      userEmail: booking.user?.email || '',
+      userPhone: booking.user?.phone || '',
+      time: `${booking.startTime} - ${booking.endTime}`,
+      orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+      status: booking.status.toLowerCase(),
+      frequency: booking.repeatBooking && booking.repeatBooking.toLowerCase() !== 'none' ? booking.repeatBooking : null,
+      dogs: booking.numberOfDogs || 1,
+      amount: booking.totalPrice || 0,
+      date: booking.date,
+      fieldName: booking.field?.name || '',
+      fieldAddress: booking.field?.address || '',
+      notes: booking.notes || '',
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      field: booking.field,
+      user: booking.user,
+      createdAt: booking.createdAt,
+      updatedAt: booking.updatedAt,
+    }));
+
+    res.json({
+      success: true,
+      data: formattedBookings,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  });
+
   // Helper function
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);

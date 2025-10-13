@@ -15,6 +15,7 @@ router.use(protect);
 // Dog owner and field owner routes
 router.get('/my-bookings', bookingController.getMyBookings);
 router.get('/my-recurring', bookingController.getMyRecurringBookings);
+router.get('/cancelled', restrictTo('FIELD_OWNER'), bookingController.getCancelledBookings);
 router.get('/stats', bookingController.getBookingStats);
 router.post('/', bookingController.createBooking);
 router.post('/:id/cancel-recurring', bookingController.cancelRecurringBooking);
