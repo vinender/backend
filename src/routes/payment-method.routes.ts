@@ -11,14 +11,17 @@ router.use(protect);
 // Create setup intent for adding a new card
 router.post('/setup-intent', paymentMethodController.createSetupIntent);
 
-// Save payment method after successful setup
-router.post('/save', paymentMethodController.savePaymentMethod);
-
 // Get all payment methods for the user
 router.get('/', paymentMethodController.getPaymentMethods);
 
+// Save payment method after successful setup (RESTful: POST to collection endpoint)
+router.post('/', paymentMethodController.savePaymentMethod);
+
+// DEPRECATED: Backward compatibility for old /save endpoint (remove after frontend migration)
+router.post('/save', paymentMethodController.savePaymentMethod);
+
 // Set a payment method as default
-router.put('/:paymentMethodId/set-default', paymentMethodController.setDefaultPaymentMethod);
+router.patch('/:paymentMethodId/set-default', paymentMethodController.setDefaultPaymentMethod);
 
 // Delete a payment method
 router.delete('/:paymentMethodId', paymentMethodController.deletePaymentMethod);

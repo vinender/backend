@@ -60,17 +60,26 @@ exports.paymentMethodController = {
         try {
             const userId = req.user?.id;
             if (!userId) {
-                return res.status(401).json({ error: 'Unauthorized' });
+                return res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized'
+                });
             }
+            // Get or create Stripe customer for this user
             const customerId = await exports.paymentMethodController.getOrCreateStripeCustomer(userId);
-            // Create a SetupIntent to collect card details
+            // Create a SetupIntent to collect card details securely
             const setupIntent = await stripe_config_1.stripe.setupIntents.create({
                 customer: customerId,
                 payment_method_types: ['card'],
+                usage: 'off_session', // Allow future payments
                 metadata: {
-                    userId
+                    userId,
+                    createdAt: new Date().toISOString()
                 }
             });
+            if (!setupIntent.client_secret) {
+                throw new Error('Failed to create setup intent - no client secret');
+            }
             res.json({
                 success: true,
                 clientSecret: setupIntent.client_secret,
@@ -90,27 +99,64 @@ exports.paymentMethodController = {
         try {
             const userId = req.user?.id;
             if (!userId) {
-                return res.status(401).json({ error: 'Unauthorized' });
+                return res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized'
+                });
             }
             const { paymentMethodId, isDefault } = req.body;
             if (!paymentMethodId) {
-                return res.status(400).json({ error: 'Payment method ID is required' });
+                return res.status(400).json({
+                    success: false,
+                    error: 'Payment method ID is required'
+                });
             }
+            // Get or create Stripe customer
+            const customerId = await exports.paymentMethodController.getOrCreateStripeCustomer(userId);
             // Retrieve payment method from Stripe
             const paymentMethod = await stripe_config_1.stripe.paymentMethods.retrieve(paymentMethodId);
+            // Attach payment method to customer if not already attached
+            if (!paymentMethod.customer) {
+                await stripe_config_1.stripe.paymentMethods.attach(paymentMethodId, {
+                    customer: customerId
+                });
+            }
             // Check if payment method already exists in our database
             const existingMethod = await database_1.default.paymentMethod.findUnique({
                 where: { stripePaymentMethodId: paymentMethodId }
             });
             if (existingMethod) {
-                return res.status(400).json({ error: 'Payment method already saved' });
+                return res.status(400).json({
+                    success: false,
+                    error: 'Payment method already saved'
+                });
             }
+            // Determine if this should be default
+            const shouldBeDefault = isDefault !== undefined ? isDefault : false;
+            // Check if user has any existing payment methods
+            const existingMethods = await database_1.default.paymentMethod.findMany({
+                where: { userId }
+            });
+            // If this is the first card, make it default
+            const finalIsDefault = existingMethods.length === 0 ? true : shouldBeDefault;
             // If this is set as default, unset other defaults
-            if (isDefault) {
+            if (finalIsDefault) {
                 await database_1.default.paymentMethod.updateMany({
                     where: { userId },
                     data: { isDefault: false }
                 });
+                // Set as default in Stripe
+                try {
+                    await stripe_config_1.stripe.customers.update(customerId, {
+                        invoice_settings: {
+                            default_payment_method: paymentMethodId
+                        }
+                    });
+                }
+                catch (stripeError) {
+                    console.error('Error setting default in Stripe:', stripeError);
+                    // Continue - we'll still save locally
+                }
             }
             // Save payment method to database
             const savedMethod = await database_1.default.paymentMethod.create({
@@ -123,12 +169,21 @@ exports.paymentMethodController = {
                     expiryMonth: paymentMethod.card?.exp_month || null,
                     expiryYear: paymentMethod.card?.exp_year || null,
                     cardholderName: paymentMethod.billing_details?.name || null,
-                    isDefault: isDefault || false
+                    isDefault: finalIsDefault
                 }
             });
             res.json({
                 success: true,
-                paymentMethod: savedMethod
+                message: 'Card added successfully',
+                paymentMethod: {
+                    id: savedMethod.id,
+                    brand: savedMethod.brand,
+                    last4: savedMethod.last4,
+                    expiryMonth: savedMethod.expiryMonth,
+                    expiryYear: savedMethod.expiryYear,
+                    cardholderName: savedMethod.cardholderName,
+                    isDefault: savedMethod.isDefault
+                }
             });
         }
         catch (error) {
