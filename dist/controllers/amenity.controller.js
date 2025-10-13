@@ -3,6 +3,30 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.reorderAmenities = exports.deleteAmenity = exports.updateAmenity = exports.createAmenity = exports.getAmenityById = exports.getAmenities = void 0;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
+// Helper function to format amenity names to labels
+const formatAmenityLabel = (name) => {
+    const specialCases = {
+        toilet: 'Toilet',
+        dogAgility: 'Dog Agility',
+        waterBowls: 'Water Bowls',
+        parkingSpace: 'Parking Space',
+        parking: 'Parking',
+        fence: 'Fence',
+        shelter: 'Shelter',
+        seatingArea: 'Seating Area',
+        wasteBins: 'Waste Bins',
+        lighting: 'Lighting',
+        firstAid: 'First Aid',
+    };
+    if (specialCases[name]) {
+        return specialCases[name];
+    }
+    // Convert camelCase to Title Case
+    return name
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (str) => str.toUpperCase())
+        .trim();
+};
 // Get all amenities (with optional filter for active only)
 const getAmenities = async (req, res) => {
     try {
@@ -15,10 +39,15 @@ const getAmenities = async (req, res) => {
                 { name: 'asc' }
             ]
         });
+        // Add formatted label to each amenity
+        const amenitiesWithLabels = amenities.map(amenity => ({
+            ...amenity,
+            label: formatAmenityLabel(amenity.name)
+        }));
         return res.status(200).json({
             success: true,
             message: amenities.length === 0 ? 'No amenities found' : 'Amenities retrieved successfully',
-            data: amenities
+            data: amenitiesWithLabels
         });
     }
     catch (error) {

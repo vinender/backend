@@ -34,7 +34,7 @@ class AuthController {
     if (existingUser) {
       // Check if the existing user has a different role
       if (existingUser.role !== userRole) {
-        throw new AppError(`An account already exists with this email as a ${existingUser.role.replace('_', ' ').toLowerCase()}. Each email can only have one account.`, 409);
+        throw new AppError(`An account already exists with this email.`, 409);
       }
 
       // Check if user has OAuth accounts
@@ -274,7 +274,35 @@ class AuthController {
       throw new AppError('Invalid role specified', 400);
     }
 
-    // Create or update user
+    // Check if user already exists AND is verified
+    const existingUser = await UserModel.findByEmail(email);
+
+    if (existingUser && existingUser.emailVerified) {
+      // User exists and is verified - log them in immediately
+      const token = jwt.sign(
+        {
+          id: existingUser.id,
+          email: existingUser.email,
+          role: existingUser.role,
+          provider: existingUser.provider
+        },
+        JWT_SECRET as jwt.Secret,
+        {
+          expiresIn: JWT_EXPIRES_IN as string | number
+        }
+      );
+
+      return res.json({
+        success: true,
+        message: 'Social login successful',
+        data: {
+          user: existingUser,
+          token,
+        },
+      });
+    }
+
+    // Create or update user (NOT VERIFIED YET)
     const user = await UserModel.createOrUpdateSocialUser({
       email,
       name,
@@ -288,34 +316,17 @@ class AuthController {
     // when the field owner first saves their field details.
     // See comment in register method for more details.
 
-    // Store OAuth account info
-    const account = await UserModel.hasOAuthAccount(user.id);
-    if (!account) {
-      // Create account record for tracking OAuth provider
-      // This would typically be done in a separate Account model
-      // For now, we're just tracking the provider in the User model
-    }
+    // Send OTP for verification
+    const { otpService } = require('../services/otp.service');
+    await otpService.sendOtp(email, 'SOCIAL_LOGIN', name);
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role,
-        provider: user.provider
-      },
-      JWT_SECRET as jwt.Secret,
-      { 
-        expiresIn: JWT_EXPIRES_IN as string | number
-      }
-    );
-
-    res.json({
+    res.status(200).json({
       success: true,
-      message: 'Social login successful',
+      requiresVerification: true,
+      message: 'Please check your email for verification code',
       data: {
-        user,
-        token,
+        email,
+        role: user.role,
       },
     });
   });

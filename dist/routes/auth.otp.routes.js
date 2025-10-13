@@ -18,4 +18,6 @@ router.post('/verify-reset-otp', auth_otp_controller_1.verifyPasswordResetOtp);
 router.post('/reset-password', auth_otp_controller_1.resetPasswordWithOtp);
 // Login with email verification check
 router.post('/login', auth_otp_controller_1.loginWithOtpCheck);
+// Social login OTP verification
+router.post('/verify-social-login', auth_otp_controller_1.verifySocialLoginOtp);
 exports.default = router;

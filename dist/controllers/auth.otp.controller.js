@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loginWithOtpCheck = exports.resetPasswordWithOtp = exports.verifyPasswordResetOtp = exports.requestPasswordReset = exports.resendOtp = exports.verifySignupOtp = exports.registerWithOtp = void 0;
+exports.loginWithOtpCheck = exports.verifySocialLoginOtp = exports.resetPasswordWithOtp = exports.verifyPasswordResetOtp = exports.requestPasswordReset = exports.resendOtp = exports.verifySignupOtp = exports.registerWithOtp = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
@@ -244,6 +244,41 @@ exports.resetPasswordWithOtp = (0, asyncHandler_1.asyncHandler)(async (req, res)
     res.json({
         success: true,
         message: 'Password reset successfully',
+    });
+});
+// Verify OTP for social login
+exports.verifySocialLoginOtp = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+        throw new AppError_1.AppError('Email and OTP are required', 400);
+    }
+    // Verify OTP
+    const isValid = await otp_service_1.otpService.verifyOtp(email, otp, 'SOCIAL_LOGIN');
+    if (!isValid) {
+        throw new AppError_1.AppError('Invalid or expired OTP', 400);
+    }
+    // Update user as verified
+    const user = await prisma.user.update({
+        where: { email },
+        data: { emailVerified: new Date() },
+    });
+    // Generate token
+    const token = jsonwebtoken_1.default.sign({ id: user.id, email: user.email, role: user.role }, constants_1.JWT_SECRET, { expiresIn: constants_1.JWT_EXPIRES_IN });
+    res.json({
+        success: true,
+        message: 'Email verified successfully',
+        data: {
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                phone: user.phone,
+                image: user.image,
+                googleImage: user.googleImage,
+            },
+            token,
+        },
     });
 });
 // Login with email verification check

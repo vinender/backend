@@ -71,6 +71,7 @@ export class NotificationService {
       'payment_received',
       'payment_failed',
       'field_added',
+      'field_submitted',
       'user_registered',
       'review_posted',
       'refund_processed',

@@ -26,6 +26,7 @@ import chatRoutes from "./routes/chat.routes"
 import amenityRoutes from "./routes/amenity.routes"
 import fieldPropertiesRoutes from "./routes/field-properties.routes"
 import contactQueryRoutes from "./routes/contact-query.routes"
+import docsRoutes from "./routes/docs.routes"
 // Load environment variables
 
 
@@ -414,6 +415,7 @@ app.use('/api/chat', chatRoutes)
 app.use('/api/amenities', amenityRoutes)
 app.use('/api/field-properties', fieldPropertiesRoutes)
 app.use('/api/contact-queries', contactQueryRoutes)
+app.use('/api/docs', docsRoutes)
 
 
 // Health check endpoint

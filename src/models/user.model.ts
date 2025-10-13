@@ -195,14 +195,14 @@ class UserModel {
     if (existingUser) {
       // Check if the existing user has a different role
       if (existingUser.role !== userRole) {
-        throw new Error(`An account already exists with this email as a ${existingUser.role.replace('_', ' ').toLowerCase()}. Each email can only have one account.`);
+        throw new Error(`An account already exists with this email.`);
       }
       // Update existing user with social login info
       const updateData: any = {
         name: data.name || existingUser.name,
         // Keep user's uploaded image, store Google image separately
         image: existingUser.image, // Keep existing uploaded image
-        emailVerified: new Date(), // Social logins are verified
+        emailVerified: existingUser.emailVerified, // Keep existing verification status
         provider: data.provider, // Update provider to track social login
       };
       
@@ -240,7 +240,7 @@ class UserModel {
       image: data.image,
       role: userRole,
       provider: data.provider,
-      emailVerified: new Date(), // Social logins are verified
+      emailVerified: null, // Requires OTP verification even for social logins
     };
     
     // Store Google image separately if provider is Google

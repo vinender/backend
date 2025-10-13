@@ -906,6 +906,159 @@ const getNewBookingNotificationTemplate = (bookingData: {
   `;
 };
 
+const getFieldSubmissionTemplate = (data: {
+  ownerName: string;
+  fieldName: string;
+  fieldAddress: string;
+  submittedAt: Date;
+}) => {
+  const formattedDate = new Date(data.submittedAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Field Submitted Successfully</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .success-badge {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 15px 0;
+          }
+          .info-box {
+            background-color: #f0f8f0;
+            border-left: 4px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .info-item {
+            margin: 12px 0;
+            font-size: 15px;
+          }
+          .info-label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            min-width: 140px;
+          }
+          .next-steps {
+            background-color: #fff7e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .next-steps h3 {
+            color: #ff8c00;
+            margin-top: 0;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h1>Field Submitted Successfully!</h1>
+            <div class="success-badge">✓ Submission Complete</div>
+            <p>Dear ${data.ownerName},</p>
+            <p>Congratulations! Your field has been successfully submitted to Fieldsy and is now live on our platform.</p>
+
+            <div class="info-box">
+              <h3 style="margin-top: 0;">Field Details</h3>
+              <div class="info-item">
+                <span class="info-label">Field Name:</span> ${data.fieldName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Location:</span> ${data.fieldAddress}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Submitted On:</span> ${formattedDate}
+              </div>
+            </div>
+
+            <div class="next-steps">
+              <h3>🎉 What's Next?</h3>
+              <ul>
+                <li>Your field is now visible to dog owners searching for fields</li>
+                <li>You'll receive notifications when bookings are made</li>
+                <li>You can manage your field details and availability in your dashboard</li>
+                <li>Update pricing and booking rules anytime from your account</li>
+                <li>Start receiving bookings and earning money!</li>
+              </ul>
+            </div>
+
+            <p><strong>Important Tips:</strong></p>
+            <ul>
+              <li>Keep your field information up to date</li>
+              <li>Respond promptly to booking requests</li>
+              <li>Maintain good communication with dog owners</li>
+              <li>Ensure your field is ready before each booking</li>
+            </ul>
+
+            <p>Thank you for joining Fieldsy! We're excited to have you as part of our community of field owners.</p>
+
+            <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 const getBookingStatusChangeTemplate = (emailData: {
   userName: string;
   bookingId: string;
@@ -1244,6 +1397,26 @@ class EmailService {
       return result;
     } catch (error) {
       console.error(`❌ Failed to send booking status change email to ${emailData.email}:`, error);
+      return false;
+    }
+  }
+
+  async sendFieldSubmissionEmail(data: {
+    email: string;
+    ownerName: string;
+    fieldName: string;
+    fieldAddress: string;
+    submittedAt: Date;
+  }): Promise<boolean> {
+    const subject = 'Field Submitted Successfully - Fieldsy';
+    const html = getFieldSubmissionTemplate(data);
+
+    try {
+      const result = await this.sendMail(data.email, subject, html);
+      console.log(`✅ Field submission email sent to ${data.email}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to send field submission email to ${data.email}:`, error);
       return false;
     }
   }

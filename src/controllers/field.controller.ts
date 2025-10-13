@@ -4,6 +4,8 @@ import FieldModel from '../models/field.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
+import { enrichFieldWithAmenities, enrichFieldsWithAmenities } from '../utils/amenity.utils';
+import { convertAmenityIdsToNames } from '../utils/amenity.converter';
 
 class FieldController {
   // Create new field
@@ -39,17 +41,27 @@ class FieldController {
       }
     }
 
+    // Convert amenity IDs to names if amenities are provided
+    let amenityNames = req.body.amenities || [];
+    if (amenityNames && amenityNames.length > 0) {
+      amenityNames = await convertAmenityIdsToNames(amenityNames);
+    }
+
     const fieldData = {
       ...req.body,
+      amenities: amenityNames,
       ownerId,
     };
 
     const field = await FieldModel.create(fieldData);
 
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(field);
+
     res.status(201).json({
       success: true,
       message: 'Field created successfully',
-      data: field,
+      data: enrichedField,
     });
   });
 
@@ -118,11 +130,14 @@ class FieldController {
       take: limitNum,
     });
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(result.fields);
+
     const totalPages = Math.ceil(result.total / limitNum);
 
     res.json({
       success: true,
-      data: result.fields,
+      data: enrichedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -232,11 +247,14 @@ class FieldController {
       });
     }
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(fieldsWithDistance);
+
     const totalPages = Math.ceil(result.total / limitNum);
 
     res.json({
       success: true,
-      data: fieldsWithDistance,
+      data: enrichedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -299,9 +317,12 @@ class FieldController {
       (field as any).distanceMiles = Number(distanceMiles.toFixed(1));
     }
 
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(field);
+
     res.json({
       success: true,
-      data: field,
+      data: enrichedField,
     });
   });
 
@@ -311,10 +332,13 @@ class FieldController {
 
     const fields = await FieldModel.findByOwner(ownerId);
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(fields);
+
     res.json({
       success: true,
-      data: fields,
-      total: fields.length,
+      data: enrichedFields,
+      total: enrichedFields.length,
     });
   });
 
@@ -337,6 +361,11 @@ class FieldController {
     // Prevent updating certain fields
     delete req.body.id;
     delete req.body.ownerId;
+
+    // Convert amenity IDs to names if amenities are being updated
+    if (req.body.amenities && req.body.amenities.length > 0) {
+      req.body.amenities = await convertAmenityIdsToNames(req.body.amenities);
+    }
 
     // Validate minimum operating hours if times are being updated
     if (req.body.openingTime || req.body.closingTime) {
@@ -369,10 +398,13 @@ class FieldController {
 
     const updatedField = await FieldModel.update(id, req.body);
 
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(updatedField);
+
     res.json({
       success: true,
       message: 'Field updated successfully',
-      data: updatedField,
+      data: enrichedField,
     });
   });
 
@@ -418,10 +450,13 @@ class FieldController {
 
     const updatedField = await FieldModel.toggleActive(id);
 
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(updatedField);
+
     res.json({
       success: true,
       message: `Field ${updatedField.isActive ? 'activated' : 'deactivated'} successfully`,
-      data: updatedField,
+      data: enrichedField,
     });
   });
 
@@ -439,10 +474,13 @@ class FieldController {
       Number(radius)
     );
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(fields);
+
     res.json({
       success: true,
-      data: fields,
-      total: fields.length,
+      data: enrichedFields,
+      total: enrichedFields.length,
     });
   });
 
@@ -488,8 +526,11 @@ class FieldController {
     const paginatedFields = nearbyFields.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(paginatedFields);
+
     // Map to only include FieldCard required fields
-    const minimizedFields = paginatedFields.map((field: any) => ({
+    const minimizedFields = enrichedFields.map((field: any) => ({
       id: field.id,
       name: field.name,
       city: field.city,
@@ -615,26 +656,32 @@ class FieldController {
     const paginatedFields = fieldsWithScore.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(paginatedFields);
+
     // Map to only include FieldCard required fields
-    const minimizedFields = paginatedFields.map(({ popularityScore, _count, ...field }) => ({
-      id: field.id,
-      name: field.name,
-      city: field.city,
-      state: field.state,
-      address: field.address,
-      price: field.price,
-      bookingDuration: field.bookingDuration,
-      averageRating: field.averageRating || 0,
-      images: field.images && field.images.length > 0 ? [field.images[0]] : [],
-      amenities: field.amenities || [],
-      isClaimed: field.isClaimed,
-      ownerName: field.ownerName,
-      latitude: field.latitude,
-      longitude: field.longitude,
-      location: field.location,
-      bookingCount: (field as any).bookingCount,
-      distanceMiles: (field as any).distanceMiles,
-    }));
+    const minimizedFields = enrichedFields.map((field: any) => {
+      const { popularityScore, _count, ...rest } = field;
+      return {
+        id: rest.id,
+        name: rest.name,
+        city: rest.city,
+        state: rest.state,
+        address: rest.address,
+        price: rest.price,
+        bookingDuration: rest.bookingDuration,
+        averageRating: rest.averageRating || 0,
+        images: rest.images && rest.images.length > 0 ? [rest.images[0]] : [],
+        amenities: rest.amenities || [],
+        isClaimed: rest.isClaimed,
+        ownerName: rest.ownerName,
+        latitude: rest.latitude,
+        longitude: rest.longitude,
+        location: rest.location,
+        bookingCount: rest.bookingCount,
+        distanceMiles: rest.distanceMiles,
+      };
+    });
 
     res.json({
       success: true,
@@ -655,7 +702,7 @@ class FieldController {
     const ownerId = (req as any).user.id;
 
     const field = await FieldModel.findOneByOwner(ownerId);
-    
+
     if (!field) {
       // Return success with null field to indicate no field exists yet
       // This allows the frontend to show the add field form
@@ -666,16 +713,19 @@ class FieldController {
         showAddForm: true
       });
     }
-    
+
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(field);
+
     // Return the field with step completion status
     res.json({
       success: true,
       field: {
-        ...field,
+        ...enrichedField,
         stepStatus: {
-          fieldDetails: field.fieldDetailsCompleted || false,
-          uploadImages: field.uploadImagesCompleted || false,
-          pricingAvailability: field.pricingAvailabilityCompleted || false,
+          fieldDetails: enrichedField.fieldDetailsCompleted || false,
+          uploadImages: enrichedField.uploadImagesCompleted || false,
+          pricingAvailability: enrichedField.pricingAvailabilityCompleted || false,
           bookingRules: field.bookingRulesCompleted || false
         },
         allStepsCompleted: field.fieldDetailsCompleted && 
@@ -765,6 +815,14 @@ class FieldController {
           }
         }
         
+        // Convert amenity IDs to names
+        const amenityIds = data.amenities && Array.isArray(data.amenities)
+          ? data.amenities
+          : (typeof data.amenities === 'object'
+            ? Object.keys(data.amenities || {}).filter(key => data.amenities[key])
+            : []);
+        const amenityNames = amenityIds.length > 0 ? await convertAmenityIdsToNames(amenityIds) : [];
+
         initialFieldData = {
           ...initialFieldData,
           name: data.fieldName,
@@ -779,7 +837,7 @@ class FieldController {
           openingTime: data.startTime,
           closingTime: data.endTime,
           operatingDays: data.openingDays ? [data.openingDays] : [],
-          amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+          amenities: amenityNames,
           // Store location object if provided
           location: data.location || null,
           // Also store legacy fields for backward compatibility
@@ -842,6 +900,14 @@ class FieldController {
           }
         }
         
+        // Convert amenity IDs to names
+        const amenityIdsUpdate = data.amenities && Array.isArray(data.amenities)
+          ? data.amenities
+          : (typeof data.amenities === 'object'
+            ? Object.keys(data.amenities || {}).filter(key => data.amenities[key])
+            : []);
+        const amenityNamesUpdate = amenityIdsUpdate.length > 0 ? await convertAmenityIdsToNames(amenityIdsUpdate) : [];
+
         updateData = {
           name: data.fieldName,
           size: data.fieldSize,
@@ -855,7 +921,7 @@ class FieldController {
           openingTime: data.startTime,
           closingTime: data.endTime,
           operatingDays: data.openingDays ? [data.openingDays] : [],
-          amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+          amenities: amenityNamesUpdate,
           // Store location object if provided
           location: data.location || null,
           // Also store legacy fields for backward compatibility
@@ -986,6 +1052,68 @@ class FieldController {
 
     // Submit the field
     const submittedField = await FieldModel.submitField(field.id);
+
+    // Get field owner details for email and notification
+    const fieldOwner = await prisma.user.findUnique({
+      where: { id: ownerId },
+      select: {
+        id: true,
+        name: true,
+        email: true
+      }
+    });
+
+    if (fieldOwner) {
+      // Send email to field owner
+      const { emailService } = await import('../services/email.service');
+      try {
+        await emailService.sendFieldSubmissionEmail({
+          email: fieldOwner.email,
+          ownerName: fieldOwner.name || 'Field Owner',
+          fieldName: submittedField.name || 'Your Field',
+          fieldAddress: `${submittedField.address || ''}, ${submittedField.city || ''}, ${submittedField.state || ''}`.trim(),
+          submittedAt: submittedField.submittedAt || new Date()
+        });
+      } catch (emailError) {
+        console.error('Failed to send field submission email:', emailError);
+        // Don't throw error - email failure shouldn't stop the submission
+      }
+
+      // Create notification for field owner
+      const { NotificationService } = await import('../services/notification.service');
+      try {
+        await NotificationService.createNotification({
+          userId: fieldOwner.id,
+          type: 'field_submitted',
+          title: 'Field Submitted Successfully',
+          message: `Your field "${submittedField.name}" has been successfully submitted and is now live on Fieldsy!`,
+          data: {
+            fieldId: submittedField.id,
+            fieldName: submittedField.name,
+            submittedAt: submittedField.submittedAt
+          }
+        }, false); // Don't notify admin for user's own notification
+      } catch (notificationError) {
+        console.error('Failed to create field owner notification:', notificationError);
+      }
+
+      // Create notification for all admins
+      try {
+        await NotificationService.notifyAdmins(
+          'New Field Submission',
+          `Field owner ${fieldOwner.name} has submitted a new field: "${submittedField.name}" at ${submittedField.address}, ${submittedField.city}`,
+          {
+            fieldId: submittedField.id,
+            fieldName: submittedField.name,
+            ownerId: fieldOwner.id,
+            ownerName: fieldOwner.name,
+            submittedAt: submittedField.submittedAt
+          }
+        );
+      } catch (adminNotificationError) {
+        console.error('Failed to create admin notification:', adminNotificationError);
+      }
+    }
 
     res.json({
       success: true,

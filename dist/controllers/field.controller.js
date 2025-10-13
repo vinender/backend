@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -7,6 +40,8 @@ const field_model_1 = __importDefault(require("../models/field.model"));
 const asyncHandler_1 = require("../utils/asyncHandler");
 const AppError_1 = require("../utils/AppError");
 const database_1 = __importDefault(require("../config/database"));
+const amenity_utils_1 = require("../utils/amenity.utils");
+const amenity_converter_1 = require("../utils/amenity.converter");
 class FieldController {
     // Create new field
     createField = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
@@ -34,15 +69,23 @@ class FieldController {
                 throw new AppError_1.AppError(`Field must be open for at least ${minimumHours} hours`, 400);
             }
         }
+        // Convert amenity IDs to names if amenities are provided
+        let amenityNames = req.body.amenities || [];
+        if (amenityNames && amenityNames.length > 0) {
+            amenityNames = await (0, amenity_converter_1.convertAmenityIdsToNames)(amenityNames);
+        }
         const fieldData = {
             ...req.body,
+            amenities: amenityNames,
             ownerId,
         };
         const field = await field_model_1.default.create(fieldData);
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(field);
         res.status(201).json({
             success: true,
             message: 'Field created successfully',
-            data: field,
+            data: enrichedField,
         });
     });
     // Get all fields with filters and pagination (admin - includes all fields)
@@ -81,10 +124,12 @@ class FieldController {
             skip,
             take: limitNum,
         });
+        // Enrich fields with full amenity objects
+        const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(result.fields);
         const totalPages = Math.ceil(result.total / limitNum);
         res.json({
             success: true,
-            data: result.fields,
+            data: enrichedFields,
             pagination: {
                 page: pageNum,
                 limit: limitNum,
@@ -157,10 +202,12 @@ class FieldController {
                 return field;
             });
         }
+        // Enrich fields with full amenity objects
+        const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(fieldsWithDistance);
         const totalPages = Math.ceil(result.total / limitNum);
         res.json({
             success: true,
-            data: fieldsWithDistance,
+            data: enrichedFields,
             pagination: {
                 page: pageNum,
                 limit: limitNum,
@@ -210,19 +257,23 @@ class FieldController {
             // Add distanceMiles to field response
             field.distanceMiles = Number(distanceMiles.toFixed(1));
         }
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(field);
         res.json({
             success: true,
-            data: field,
+            data: enrichedField,
         });
     });
     // Get fields by owner
     getMyFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const ownerId = req.user.id;
         const fields = await field_model_1.default.findByOwner(ownerId);
+        // Enrich fields with full amenity objects
+        const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(fields);
         res.json({
             success: true,
-            data: fields,
-            total: fields.length,
+            data: enrichedFields,
+            total: enrichedFields.length,
         });
     });
     // Update field
@@ -241,6 +292,10 @@ class FieldController {
         // Prevent updating certain fields
         delete req.body.id;
         delete req.body.ownerId;
+        // Convert amenity IDs to names if amenities are being updated
+        if (req.body.amenities && req.body.amenities.length > 0) {
+            req.body.amenities = await (0, amenity_converter_1.convertAmenityIdsToNames)(req.body.amenities);
+        }
         // Validate minimum operating hours if times are being updated
         if (req.body.openingTime || req.body.closingTime) {
             const settings = await database_1.default.systemSettings.findFirst();
@@ -265,10 +320,12 @@ class FieldController {
             }
         }
         const updatedField = await field_model_1.default.update(id, req.body);
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(updatedField);
         res.json({
             success: true,
             message: 'Field updated successfully',
-            data: updatedField,
+            data: enrichedField,
         });
     });
     // Delete field
@@ -304,10 +361,12 @@ class FieldController {
             throw new AppError_1.AppError('You can only toggle your own fields', 403);
         }
         const updatedField = await field_model_1.default.toggleActive(id);
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(updatedField);
         res.json({
             success: true,
             message: `Field ${updatedField.isActive ? 'activated' : 'deactivated'} successfully`,
-            data: updatedField,
+            data: enrichedField,
         });
     });
     // Search fields by location
@@ -317,10 +376,12 @@ class FieldController {
             throw new AppError_1.AppError('Latitude and longitude are required', 400);
         }
         const fields = await field_model_1.default.searchByLocation(Number(lat), Number(lng), Number(radius));
+        // Enrich fields with full amenity objects
+        const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(fields);
         res.json({
             success: true,
-            data: fields,
-            total: fields.length,
+            data: enrichedFields,
+            total: enrichedFields.length,
         });
     });
     // Get nearby fields based on lat/lng
@@ -352,8 +413,10 @@ class FieldController {
         const total = nearbyFields.length;
         const paginatedFields = nearbyFields.slice(skip, skip + limitNum);
         const totalPages = Math.ceil(total / limitNum);
+        // Enrich fields with full amenity objects
+        const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(paginatedFields);
         // Map to only include FieldCard required fields
-        const minimizedFields = paginatedFields.map((field) => ({
+        const minimizedFields = enrichedFields.map((field) => ({
             id: field.id,
             name: field.name,
             city: field.city,
@@ -464,26 +527,31 @@ class FieldController {
         const total = fieldsWithScore.length;
         const paginatedFields = fieldsWithScore.slice(skip, skip + limitNum);
         const totalPages = Math.ceil(total / limitNum);
+        // Enrich fields with full amenity objects
+        const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(paginatedFields);
         // Map to only include FieldCard required fields
-        const minimizedFields = paginatedFields.map(({ popularityScore, _count, ...field }) => ({
-            id: field.id,
-            name: field.name,
-            city: field.city,
-            state: field.state,
-            address: field.address,
-            price: field.price,
-            bookingDuration: field.bookingDuration,
-            averageRating: field.averageRating || 0,
-            images: field.images && field.images.length > 0 ? [field.images[0]] : [],
-            amenities: field.amenities || [],
-            isClaimed: field.isClaimed,
-            ownerName: field.ownerName,
-            latitude: field.latitude,
-            longitude: field.longitude,
-            location: field.location,
-            bookingCount: field.bookingCount,
-            distanceMiles: field.distanceMiles,
-        }));
+        const minimizedFields = enrichedFields.map((field) => {
+            const { popularityScore, _count, ...rest } = field;
+            return {
+                id: rest.id,
+                name: rest.name,
+                city: rest.city,
+                state: rest.state,
+                address: rest.address,
+                price: rest.price,
+                bookingDuration: rest.bookingDuration,
+                averageRating: rest.averageRating || 0,
+                images: rest.images && rest.images.length > 0 ? [rest.images[0]] : [],
+                amenities: rest.amenities || [],
+                isClaimed: rest.isClaimed,
+                ownerName: rest.ownerName,
+                latitude: rest.latitude,
+                longitude: rest.longitude,
+                location: rest.location,
+                bookingCount: rest.bookingCount,
+                distanceMiles: rest.distanceMiles,
+            };
+        });
         res.json({
             success: true,
             data: minimizedFields,
@@ -511,15 +579,17 @@ class FieldController {
                 showAddForm: true
             });
         }
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(field);
         // Return the field with step completion status
         res.json({
             success: true,
             field: {
-                ...field,
+                ...enrichedField,
                 stepStatus: {
-                    fieldDetails: field.fieldDetailsCompleted || false,
-                    uploadImages: field.uploadImagesCompleted || false,
-                    pricingAvailability: field.pricingAvailabilityCompleted || false,
+                    fieldDetails: enrichedField.fieldDetailsCompleted || false,
+                    uploadImages: enrichedField.uploadImagesCompleted || false,
+                    pricingAvailability: enrichedField.pricingAvailabilityCompleted || false,
                     bookingRules: field.bookingRulesCompleted || false
                 },
                 allStepsCompleted: field.fieldDetailsCompleted &&
@@ -601,6 +671,13 @@ class FieldController {
                             throw new AppError_1.AppError(`Field must be open for at least ${minimumHours} hours`, 400);
                         }
                     }
+                    // Convert amenity IDs to names
+                    const amenityIds = data.amenities && Array.isArray(data.amenities)
+                        ? data.amenities
+                        : (typeof data.amenities === 'object'
+                            ? Object.keys(data.amenities || {}).filter(key => data.amenities[key])
+                            : []);
+                    const amenityNames = amenityIds.length > 0 ? await (0, amenity_converter_1.convertAmenityIdsToNames)(amenityIds) : [];
                     initialFieldData = {
                         ...initialFieldData,
                         name: data.fieldName,
@@ -615,7 +692,7 @@ class FieldController {
                         openingTime: data.startTime,
                         closingTime: data.endTime,
                         operatingDays: data.openingDays ? [data.openingDays] : [],
-                        amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+                        amenities: amenityNames,
                         // Store location object if provided
                         location: data.location || null,
                         // Also store legacy fields for backward compatibility
@@ -669,6 +746,13 @@ class FieldController {
                         throw new AppError_1.AppError(`Field must be open for at least ${minimumHours} hours`, 400);
                     }
                 }
+                // Convert amenity IDs to names
+                const amenityIdsUpdate = data.amenities && Array.isArray(data.amenities)
+                    ? data.amenities
+                    : (typeof data.amenities === 'object'
+                        ? Object.keys(data.amenities || {}).filter(key => data.amenities[key])
+                        : []);
+                const amenityNamesUpdate = amenityIdsUpdate.length > 0 ? await (0, amenity_converter_1.convertAmenityIdsToNames)(amenityIdsUpdate) : [];
                 updateData = {
                     name: data.fieldName,
                     size: data.fieldSize,
@@ -682,7 +766,7 @@ class FieldController {
                     openingTime: data.startTime,
                     closingTime: data.endTime,
                     operatingDays: data.openingDays ? [data.openingDays] : [],
-                    amenities: Object.keys(data.amenities || {}).filter(key => data.amenities[key]),
+                    amenities: amenityNamesUpdate,
                     // Store location object if provided
                     location: data.location || null,
                     // Also store legacy fields for backward compatibility
@@ -803,6 +887,63 @@ class FieldController {
         }
         // Submit the field
         const submittedField = await field_model_1.default.submitField(field.id);
+        // Get field owner details for email and notification
+        const fieldOwner = await database_1.default.user.findUnique({
+            where: { id: ownerId },
+            select: {
+                id: true,
+                name: true,
+                email: true
+            }
+        });
+        if (fieldOwner) {
+            // Send email to field owner
+            const { emailService } = await Promise.resolve().then(() => __importStar(require('../services/email.service')));
+            try {
+                await emailService.sendFieldSubmissionEmail({
+                    email: fieldOwner.email,
+                    ownerName: fieldOwner.name || 'Field Owner',
+                    fieldName: submittedField.name || 'Your Field',
+                    fieldAddress: `${submittedField.address || ''}, ${submittedField.city || ''}, ${submittedField.state || ''}`.trim(),
+                    submittedAt: submittedField.submittedAt || new Date()
+                });
+            }
+            catch (emailError) {
+                console.error('Failed to send field submission email:', emailError);
+                // Don't throw error - email failure shouldn't stop the submission
+            }
+            // Create notification for field owner
+            const { NotificationService } = await Promise.resolve().then(() => __importStar(require('../services/notification.service')));
+            try {
+                await NotificationService.createNotification({
+                    userId: fieldOwner.id,
+                    type: 'field_submitted',
+                    title: 'Field Submitted Successfully',
+                    message: `Your field "${submittedField.name}" has been successfully submitted and is now live on Fieldsy!`,
+                    data: {
+                        fieldId: submittedField.id,
+                        fieldName: submittedField.name,
+                        submittedAt: submittedField.submittedAt
+                    }
+                }, false); // Don't notify admin for user's own notification
+            }
+            catch (notificationError) {
+                console.error('Failed to create field owner notification:', notificationError);
+            }
+            // Create notification for all admins
+            try {
+                await NotificationService.notifyAdmins('New Field Submission', `Field owner ${fieldOwner.name} has submitted a new field: "${submittedField.name}" at ${submittedField.address}, ${submittedField.city}`, {
+                    fieldId: submittedField.id,
+                    fieldName: submittedField.name,
+                    ownerId: fieldOwner.id,
+                    ownerName: fieldOwner.name,
+                    submittedAt: submittedField.submittedAt
+                });
+            }
+            catch (adminNotificationError) {
+                console.error('Failed to create admin notification:', adminNotificationError);
+            }
+        }
         res.json({
             success: true,
             message: 'Field submitted successfully!',

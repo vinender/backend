@@ -293,6 +293,52 @@ export const resetPasswordWithOtp = asyncHandler(async (req: Request, res: Respo
   });
 });
 
+// Verify OTP for social login
+export const verifySocialLoginOtp = asyncHandler(async (req: Request, res: Response) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    throw new AppError('Email and OTP are required', 400);
+  }
+
+  // Verify OTP
+  const isValid = await otpService.verifyOtp(email, otp, 'SOCIAL_LOGIN');
+
+  if (!isValid) {
+    throw new AppError('Invalid or expired OTP', 400);
+  }
+
+  // Update user as verified
+  const user = await prisma.user.update({
+    where: { email },
+    data: { emailVerified: new Date() },
+  });
+
+  // Generate token
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+
+  res.json({
+    success: true,
+    message: 'Email verified successfully',
+    data: {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        image: user.image,
+        googleImage: user.googleImage,
+      },
+      token,
+    },
+  });
+});
+
 // Login with email verification check
 export const loginWithOtpCheck = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;

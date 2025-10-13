@@ -8,6 +8,7 @@ import {
   verifyPasswordResetOtp,
   resetPasswordWithOtp,
   loginWithOtpCheck,
+  verifySocialLoginOtp,
 } from '../controllers/auth.otp.controller';
 
 const router = express.Router();
@@ -26,5 +27,8 @@ router.post('/reset-password', resetPasswordWithOtp);
 
 // Login with email verification check
 router.post('/login', loginWithOtpCheck);
+
+// Social login OTP verification
+router.post('/verify-social-login', verifySocialLoginOtp);
 
 export default router;

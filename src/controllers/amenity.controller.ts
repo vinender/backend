@@ -3,6 +3,33 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Helper function to format amenity names to labels
+const formatAmenityLabel = (name: string): string => {
+  const specialCases: Record<string, string> = {
+    toilet: 'Toilet',
+    dogAgility: 'Dog Agility',
+    waterBowls: 'Water Bowls',
+    parkingSpace: 'Parking Space',
+    parking: 'Parking',
+    fence: 'Fence',
+    shelter: 'Shelter',
+    seatingArea: 'Seating Area',
+    wasteBins: 'Waste Bins',
+    lighting: 'Lighting',
+    firstAid: 'First Aid',
+  };
+
+  if (specialCases[name]) {
+    return specialCases[name];
+  }
+
+  // Convert camelCase to Title Case
+  return name
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .trim();
+};
+
 // Get all amenities (with optional filter for active only)
 export const getAmenities = async (req: Request, res: Response) => {
   try {
@@ -18,10 +45,16 @@ export const getAmenities = async (req: Request, res: Response) => {
       ]
     });
 
+    // Add formatted label to each amenity
+    const amenitiesWithLabels = amenities.map(amenity => ({
+      ...amenity,
+      label: formatAmenityLabel(amenity.name)
+    }));
+
     return res.status(200).json({
       success: true,
       message: amenities.length === 0 ? 'No amenities found' : 'Amenities retrieved successfully',
-      data: amenities
+      data: amenitiesWithLabels
     });
   } catch (error: any) {
     console.error('Error fetching amenities:', error);

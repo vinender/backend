@@ -32,7 +32,7 @@ class AuthController {
         if (existingUser) {
             // Check if the existing user has a different role
             if (existingUser.role !== userRole) {
-                throw new AppError_1.AppError(`An account already exists with this email as a ${existingUser.role.replace('_', ' ').toLowerCase()}. Each email can only have one account.`, 409);
+                throw new AppError_1.AppError(`An account already exists with this email.`, 409);
             }
             // Check if user has OAuth accounts
             const hasOAuthAccount = await user_model_1.default.hasOAuthAccount(existingUser.id);
@@ -230,7 +230,28 @@ class AuthController {
         if (role && !validRoles.includes(role)) {
             throw new AppError_1.AppError('Invalid role specified', 400);
         }
-        // Create or update user
+        // Check if user already exists AND is verified
+        const existingUser = await user_model_1.default.findByEmail(email);
+        if (existingUser && existingUser.emailVerified) {
+            // User exists and is verified - log them in immediately
+            const token = jsonwebtoken_1.default.sign({
+                id: existingUser.id,
+                email: existingUser.email,
+                role: existingUser.role,
+                provider: existingUser.provider
+            }, constants_1.JWT_SECRET, {
+                expiresIn: constants_1.JWT_EXPIRES_IN
+            });
+            return res.json({
+                success: true,
+                message: 'Social login successful',
+                data: {
+                    user: existingUser,
+                    token,
+                },
+            });
+        }
+        // Create or update user (NOT VERIFIED YET)
         const user = await user_model_1.default.createOrUpdateSocialUser({
             email,
             name,
@@ -242,28 +263,16 @@ class AuthController {
         // NOTE: Empty field creation removed - fields are now created dynamically
         // when the field owner first saves their field details.
         // See comment in register method for more details.
-        // Store OAuth account info
-        const account = await user_model_1.default.hasOAuthAccount(user.id);
-        if (!account) {
-            // Create account record for tracking OAuth provider
-            // This would typically be done in a separate Account model
-            // For now, we're just tracking the provider in the User model
-        }
-        // Generate JWT token
-        const token = jsonwebtoken_1.default.sign({
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            provider: user.provider
-        }, constants_1.JWT_SECRET, {
-            expiresIn: constants_1.JWT_EXPIRES_IN
-        });
-        res.json({
+        // Send OTP for verification
+        const { otpService } = require('../services/otp.service');
+        await otpService.sendOtp(email, 'SOCIAL_LOGIN', name);
+        res.status(200).json({
             success: true,
-            message: 'Social login successful',
+            requiresVerification: true,
+            message: 'Please check your email for verification code',
             data: {
-                user,
-                token,
+                email,
+                role: user.role,
             },
         });
     });
