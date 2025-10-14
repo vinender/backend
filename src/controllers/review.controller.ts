@@ -136,17 +136,54 @@ class ReviewController {
         return res.status(409).json({
           success: false,
           message: 'You have already reviewed this field. You can edit your existing review instead.',
+          code: 'REVIEW_ALREADY_EXISTS',
         });
       }
 
-      // Check if user has booked this field
-      const hasBooked = await prisma.booking.findFirst({
+      // Check if user has a completed booking for this field
+      const completedBooking = await prisma.booking.findFirst({
         where: {
           fieldId,
           userId,
           status: 'COMPLETED',
         },
+        orderBy: {
+          date: 'desc', // Get the most recent booking
+        },
       });
+
+      // Validate booking requirements
+      if (!completedBooking) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only review fields you have booked and visited.',
+          code: 'NO_COMPLETED_BOOKING',
+        });
+      }
+
+      // Check if the booking date has passed
+      const bookingDate = new Date(completedBooking.date);
+      const bookingEndTimeStr = completedBooking.endTime; // e.g., "16:00"
+
+      // Combine booking date with end time to get the full booking end datetime
+      const [hours, minutes] = bookingEndTimeStr.split(':').map(Number);
+      const bookingEndDateTime = new Date(bookingDate);
+      bookingEndDateTime.setHours(hours, minutes, 0, 0);
+
+      const now = new Date();
+
+      if (bookingEndDateTime > now) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only submit a review after your booking has ended.',
+          code: 'BOOKING_NOT_ENDED',
+          data: {
+            bookingDate: bookingDate.toISOString(),
+            bookingEndTime: bookingEndTimeStr,
+            bookingEndDateTime: bookingEndDateTime.toISOString(),
+          },
+        });
+      }
 
       // Get user info for denormalization
       const user = await prisma.user.findUnique({
@@ -165,7 +202,7 @@ class ReviewController {
           title,
           comment,
           images,
-          verified: !!hasBooked,
+          verified: true, // Always true since we validated the booking
         },
         include: {
           user: {

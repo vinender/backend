@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteConversation = exports.getUnreadCount = exports.sendMessage = exports.getMessages = exports.getConversations = exports.getOrCreateConversation = void 0;
+exports.getUnreadConversationsCount = exports.deleteConversation = exports.getUnreadCount = exports.sendMessage = exports.getMessages = exports.getConversations = exports.getOrCreateConversation = void 0;
 const client_1 = require("@prisma/client");
 const kafka_1 = require("../config/kafka");
 const prisma = new client_1.PrismaClient();
@@ -384,3 +384,54 @@ const deleteConversation = async (req, res) => {
     }
 };
 exports.deleteConversation = deleteConversation;
+// Get count of conversations with unread messages
+const getUnreadConversationsCount = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        // Get all conversations for the user
+        const conversations = await prisma.conversation.findMany({
+            where: {
+                participants: {
+                    has: userId
+                }
+            },
+            select: {
+                id: true
+            }
+        });
+        // Count conversations that have at least one unread message for this user
+        const conversationIds = conversations.map(conv => conv.id);
+        if (conversationIds.length === 0) {
+            return res.json({
+                success: true,
+                unreadConversationsCount: 0
+            });
+        }
+        // Find unique conversations with unread messages
+        const conversationsWithUnread = await prisma.message.groupBy({
+            by: ['conversationId'],
+            where: {
+                conversationId: {
+                    in: conversationIds
+                },
+                receiverId: userId,
+                isRead: false
+            },
+            _count: {
+                conversationId: true
+            }
+        });
+        res.json({
+            success: true,
+            unreadConversationsCount: conversationsWithUnread.length
+        });
+    }
+    catch (error) {
+        console.error('Error fetching unread conversations count:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch unread conversations count'
+        });
+    }
+};
+exports.getUnreadConversationsCount = getUnreadConversationsCount;

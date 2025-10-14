@@ -416,3 +416,58 @@ export const deleteConversation = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to delete conversation' });
   }
 };
+
+// Get count of conversations with unread messages
+export const getUnreadConversationsCount = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+
+    // Get all conversations for the user
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        participants: {
+          has: userId
+        }
+      },
+      select: {
+        id: true
+      }
+    });
+
+    // Count conversations that have at least one unread message for this user
+    const conversationIds = conversations.map(conv => conv.id);
+
+    if (conversationIds.length === 0) {
+      return res.json({
+        success: true,
+        unreadConversationsCount: 0
+      });
+    }
+
+    // Find unique conversations with unread messages
+    const conversationsWithUnread = await prisma.message.groupBy({
+      by: ['conversationId'],
+      where: {
+        conversationId: {
+          in: conversationIds
+        },
+        receiverId: userId,
+        isRead: false
+      },
+      _count: {
+        conversationId: true
+      }
+    });
+
+    res.json({
+      success: true,
+      unreadConversationsCount: conversationsWithUnread.length
+    });
+  } catch (error) {
+    console.error('Error fetching unread conversations count:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch unread conversations count'
+    });
+  }
+};

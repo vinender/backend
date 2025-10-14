@@ -82,10 +82,13 @@ class FavoriteController {
                 }
             });
         }
-        // Now get the valid favorites with pagination
+        // Now get the valid favorites with pagination (only active fields)
         const favorites = await prisma.favorite.findMany({
             where: {
-                userId
+                userId,
+                field: {
+                    isActive: true // Only include active fields
+                }
             },
             include: {
                 field: {
@@ -118,8 +121,8 @@ class FavoriteController {
                 createdAt: 'desc'
             }
         });
-        // Additional safety check to filter out any null fields
-        const validFavorites = favorites.filter(fav => fav.field !== null);
+        // Additional safety check to filter out any null or inactive fields
+        const validFavorites = favorites.filter(fav => fav.field !== null && fav.field.isActive);
         // Calculate average rating for each field
         const fieldsWithRating = validFavorites.map(fav => {
             const avgRating = fav.field.fieldReviews.length > 0
@@ -133,10 +136,13 @@ class FavoriteController {
                 isFavorited: true
             };
         });
-        // Get total count only for valid favorites (after cleanup)
+        // Get total count only for valid favorites with active fields (after cleanup)
         const total = await prisma.favorite.count({
             where: {
-                userId
+                userId,
+                field: {
+                    isActive: true
+                }
             }
         });
         res.json({

@@ -719,7 +719,35 @@ class FieldModel {
   }
 
   // Helper method to build orderBy clause
-  private buildOrderBy(sortBy: string, sortOrder: 'asc' | 'desc') {
+  // Supports multiple sort fields: sortBy="rating,price" sortOrder="desc,asc"
+  private buildOrderBy(sortBy: string, sortOrder: 'asc' | 'desc' | string) {
+    // Handle multiple sort fields (comma-separated)
+    if (sortBy && sortBy.includes(',')) {
+      const sortFields = sortBy.split(',').map(s => s.trim());
+      const sortOrders = typeof sortOrder === 'string' && sortOrder.includes(',')
+        ? sortOrder.split(',').map(s => s.trim() as 'asc' | 'desc')
+        : sortFields.map(() => sortOrder as 'asc' | 'desc');
+
+      const orderByOptions: Record<string, string> = {
+        price: 'price',
+        rating: 'averageRating',
+        reviews: 'totalReviews',
+        name: 'name',
+        createdAt: 'createdAt',
+        distance: 'createdAt', // Would need geospatial calculation
+      };
+
+      // Build array of orderBy objects
+      const orderByArray = sortFields.map((field, index) => {
+        const dbField = orderByOptions[field];
+        const order = sortOrders[index] || 'desc';
+        return dbField ? { [dbField]: order } : null;
+      }).filter(Boolean);
+
+      return orderByArray.length > 0 ? orderByArray : [{ createdAt: 'desc' }];
+    }
+
+    // Single sort field (backward compatible)
     const orderByOptions: Record<string, any> = {
       price: { price: sortOrder },
       rating: { averageRating: sortOrder },

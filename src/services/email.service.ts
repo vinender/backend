@@ -1059,6 +1059,179 @@ const getFieldSubmissionTemplate = (data: {
   `;
 };
 
+const getFieldApprovalTemplate = (data: {
+  ownerName: string;
+  ownerEmail: string;
+  fieldName: string;
+  fieldAddress: string;
+  approvedAt: Date;
+}) => {
+  const formattedDate = new Date(data.approvedAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Field Approved</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .success-badge {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 15px 0;
+          }
+          .info-box {
+            background-color: #f0f8f0;
+            border-left: 4px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .info-item {
+            margin: 12px 0;
+            font-size: 15px;
+          }
+          .info-label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            min-width: 140px;
+          }
+          .next-steps {
+            background-color: #fff7e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .next-steps h3 {
+            color: #ff8c00;
+            margin-top: 0;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+          .celebration {
+            text-align: center;
+            font-size: 48px;
+            margin: 20px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <div class="celebration">🎉</div>
+            <h1 style="text-align: center;">Your Field Has Been Approved!</h1>
+            <div class="success-badge" style="display: block; text-align: center;">✓ Approved & Live</div>
+            <p>Dear ${data.ownerName},</p>
+            <p>Congratulations! Great news - your field has been reviewed and <strong>approved</strong> by our admin team. Your field is now live on Fieldsy and visible to dog owners searching for fields!</p>
+
+            <div class="info-box">
+              <h3 style="margin-top: 0;">Field Details</h3>
+              <div class="info-item">
+                <span class="info-label">Field Name:</span> ${data.fieldName}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Location:</span> ${data.fieldAddress}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Approved On:</span> ${formattedDate}
+              </div>
+              <div class="info-item">
+                <span class="info-label">Status:</span> <span style="color: #4CAF50; font-weight: bold;">Active & Listed</span>
+              </div>
+            </div>
+
+            <div class="next-steps">
+              <h3>🎉 What's Next?</h3>
+              <ul>
+                <li><strong>Your field is now live</strong> and visible to all dog owners on Fieldsy</li>
+                <li><strong>Start receiving bookings</strong> - You'll get email and in-app notifications</li>
+                <li><strong>Manage your field</strong> - Update details, pricing, and availability anytime</li>
+                <li><strong>Track your earnings</strong> - View booking history and payouts in your dashboard</li>
+                <li><strong>Connect with customers</strong> - Respond to inquiries through our messaging system</li>
+              </ul>
+            </div>
+
+            <p><strong>💰 Payment & Earnings:</strong></p>
+            <ul>
+              <li>You'll receive 80% of each booking amount (we take 20% platform fee)</li>
+              <li>Payments are processed via Stripe after each completed booking</li>
+              <li>Set up your Stripe Connect account to receive payouts</li>
+            </ul>
+
+            <p><strong>📈 Tips for Success:</strong></p>
+            <ul>
+              <li>Keep your field information accurate and up to date</li>
+              <li>Add high-quality photos to attract more bookings</li>
+              <li>Respond promptly to booking requests and messages</li>
+              <li>Maintain good communication with dog owners</li>
+              <li>Ensure your field is clean and ready before each booking</li>
+            </ul>
+
+            <p>Thank you for joining Fieldsy! We're excited to have you as part of our community of field owners helping dogs enjoy safe, secure spaces to play and exercise.</p>
+
+            <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+
+            <p><strong>Happy hosting!</strong></p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>Find secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 const getBookingStatusChangeTemplate = (emailData: {
   userName: string;
   bookingId: string;
@@ -1417,6 +1590,32 @@ class EmailService {
       return result;
     } catch (error) {
       console.error(`❌ Failed to send field submission email to ${data.email}:`, error);
+      return false;
+    }
+  }
+
+  async sendFieldApprovalEmail(data: {
+    email: string;
+    ownerName: string;
+    fieldName: string;
+    fieldAddress: string;
+    approvedAt: Date;
+  }): Promise<boolean> {
+    const subject = 'Your Field Has Been Approved! - Fieldsy';
+    const html = getFieldApprovalTemplate({
+      ownerName: data.ownerName,
+      ownerEmail: data.email,
+      fieldName: data.fieldName,
+      fieldAddress: data.fieldAddress,
+      approvedAt: data.approvedAt
+    });
+
+    try {
+      const result = await this.sendMail(data.email, subject, html);
+      console.log(`✅ Field approval email sent to ${data.email}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to send field approval email to ${data.email}:`, error);
       return false;
     }
   }

@@ -14,8 +14,9 @@ import { authenticateAdmin } from '../middleware/admin.middleware';
 
 const router = Router();
 
-// Public routes
-router.get('/public', getFAQs); // Get active FAQs for public display
+// Public routes (mounted at /api/faqs)
+router.get('/', getFAQs); // Get active FAQs for public display - GET /api/faqs
+router.get('/public', getFAQs); // Alternative route for backward compatibility - GET /api/faqs/public
 
 // Admin routes
 router.get('/admin', authenticateAdmin, getAllFAQs); // Get all FAQs including inactive

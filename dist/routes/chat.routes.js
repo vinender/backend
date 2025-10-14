@@ -14,6 +14,7 @@ router.delete('/conversations/:conversationId', chat_controller_1.deleteConversa
 // Message routes
 router.get('/conversations/:conversationId/messages', chat_controller_1.getMessages);
 router.post('/messages', chat_controller_1.sendMessage);
-// Unread count
-router.get('/unread-count', chat_controller_1.getUnreadCount);
+// Unread counts
+router.get('/unread-count', chat_controller_1.getUnreadCount); // Total unread messages count
+router.get('/unread-conversations-count', chat_controller_1.getUnreadConversationsCount); // Count of conversations with unread messages
 exports.default = router;

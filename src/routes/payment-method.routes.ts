@@ -20,8 +20,9 @@ router.post('/', paymentMethodController.savePaymentMethod);
 // DEPRECATED: Backward compatibility for old /save endpoint (remove after frontend migration)
 router.post('/save', paymentMethodController.savePaymentMethod);
 
-// Set a payment method as default
+// Set a payment method as default (supports both PATCH and PUT)
 router.patch('/:paymentMethodId/set-default', paymentMethodController.setDefaultPaymentMethod);
+router.put('/:paymentMethodId/set-default', paymentMethodController.setDefaultPaymentMethod);
 
 // Delete a payment method
 router.delete('/:paymentMethodId', paymentMethodController.deletePaymentMethod);

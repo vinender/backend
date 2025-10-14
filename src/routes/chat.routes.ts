@@ -7,7 +7,8 @@ import {
   getMessages,
   sendMessage,
   getUnreadCount,
-  deleteConversation
+  deleteConversation,
+  getUnreadConversationsCount
 } from '../controllers/chat.controller';
 
 const router = Router();
@@ -24,7 +25,8 @@ router.delete('/conversations/:conversationId', deleteConversation);
 router.get('/conversations/:conversationId/messages', getMessages);
 router.post('/messages', sendMessage);
 
-// Unread count
-router.get('/unread-count', getUnreadCount);
+// Unread counts
+router.get('/unread-count', getUnreadCount); // Total unread messages count
+router.get('/unread-conversations-count', getUnreadConversationsCount); // Count of conversations with unread messages
 
 export default router;

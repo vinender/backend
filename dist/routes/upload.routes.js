@@ -23,4 +23,8 @@ upload_controller_1.uploadMultiple);
 router.post('/presigned-url', auth_middleware_1.protect, upload_controller_1.getPresignedUrl);
 // Generate presigned URL for admin
 router.post('/admin/presigned-url', admin_middleware_1.authenticateAdmin, upload_controller_1.getPresignedUrl);
+// Delete file from S3 - for regular users
+router.delete('/delete', auth_middleware_1.protect, upload_controller_1.deleteFile);
+// Delete file from S3 - for admin users
+router.delete('/admin/delete', admin_middleware_1.authenticateAdmin, upload_controller_1.deleteFile);
 exports.default = router;

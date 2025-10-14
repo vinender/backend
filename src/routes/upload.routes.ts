@@ -1,6 +1,6 @@
 //@ts-nocheck
 import { Router } from 'express';
-import { uploadDirect, uploadMultiple, upload, getPresignedUrl } from '../controllers/upload.controller';
+import { uploadDirect, uploadMultiple, upload, getPresignedUrl, deleteFile } from '../controllers/upload.controller';
 import { protect } from '../middleware/auth.middleware';
 import { authenticateAdmin } from '../middleware/admin.middleware';
 
@@ -51,6 +51,18 @@ router.post('/presigned-url',
 router.post('/admin/presigned-url',
   authenticateAdmin,
   getPresignedUrl
+);
+
+// Delete file from S3 - for regular users
+router.delete('/delete',
+  protect,
+  deleteFile
+);
+
+// Delete file from S3 - for admin users
+router.delete('/admin/delete',
+  authenticateAdmin,
+  deleteFile
 );
 
 export default router;

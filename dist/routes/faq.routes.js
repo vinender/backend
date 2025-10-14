@@ -5,8 +5,9 @@ const express_1 = require("express");
 const faq_controller_1 = require("../controllers/faq.controller");
 const admin_middleware_1 = require("../middleware/admin.middleware");
 const router = (0, express_1.Router)();
-// Public routes
-router.get('/public', faq_controller_1.getFAQs); // Get active FAQs for public display
+// Public routes (mounted at /api/faqs)
+router.get('/', faq_controller_1.getFAQs); // Get active FAQs for public display - GET /api/faqs
+router.get('/public', faq_controller_1.getFAQs); // Alternative route for backward compatibility - GET /api/faqs/public
 // Admin routes
 router.get('/admin', admin_middleware_1.authenticateAdmin, faq_controller_1.getAllFAQs); // Get all FAQs including inactive
 router.get('/admin/:id', admin_middleware_1.authenticateAdmin, faq_controller_1.getFAQ); // Get single FAQ

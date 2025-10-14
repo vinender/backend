@@ -48,4 +48,9 @@ router
 // Toggle field active status
 router.patch('/:id/toggle-status', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.toggleFieldStatus);
 
+// Admin approval routes
+router.get('/admin/pending-approval', restrictTo('ADMIN'), fieldController.getPendingFields);
+router.patch('/:fieldId/approve', restrictTo('ADMIN'), fieldController.approveField);
+router.patch('/:fieldId/reject', restrictTo('ADMIN'), fieldController.rejectField);
+
 export default router;

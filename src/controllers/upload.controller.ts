@@ -1,6 +1,6 @@
 //@ts-nocheck
 import { Request, Response } from 'express';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import multer from 'multer';
 import sharp from 'sharp';
@@ -203,6 +203,64 @@ export const getPresignedUrl = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to generate presigned URL',
+    });
+  }
+};
+
+// Delete file from S3
+export const deleteFile = async (req: Request, res: Response) => {
+  try {
+    const { key, url } = req.body;
+
+    if (!key && !url) {
+      return res.status(400).json({
+        success: false,
+        message: 'Either key or url is required',
+      });
+    }
+
+    // Extract key from URL if only URL is provided
+    let fileKey = key;
+    if (!fileKey && url) {
+      // Extract key from S3 URL
+      // Format: https://bucket.s3.region.amazonaws.com/folder/file.ext
+      const urlParts = url.split('.amazonaws.com/');
+      if (urlParts.length > 1) {
+        fileKey = urlParts[1];
+      } else {
+        // Alternative format: https://s3.region.amazonaws.com/bucket/folder/file.ext
+        const altParts = url.split(`/${process.env.AWS_S3_BUCKET}/`);
+        if (altParts.length > 1) {
+          fileKey = altParts[1];
+        }
+      }
+    }
+
+    if (!fileKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not extract file key from URL',
+      });
+    }
+
+    // Delete from S3
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET!,
+      Key: fileKey,
+    });
+
+    await s3Client.send(command);
+
+    res.status(200).json({
+      success: true,
+      message: 'File deleted successfully',
+      key: fileKey,
+    });
+  } catch (error: any) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete file',
     });
   }
 };

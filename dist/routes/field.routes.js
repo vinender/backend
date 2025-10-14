@@ -43,4 +43,8 @@ router
     .delete((0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.deleteField);
 // Toggle field active status
 router.patch('/:id/toggle-status', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.toggleFieldStatus);
+// Admin approval routes
+router.get('/admin/pending-approval', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.getPendingFields);
+router.patch('/:fieldId/approve', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.approveField);
+router.patch('/:fieldId/reject', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.rejectField);
 exports.default = router;

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPresignedUrl = exports.uploadMultiple = exports.uploadDirect = exports.upload = void 0;
+exports.deleteFile = exports.getPresignedUrl = exports.uploadMultiple = exports.uploadDirect = exports.upload = void 0;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_presigned_post_1 = require("@aws-sdk/s3-presigned-post");
 const multer_1 = __importDefault(require("multer"));
@@ -191,3 +191,57 @@ const getPresignedUrl = async (req, res) => {
     }
 };
 exports.getPresignedUrl = getPresignedUrl;
+// Delete file from S3
+const deleteFile = async (req, res) => {
+    try {
+        const { key, url } = req.body;
+        if (!key && !url) {
+            return res.status(400).json({
+                success: false,
+                message: 'Either key or url is required',
+            });
+        }
+        // Extract key from URL if only URL is provided
+        let fileKey = key;
+        if (!fileKey && url) {
+            // Extract key from S3 URL
+            // Format: https://bucket.s3.region.amazonaws.com/folder/file.ext
+            const urlParts = url.split('.amazonaws.com/');
+            if (urlParts.length > 1) {
+                fileKey = urlParts[1];
+            }
+            else {
+                // Alternative format: https://s3.region.amazonaws.com/bucket/folder/file.ext
+                const altParts = url.split(`/${process.env.AWS_S3_BUCKET}/`);
+                if (altParts.length > 1) {
+                    fileKey = altParts[1];
+                }
+            }
+        }
+        if (!fileKey) {
+            return res.status(400).json({
+                success: false,
+                message: 'Could not extract file key from URL',
+            });
+        }
+        // Delete from S3
+        const command = new client_s3_1.DeleteObjectCommand({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: fileKey,
+        });
+        await s3Client.send(command);
+        res.status(200).json({
+            success: true,
+            message: 'File deleted successfully',
+            key: fileKey,
+        });
+    }
+    catch (error) {
+        console.error('Error deleting file:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to delete file',
+        });
+    }
+};
+exports.deleteFile = deleteFile;

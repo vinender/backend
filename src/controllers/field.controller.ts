@@ -1212,7 +1212,7 @@ class FieldController {
           status: 'COMPLETED'
         },
         _sum: {
-          totalPrice: true
+          fieldOwnerAmount: true
         }
       });
 
@@ -1220,7 +1220,7 @@ class FieldController {
       const formattedBookings = bookings.map((booking: any) => ({
         id: booking.id,
         userName: booking.user.name,
-        userAvatar: booking.user.profileImage || null,
+        userAvatar: booking.user.image || booking.user.googleImage || null,
         time: `${booking.startTime} - ${booking.endTime}`,
         orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
         status: booking.status.toLowerCase(),
@@ -1236,7 +1236,7 @@ class FieldController {
         stats: {
           todayBookings,
           totalBookings,
-          totalEarnings: totalEarnings._sum.totalPrice || 0
+          totalEarnings: totalEarnings._sum.fieldOwnerAmount || 0
         },
         pagination: {
           page: pageNum,
@@ -1331,7 +1331,7 @@ class FieldController {
             status: 'COMPLETED'
           },
           _sum: {
-            totalPrice: true
+            fieldOwnerAmount: true
           }
         })
       ]);
@@ -1341,7 +1341,7 @@ class FieldController {
         id: booking.id,
         userId: booking.user.id,
         userName: booking.user.name,
-        userAvatar: booking.user.profileImage || null,
+        userAvatar: booking.user.image || booking.user.googleImage || null,
         userEmail: booking.user.email,
         userPhone: booking.user.phone,
         time: `${booking.startTime} - ${booking.endTime}`,
@@ -1362,7 +1362,7 @@ class FieldController {
         stats: {
           todayBookings: totalFilteredBookings,
           totalBookings,
-          totalEarnings: totalEarnings._sum.totalPrice || 0
+          totalEarnings: totalEarnings._sum.fieldOwnerAmount || 0
         },
         pagination: {
           page: pageNum,
@@ -1465,7 +1465,7 @@ class FieldController {
             status: 'COMPLETED'
           },
           _sum: {
-            totalPrice: true
+            fieldOwnerAmount: true
           }
         })
       ]);
@@ -1475,7 +1475,7 @@ class FieldController {
         id: booking.id,
         userId: booking.user.id,
         userName: booking.user.name,
-        userAvatar: booking.user.profileImage || null,
+        userAvatar: booking.user.image || booking.user.googleImage || null,
         userEmail: booking.user.email,
         userPhone: booking.user.phone,
         time: `${booking.startTime} - ${booking.endTime}`,
@@ -1496,7 +1496,7 @@ class FieldController {
         stats: {
           todayBookings,
           totalBookings,
-          totalEarnings: totalEarnings._sum.totalPrice || 0
+          totalEarnings: totalEarnings._sum.fieldOwnerAmount || 0
         },
         pagination: {
           page: pageNum,
@@ -1600,7 +1600,7 @@ class FieldController {
             status: 'COMPLETED'
           },
           _sum: {
-            totalPrice: true
+            fieldOwnerAmount: true
           }
         })
       ]);
@@ -1610,7 +1610,7 @@ class FieldController {
         id: booking.id,
         userId: booking.user.id,
         userName: booking.user.name,
-        userAvatar: booking.user.profileImage || null,
+        userAvatar: booking.user.image || booking.user.googleImage || null,
         userEmail: booking.user.email,
         userPhone: booking.user.phone,
         time: `${booking.startTime} - ${booking.endTime}`,
@@ -1631,7 +1631,7 @@ class FieldController {
         stats: {
           todayBookings,
           totalBookings,
-          totalEarnings: totalEarnings._sum.totalPrice || 0
+          totalEarnings: totalEarnings._sum.fieldOwnerAmount || 0
         },
         pagination: {
           page: pageNum,
@@ -1809,6 +1809,205 @@ class FieldController {
       success: true,
       message: 'Field claimed successfully',
       data: updatedField
+    });
+  });
+
+  // Approve field (Admin only)
+  approveField = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { fieldId } = req.params;
+    const adminId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    // Only admins can approve fields
+    if (userRole !== 'ADMIN') {
+      throw new AppError('Only admins can approve fields', 403);
+    }
+
+    // Get field details
+    const field = await prisma.field.findUnique({
+      where: { id: fieldId },
+      include: {
+        owner: true
+      }
+    });
+
+    if (!field) {
+      throw new AppError('Field not found', 404);
+    }
+
+    // Check if field is already approved
+    if (field.isApproved) {
+      throw new AppError('Field is already approved', 400);
+    }
+
+    // Update field approval status
+    const approvedField = await prisma.field.update({
+      where: { id: fieldId },
+      data: {
+        isApproved: true,
+        approvalStatus: 'APPROVED',
+        approvedAt: new Date(),
+        approvedBy: adminId,
+        isActive: true // Make field active when approved
+      }
+    });
+
+    // Create notification for field owner
+    await prisma.notification.create({
+      data: {
+        userId: field.ownerId,
+        type: 'field_approved',
+        title: 'Field Approved!',
+        message: `Your field "${field.name}" has been approved and is now live on Fieldsy.`,
+        data: {
+          fieldId: field.id,
+          fieldName: field.name
+        }
+      }
+    });
+
+    // Send approval email to field owner
+    try {
+      const { emailService } = await import('../services/email.service');
+
+      // Get field address
+      let fieldAddress = '';
+      if (field.location && typeof field.location === 'object') {
+        const loc = field.location as any;
+        fieldAddress = loc.formatted_address || loc.streetAddress || field.address || '';
+      } else {
+        fieldAddress = field.address || '';
+      }
+
+      await emailService.sendFieldApprovalEmail({
+        email: field.owner.email,
+        ownerName: field.owner.name || field.owner.email,
+        fieldName: field.name || 'Your Field',
+        fieldAddress: fieldAddress,
+        approvedAt: new Date()
+      });
+    } catch (emailError) {
+      console.error('Failed to send approval email:', emailError);
+      // Don't fail the approval if email fails
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Field approved successfully and owner notified',
+      data: approvedField
+    });
+  });
+
+  // Reject field (Admin only)
+  rejectField = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { fieldId } = req.params;
+    const { rejectionReason } = req.body;
+    const adminId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    // Only admins can reject fields
+    if (userRole !== 'ADMIN') {
+      throw new AppError('Only admins can reject fields', 403);
+    }
+
+    // Get field details
+    const field = await prisma.field.findUnique({
+      where: { id: fieldId },
+      include: {
+        owner: true
+      }
+    });
+
+    if (!field) {
+      throw new AppError('Field not found', 404);
+    }
+
+    // Update field rejection status
+    const rejectedField = await prisma.field.update({
+      where: { id: fieldId },
+      data: {
+        isApproved: false,
+        approvalStatus: 'REJECTED',
+        rejectionReason: rejectionReason || 'Field did not meet our approval criteria',
+        isActive: false // Deactivate rejected fields
+      }
+    });
+
+    // Create notification for field owner
+    await prisma.notification.create({
+      data: {
+        userId: field.ownerId,
+        type: 'field_rejected',
+        title: 'Field Submission Update',
+        message: `Your field "${field.name}" submission requires attention. ${rejectionReason || 'Please check the details and resubmit.'}`,
+        data: {
+          fieldId: field.id,
+          fieldName: field.name,
+          rejectionReason: rejectionReason
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Field rejected and owner notified',
+      data: rejectedField
+    });
+  });
+
+  // Get fields pending approval (Admin only)
+  getPendingFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const userRole = (req as any).user.role;
+    const { page = 1, limit = 10 } = req.query;
+
+    // Only admins can view pending fields
+    if (userRole !== 'ADMIN') {
+      throw new AppError('Only admins can view pending fields', 403);
+    }
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [fields, total] = await Promise.all([
+      prisma.field.findMany({
+        where: {
+          isSubmitted: true,
+          approvalStatus: 'PENDING'
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true
+            }
+          }
+        },
+        skip,
+        take: limitNum,
+        orderBy: {
+          submittedAt: 'desc'
+        }
+      }),
+      prisma.field.count({
+        where: {
+          isSubmitted: true,
+          approvalStatus: 'PENDING'
+        }
+      })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: fields,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(total / limitNum),
+        totalItems: total,
+        itemsPerPage: limitNum
+      }
     });
   });
 }
