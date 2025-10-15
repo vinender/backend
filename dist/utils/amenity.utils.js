@@ -32,18 +32,20 @@ async function transformAmenitiesToObjects(amenityNames) {
         });
         // Create a map for quick lookup
         const amenityMap = new Map(amenities.map((amenity) => [amenity.name, amenity]));
-        // Transform the amenity names to objects, maintaining order - only label and value
+        // Transform the amenity names to objects, maintaining order - id, label and value
         const transformedAmenities = amenityNames
             .map((name) => {
             const amenity = amenityMap.get(name);
             if (amenity) {
                 return {
+                    id: amenity.id,
                     label: formatAmenityLabel(amenity.name),
                     value: amenity.name,
                 };
             }
-            // If amenity not found in database, return a default object
+            // If amenity not found in database, return a default object with empty id
             return {
+                id: '',
                 label: formatAmenityLabel(name),
                 value: name,
             };
@@ -122,10 +124,11 @@ async function enrichFieldsWithAmenities(fields) {
             icon: true,
         },
     });
-    // Create a map for quick lookup - only label and value for field cards
+    // Create a map for quick lookup - id, label and value for field cards
     const amenityMap = new Map(amenities.map((amenity) => [
         amenity.name,
         {
+            id: amenity.id,
             label: formatAmenityLabel(amenity.name),
             value: amenity.name,
         },

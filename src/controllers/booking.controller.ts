@@ -946,7 +946,7 @@ class BookingController {
   // Update booking (reschedule)
   updateBooking = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    const { date, startTime, endTime, notes } = req.body;
+    const { date, startTime, endTime, notes, recurring } = req.body;
     const userId = (req as any).user.id;
 
     const booking = await BookingModel.findById(id);
@@ -1072,6 +1072,11 @@ class BookingController {
     // Increment reschedule count if date or time is being changed
     if (date || startTime || endTime) {
       req.body.rescheduleCount = rescheduleCount + 1;
+    }
+
+    // Update recurring if provided
+    if (recurring !== undefined) {
+      req.body.recurring = recurring;
     }
 
     // Log the final update data
