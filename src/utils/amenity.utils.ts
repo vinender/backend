@@ -1,10 +1,8 @@
 import prisma from '../config/database';
 
 interface AmenityObject {
-  id: string;
-  value: string;
   label: string;
-  icon: string | null;
+  value: string;
 }
 
 /**
@@ -39,27 +37,22 @@ export async function transformAmenitiesToObjects(
       amenities.map((amenity) => [amenity.name, amenity])
     );
 
-    // Transform the amenity names to objects, maintaining order
+    // Transform the amenity names to objects, maintaining order - only label and value
     const transformedAmenities: AmenityObject[] = amenityNames
       .map((name) => {
         const amenity = amenityMap.get(name);
         if (amenity) {
           return {
-            id: amenity.id,
-            value: amenity.name,
             label: formatAmenityLabel(amenity.name),
-            icon: amenity.icon,
+            value: amenity.name,
           };
         }
         // If amenity not found in database, return a default object
         return {
-          id: '',
-          value: name,
           label: formatAmenityLabel(name),
-          icon: null,
+          value: name,
         };
-      })
-      .filter((amenity) => amenity.id !== ''); // Filter out amenities not found in DB
+      });
 
     return transformedAmenities;
   } catch (error) {
@@ -142,15 +135,13 @@ export async function enrichFieldsWithAmenities(fields: any[]): Promise<any[]> {
     },
   });
 
-  // Create a map for quick lookup
+  // Create a map for quick lookup - only label and value for field cards
   const amenityMap = new Map(
     amenities.map((amenity) => [
       amenity.name,
       {
-        id: amenity.id,
-        value: amenity.name,
         label: formatAmenityLabel(amenity.name),
-        icon: amenity.icon,
+        value: amenity.name,
       },
     ])
   );

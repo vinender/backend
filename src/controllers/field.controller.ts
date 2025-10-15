@@ -6,6 +6,16 @@ import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
 import { enrichFieldWithAmenities, enrichFieldsWithAmenities } from '../utils/amenity.utils';
 import { convertAmenityIdsToNames } from '../utils/amenity.converter';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+
+// Initialize S3 client for image deletion
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
 
 class FieldController {
   // Create new field
@@ -215,40 +225,71 @@ class FieldController {
       take: limitNum,
     });
 
-    // Calculate distance for each field if user location is provided
-    let fieldsWithDistance = result.fields;
-    if (lat && lng) {
-      const userLat = Number(lat);
-      const userLng = Number(lng);
+    // Transform and calculate distance for each field if user location is provided
+    const userLat = lat ? Number(lat) : null;
+    const userLng = lng ? Number(lng) : null;
 
-      fieldsWithDistance = result.fields.map((field: any) => {
-        // Only calculate distance if field has coordinates
-        if (field.latitude && field.longitude) {
-          // Haversine formula to calculate distance in miles
-          const R = 3959; // Earth's radius in miles
-          const dLat = (field.latitude - userLat) * Math.PI / 180;
-          const dLng = (field.longitude - userLng) * Math.PI / 180;
+    const transformedFields = result.fields.map((field: any) => {
+      // Get field coordinates from location JSON or legacy lat/lng fields
+      // Handle both Prisma Json type and actual parsed object
+      const locationData = typeof field.location === 'string'
+        ? JSON.parse(field.location)
+        : field.location;
 
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(userLat * Math.PI / 180) * Math.cos(field.latitude * Math.PI / 180) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const fieldLat = locationData?.lat || field.latitude;
+      const fieldLng = locationData?.lng || field.longitude;
 
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distanceMiles = R * c;
+      // Build optimized response with only necessary fields
+      const optimizedField: any = {
+        id: field.id,
+        name: field.name,
+        image: field.images?.[0] || null, // Only send first image for card
+        price: field.price,
+        duration: field.bookingDuration || 'hour', // 'hour' or '30min'
+        rating: field.averageRating || 0,
+        reviewCount: field.totalReviews || 0,
+        amenities: field.amenities?.slice(0, 4) || [], // Only first 4 amenities for card
+        isClaimed: field.isClaimed,
+        owner: field.ownerName || 'Field Owner',
+        // Location info
+        location: {
+          address: field.address,
+          city: field.city,
+          state: field.state,
+          zipCode: field.zipCode,
+          lat: fieldLat,
+          lng: fieldLng,
+        },
+        // Formatted location string for display
+        locationDisplay: [field.city, field.state].filter(Boolean).join(', '),
+      };
 
-          return {
-            ...field,
-            distanceMiles: Number(distanceMiles.toFixed(1))
-          };
-        }
+      // Calculate distance if user location is provided and field has coordinates
+      if (userLat && userLng && fieldLat && fieldLng) {
+        // Haversine formula to calculate distance in miles
+        const R = 3959; // Earth's radius in miles
+        const dLat = (fieldLat - userLat) * Math.PI / 180;
+        const dLng = (fieldLng - userLng) * Math.PI / 180;
 
-        return field;
-      });
-    }
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(userLat * Math.PI / 180) * Math.cos(fieldLat * Math.PI / 180) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
 
-    // Enrich fields with full amenity objects
-    const enrichedFields = await enrichFieldsWithAmenities(fieldsWithDistance);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceMiles = R * c;
+
+        optimizedField.distance = Number(distanceMiles.toFixed(1));
+        optimizedField.distanceDisplay = distanceMiles < 1
+          ? `${(distanceMiles * 1760).toFixed(0)} yards`
+          : `${distanceMiles.toFixed(1)} miles`;
+      }
+
+      return optimizedField;
+    });
+
+    // Enrich fields with full amenity objects (only for the amenities we're sending)
+    const enrichedFields = await enrichFieldsWithAmenities(transformedFields);
 
     const totalPages = Math.ceil(result.total / limitNum);
 
@@ -526,32 +567,49 @@ class FieldController {
     const paginatedFields = nearbyFields.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
-    // Enrich fields with full amenity objects
-    const enrichedFields = await enrichFieldsWithAmenities(paginatedFields);
+    // Transform to optimized field card format
+    const transformedFields = paginatedFields.map((field: any) => {
+      // Handle both Prisma Json type and actual parsed object
+      const locationData = typeof field.location === 'string'
+        ? JSON.parse(field.location)
+        : field.location;
 
-    // Map to only include FieldCard required fields
-    const minimizedFields = enrichedFields.map((field: any) => ({
-      id: field.id,
-      name: field.name,
-      city: field.city,
-      state: field.state,
-      address: field.address,
-      price: field.price,
-      bookingDuration: field.bookingDuration,
-      averageRating: field.averageRating || 0,
-      images: field.images && field.images.length > 0 ? [field.images[0]] : [],
-      amenities: field.amenities || [],
-      isClaimed: field.isClaimed,
-      ownerName: field.ownerName,
-      latitude: field.latitude,
-      longitude: field.longitude,
-      location: field.location,
-      distanceMiles: field.distanceMiles,
-    }));
+      const fieldLat = locationData?.lat || field.latitude;
+      const fieldLng = locationData?.lng || field.longitude;
+
+      return {
+        id: field.id,
+        name: field.name,
+        image: field.images?.[0] || null,
+        price: field.price,
+        duration: field.bookingDuration || 'hour',
+        rating: field.averageRating || 0,
+        reviewCount: field.totalReviews || 0,
+        amenities: field.amenities?.slice(0, 4) || [],
+        isClaimed: field.isClaimed,
+        owner: field.ownerName || 'Field Owner',
+        location: {
+          address: field.address,
+          city: field.city,
+          state: field.state,
+          zipCode: field.zipCode,
+          lat: fieldLat,
+          lng: fieldLng,
+        },
+        locationDisplay: [field.city, field.state].filter(Boolean).join(', '),
+        distance: field.distanceMiles,
+        distanceDisplay: field.distanceMiles < 1
+          ? `${(field.distanceMiles * 1760).toFixed(0)} yards`
+          : `${field.distanceMiles.toFixed(1)} miles`,
+      };
+    });
+
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(transformedFields);
 
     res.json({
       success: true,
-      data: minimizedFields,
+      data: enrichedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -656,36 +714,51 @@ class FieldController {
     const paginatedFields = fieldsWithScore.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
-    // Enrich fields with full amenity objects
-    const enrichedFields = await enrichFieldsWithAmenities(paginatedFields);
+    // Transform to optimized field card format
+    const transformedFields = paginatedFields.map((field: any) => {
+      // Handle both Prisma Json type and actual parsed object
+      const locationData = typeof field.location === 'string'
+        ? JSON.parse(field.location)
+        : field.location;
 
-    // Map to only include FieldCard required fields
-    const minimizedFields = enrichedFields.map((field: any) => {
-      const { popularityScore, _count, ...rest } = field;
+      const fieldLat = locationData?.lat || field.latitude;
+      const fieldLng = locationData?.lng || field.longitude;
+
       return {
-        id: rest.id,
-        name: rest.name,
-        city: rest.city,
-        state: rest.state,
-        address: rest.address,
-        price: rest.price,
-        bookingDuration: rest.bookingDuration,
-        averageRating: rest.averageRating || 0,
-        images: rest.images && rest.images.length > 0 ? [rest.images[0]] : [],
-        amenities: rest.amenities || [],
-        isClaimed: rest.isClaimed,
-        ownerName: rest.ownerName,
-        latitude: rest.latitude,
-        longitude: rest.longitude,
-        location: rest.location,
-        bookingCount: rest.bookingCount,
-        distanceMiles: rest.distanceMiles,
+        id: field.id,
+        name: field.name,
+        image: field.images?.[0] || null,
+        price: field.price,
+        duration: field.bookingDuration || 'hour',
+        rating: field.averageRating || 0,
+        reviewCount: field.totalReviews || 0,
+        amenities: field.amenities?.slice(0, 4) || [],
+        isClaimed: field.isClaimed,
+        owner: field.ownerName || 'Field Owner',
+        location: {
+          address: field.address,
+          city: field.city,
+          state: field.state,
+          zipCode: field.zipCode,
+          lat: fieldLat,
+          lng: fieldLng,
+        },
+        locationDisplay: [field.city, field.state].filter(Boolean).join(', '),
+        distance: field.distanceMiles,
+        distanceDisplay: field.distanceMiles
+          ? field.distanceMiles < 1
+            ? `${(field.distanceMiles * 1760).toFixed(0)} yards`
+            : `${field.distanceMiles.toFixed(1)} miles`
+          : undefined,
       };
     });
 
+    // Enrich fields with full amenity objects
+    const enrichedFields = await enrichFieldsWithAmenities(transformedFields);
+
     res.json({
       success: true,
-      data: minimizedFields,
+      data: enrichedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -938,18 +1011,62 @@ class FieldController {
         break;
 
       case 'upload-images':
-        // If this is a new field created from a non-field-details step, 
+        // Get existing field to compare images
+        let oldImages: string[] = [];
+        if (!isNewField) {
+          const existingField = await FieldModel.findById(fieldId);
+          oldImages = existingField?.images || [];
+        }
+
+        const newImages = data.images || [];
+
+        // Find images that were removed (exist in old but not in new)
+        const imagesToDelete = oldImages.filter(oldUrl => !newImages.includes(oldUrl));
+
+        // Delete removed images from S3
+        if (imagesToDelete.length > 0) {
+          console.log(`[SaveProgress] Deleting ${imagesToDelete.length} removed images`);
+          for (const imageUrl of imagesToDelete) {
+            try {
+              // Extract key from URL
+              let fileKey = '';
+              const urlParts = imageUrl.split('.amazonaws.com/');
+              if (urlParts.length > 1) {
+                fileKey = urlParts[1];
+              } else {
+                const altParts = imageUrl.split(`/${process.env.AWS_S3_BUCKET}/`);
+                if (altParts.length > 1) {
+                  fileKey = altParts[1];
+                }
+              }
+
+              if (fileKey) {
+                const command = new DeleteObjectCommand({
+                  Bucket: process.env.AWS_S3_BUCKET!,
+                  Key: fileKey,
+                });
+                await s3Client.send(command);
+                console.log(`[SaveProgress] Deleted image: ${fileKey}`);
+              }
+            } catch (error) {
+              console.error(`[SaveProgress] Error deleting image ${imageUrl}:`, error);
+              // Continue with other deletions even if one fails
+            }
+          }
+        }
+
+        // If this is a new field created from a non-field-details step,
         // we need to ensure basic field info exists
         if (isNewField) {
           updateData = {
             name: 'Untitled Field',
             type: 'PRIVATE',
-            images: data.images || [],
+            images: newImages,
             uploadImagesCompleted: true
           };
         } else {
           updateData = {
-            images: data.images || [],
+            images: newImages,
             uploadImagesCompleted: true
           };
         }
@@ -1353,7 +1470,8 @@ class FieldController {
         date: booking.date.toISOString(),
         fieldName: booking.field.name,
         fieldAddress: `${booking.field.address}, ${booking.field.city}`,
-        notes: booking.notes || null
+        notes: booking.notes || null,
+        rescheduleCount: booking.rescheduleCount || 0
       }));
 
       res.status(200).json({
@@ -1487,7 +1605,8 @@ class FieldController {
         date: booking.date.toISOString(),
         fieldName: booking.field.name,
         fieldAddress: `${booking.field.address}, ${booking.field.city}`,
-        notes: booking.notes || null
+        notes: booking.notes || null,
+        rescheduleCount: booking.rescheduleCount || 0
       }));
 
       res.status(200).json({
@@ -1622,7 +1741,8 @@ class FieldController {
         date: booking.date.toISOString(),
         fieldName: booking.field.name,
         fieldAddress: `${booking.field.address}, ${booking.field.city}`,
-        notes: booking.notes || null
+        notes: booking.notes || null,
+        rescheduleCount: booking.rescheduleCount || 0
       }));
 
       res.status(200).json({
@@ -1712,6 +1832,7 @@ class FieldController {
         totalPrice: booking.totalPrice,
         status: booking.status,
         createdAt: booking.createdAt,
+        rescheduleCount: booking.rescheduleCount || 0,
         user: {
           id: booking.user.id,
           name: booking.user.name || 'Unknown',

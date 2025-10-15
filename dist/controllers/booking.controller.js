@@ -262,7 +262,7 @@ class BookingController {
     getMyBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const userId = req.user.id;
         const userRole = req.user.role;
-        const { status, page = 1, limit = 10, includeExpired, includeFuture } = req.query;
+        const { status, page = 1, limit = 10, includeExpired, includeFuture, dateRange, startDate, endDate } = req.query;
         const pageNum = Number(page);
         const limitNum = Number(limit);
         const skip = (pageNum - 1) * limitNum;
@@ -295,6 +295,59 @@ class BookingController {
         else {
             throw new AppError_1.AppError('Invalid user role', 400);
         }
+        // Handle date range filtering
+        if (startDate && endDate) {
+            // Custom date range - include bookings on start and end dates
+            const rangeStart = new Date(startDate);
+            rangeStart.setHours(0, 0, 0, 0); // Start of day
+            const rangeEnd = new Date(endDate);
+            rangeEnd.setHours(23, 59, 59, 999); // End of day
+            whereClause.date = {
+                gte: rangeStart,
+                lte: rangeEnd,
+            };
+        }
+        else if (dateRange) {
+            // Predefined date ranges
+            const now = new Date();
+            let rangeStart;
+            let rangeEnd = now;
+            switch (dateRange) {
+                case 'thisWeek':
+                    // Start of current week (Sunday) at 00:00:00
+                    rangeStart = new Date(now);
+                    rangeStart.setDate(now.getDate() - now.getDay());
+                    rangeStart.setHours(0, 0, 0, 0);
+                    // End of current week (Saturday) at 23:59:59
+                    rangeEnd = new Date(rangeStart);
+                    rangeEnd.setDate(rangeStart.getDate() + 6);
+                    rangeEnd.setHours(23, 59, 59, 999);
+                    break;
+                case 'thisMonth':
+                    // Start of current month at 00:00:00
+                    rangeStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                    rangeStart.setHours(0, 0, 0, 0);
+                    // End of current month at 23:59:59
+                    rangeEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                    rangeEnd.setHours(23, 59, 59, 999);
+                    break;
+                case 'thisYear':
+                    // Start of current year at 00:00:00
+                    rangeStart = new Date(now.getFullYear(), 0, 1);
+                    rangeStart.setHours(0, 0, 0, 0);
+                    // End of current year at 23:59:59
+                    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+                    break;
+                default:
+                    rangeStart = new Date(0); // Beginning of time
+            }
+            if (rangeStart) {
+                whereClause.date = {
+                    gte: rangeStart,
+                    lte: rangeEnd,
+                };
+            }
+        }
         // Handle multiple statuses and date filtering
         if (status) {
             const statuses = status.split(',');
@@ -302,10 +355,11 @@ class BookingController {
             if (statuses.length > 1) {
                 const statusConditions = [];
                 const now = new Date();
+                const hasCustomDateFilter = !!(startDate && endDate) || !!dateRange;
                 for (const s of statuses) {
                     const statusCondition = { status: s };
-                    // For CANCELLED bookings, filter by date
-                    if (s === 'CANCELLED') {
+                    // For CANCELLED bookings, filter by date only if no custom date filter is applied
+                    if (s === 'CANCELLED' && !hasCustomDateFilter) {
                         if (includeFuture === 'true') {
                             // Upcoming tab: show cancelled bookings with future dates
                             statusCondition.date = { gte: now };
@@ -832,6 +886,23 @@ class BookingController {
         if (booking.status !== 'PENDING' && booking.status !== 'CONFIRMED') {
             throw new AppError_1.AppError('Only pending or confirmed bookings can be rescheduled', 400);
         }
+        // Check reschedule limit (max 3 times)
+        const rescheduleCount = booking.rescheduleCount || 0;
+        if (rescheduleCount >= 3) {
+            throw new AppError_1.AppError('You have reached the maximum number of reschedules (3) for this booking. Please cancel and create a new booking if needed.', 400);
+        }
+        // Check if booking is within cancellation window
+        const bookingDateTime = new Date(booking.date);
+        const [hours, minutes] = booking.startTime.split(':');
+        bookingDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        const now = new Date();
+        const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        // Get cancellation window from settings (default 24 hours)
+        const settings = await database_1.default.systemSettings.findFirst();
+        const cancellationWindowHours = settings?.cancellationWindow || 24;
+        if (hoursUntilBooking < cancellationWindowHours) {
+            throw new AppError_1.AppError(`Rescheduling is only allowed at least ${cancellationWindowHours} hours before the booking time.`, 400);
+        }
         // If changing time/date, check availability and recalculate price
         if (date || startTime || endTime) {
             const newDate = date ? new Date(date) : booking.date;
@@ -874,16 +945,23 @@ class BookingController {
                 });
                 totalPrice = 0;
             }
+            // Calculate platform commission (10%) and field owner amount (90%)
+            const platformCommission = totalPrice * 0.10;
+            const fieldOwnerAmount = totalPrice * 0.90;
             // Log for debugging
             console.log('Reschedule price calculation:', {
                 pricePerUnit,
                 durationHours,
                 numberOfDogs: dogsCount,
                 bookingDuration: field.bookingDuration,
-                totalPrice
+                totalPrice,
+                platformCommission,
+                fieldOwnerAmount
             });
-            // Ensure totalPrice is set in the update data
+            // Ensure totalPrice and commission fields are set in the update data
             req.body.totalPrice = totalPrice;
+            req.body.platformCommission = platformCommission;
+            req.body.fieldOwnerAmount = fieldOwnerAmount;
             // Update timeSlot to match the new startTime and endTime
             req.body.timeSlot = `${newStartTime} - ${newEndTime}`;
             // Convert date string to full DateTime if provided
@@ -891,13 +969,18 @@ class BookingController {
                 req.body.date = new Date(date);
             }
         }
+        // Increment reschedule count if date or time is being changed
+        if (date || startTime || endTime) {
+            req.body.rescheduleCount = rescheduleCount + 1;
+        }
         // Log the final update data
         console.log('Final update data for booking:', req.body);
         const updatedBooking = await booking_model_1.default.update(id, req.body);
         res.json({
             success: true,
-            message: 'Booking updated successfully',
+            message: `Booking rescheduled successfully. You have ${2 - rescheduleCount} reschedule${2 - rescheduleCount === 1 ? '' : 's'} remaining for this booking.`,
             data: updatedBooking,
+            remainingReschedules: 3 - (rescheduleCount + 1),
         });
     });
     // Delete booking (admin only)
@@ -1439,8 +1522,24 @@ class BookingController {
             },
         });
     });
-    // Helper function
+    // Helper function to convert time string to minutes (handles both 12-hour and 24-hour formats)
     timeToMinutes(time) {
+        // Handle 12-hour format (e.g., "2:15AM", "11:30PM")
+        const ampmMatch = time.match(/(\d+):(\d+)(AM|PM)/i);
+        if (ampmMatch) {
+            let hours = parseInt(ampmMatch[1]);
+            const minutes = parseInt(ampmMatch[2]);
+            const period = ampmMatch[3].toUpperCase();
+            // Convert to 24-hour format
+            if (period === 'PM' && hours !== 12) {
+                hours += 12;
+            }
+            else if (period === 'AM' && hours === 12) {
+                hours = 0;
+            }
+            return hours * 60 + minutes;
+        }
+        // Handle 24-hour format (e.g., "14:00", "09:30")
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     }

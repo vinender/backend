@@ -328,21 +328,40 @@ class FieldModel {
     }
 
     // Get total count for pagination
+    // Only select fields needed for field cards to optimize response size
     const [fields, total] = await Promise.all([
       prisma.field.findMany({
         where: whereClause,
         skip,
         take,
-        include: {
-          owner: {
-            select: {
-              name: true,
-              image: true,
-            },
-          },
+        select: {
+          id: true,
+          name: true,
+          images: true, // First image for card thumbnail
+          price: true,
+          bookingDuration: true, // For price unit display
+          averageRating: true,
+          totalReviews: true,
+          amenities: true, // For amenity icons
+          isClaimed: true,
+          ownerName: true, // Denormalized owner name
+          // Location fields for distance calculation
+          latitude: true,
+          longitude: true,
+          location: true, // JSON location object with lat/lng
+          // Address for display
+          address: true,
+          city: true,
+          state: true,
+          zipCode: true,
+          // Count bookings for popularity
           _count: {
             select: {
-              bookings: true,
+              bookings: {
+                where: {
+                  status: { in: ['CONFIRMED', 'COMPLETED'] }
+                }
+              },
               reviews: true,
             },
           },

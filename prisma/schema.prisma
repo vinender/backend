@@ -221,6 +221,7 @@ model Booking {
   cancellationReason String?
   cancelledAt   DateTime?     // Track when booking was cancelled for refund eligibility
   subscriptionId String?      @db.ObjectId // Reference to subscription if from recurring booking
+  rescheduleCount Int         @default(0)  // Number of times this booking has been rescheduled (max 3)
 
   // Field snapshot data (stored at time of booking for historical accuracy)
   fieldName     String?       // Field name at time of booking

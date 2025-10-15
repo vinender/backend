@@ -220,7 +220,7 @@ class BookingModel {
   }
 
   // Update booking
-  async update(id: string, data: Partial<CreateBookingInput>): Promise<Booking> {
+  async update(id: string, data: any): Promise<Booking> {
     return prisma.booking.update({
       where: { id },
       data,
