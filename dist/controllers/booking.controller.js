@@ -45,6 +45,7 @@ const notification_controller_1 = require("./notification.controller");
 const payout_service_1 = require("../services/payout.service");
 const refund_service_1 = __importDefault(require("../services/refund.service"));
 const email_service_1 = require("../services/email.service");
+const amenityHelper_1 = require("../utils/amenityHelper");
 class BookingController {
     // Create a new booking
     createBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
@@ -237,25 +238,136 @@ class BookingController {
             },
         });
     });
-    // Get booking by ID
+    // Get booking by ID (optimized for modal display)
     getBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const { id } = req.params;
         const userId = req.user.id;
         const userRole = req.user.role;
-        const booking = await booking_model_1.default.findById(id);
+        // Fetch booking with only necessary fields for the modal
+        const booking = await database_1.default.booking.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                userId: true,
+                fieldId: true,
+                date: true,
+                startTime: true,
+                endTime: true,
+                timeSlot: true,
+                numberOfDogs: true,
+                totalPrice: true,
+                status: true,
+                paymentStatus: true,
+                repeatBooking: true,
+                rescheduleCount: true,
+                createdAt: true,
+                updatedAt: true,
+                field: {
+                    select: {
+                        id: true,
+                        name: true,
+                        address: true,
+                        city: true,
+                        state: true,
+                        zipCode: true,
+                        price: true,
+                        bookingDuration: true,
+                        size: true,
+                        terrainType: true,
+                        fenceType: true,
+                        fenceSize: true,
+                        surfaceType: true,
+                        images: true,
+                        averageRating: true,
+                        totalReviews: true,
+                        amenities: true,
+                        owner: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                emailVerified: true,
+                                createdAt: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
         if (!booking) {
             throw new AppError_1.AppError('Booking not found', 404);
         }
         // Check access rights
         const hasAccess = userRole === 'ADMIN' ||
             booking.userId === userId ||
-            booking.field.ownerId === userId;
+            booking.field?.owner?.id === userId;
         if (!hasAccess) {
             throw new AppError_1.AppError('You do not have access to this booking', 403);
         }
+        // Transform amenities to include icon URLs from database
+        const transformedAmenities = booking.field?.amenities && booking.field.amenities.length > 0
+            ? await (0, amenityHelper_1.transformAmenities)(booking.field.amenities)
+            : [];
+        // Return optimized booking data
+        const optimizedBooking = {
+            id: booking.id,
+            userId: booking.userId,
+            fieldId: booking.fieldId,
+            date: booking.date,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+            timeSlot: booking.timeSlot,
+            numberOfDogs: booking.numberOfDogs,
+            totalPrice: booking.totalPrice,
+            status: booking.status,
+            paymentStatus: booking.paymentStatus,
+            repeatBooking: booking.repeatBooking,
+            rescheduleCount: booking.rescheduleCount,
+            createdAt: booking.createdAt,
+            updatedAt: booking.updatedAt,
+            field: {
+                id: booking.field?.id,
+                name: booking.field?.name,
+                address: booking.field?.address,
+                city: booking.field?.city,
+                state: booking.field?.state,
+                zipCode: booking.field?.zipCode,
+                postalCode: booking.field?.zipCode,
+                price: booking.field?.price,
+                bookingDuration: booking.field?.bookingDuration,
+                size: booking.field?.size,
+                terrainType: booking.field?.terrainType,
+                fenceType: booking.field?.fenceType,
+                fenceSize: booking.field?.fenceSize,
+                surfaceType: booking.field?.surfaceType,
+                images: booking.field?.images || [],
+                averageRating: booking.field?.averageRating || 0,
+                totalReviews: booking.field?.totalReviews || 0,
+                amenities: transformedAmenities,
+                owner: booking.field?.owner ? {
+                    id: booking.field.owner.id,
+                    name: booking.field.owner.name,
+                    email: booking.field.owner.email,
+                    emailVerified: booking.field.owner.emailVerified,
+                    createdAt: booking.field.owner.createdAt
+                } : null
+            },
+            user: booking.user ? {
+                id: booking.user.id,
+                name: booking.user.name,
+                email: booking.user.email
+            } : null
+        };
         res.json({
             success: true,
-            data: booking,
+            data: optimizedBooking,
         });
     });
     // Get user's bookings with pagination
@@ -442,9 +554,73 @@ class BookingController {
             }
             return booking;
         });
+        // Transform bookings to remove redundant data and optimize response
+        // Use Promise.all to handle async amenity transformation
+        const optimizedBookings = await Promise.all(processedBookings.map(async (booking) => {
+            const field = booking.field;
+            const owner = field?.owner;
+            const user = booking.user;
+            // Fetch and transform amenities from database
+            const transformedAmenities = field?.amenities && field.amenities.length > 0
+                ? await (0, amenityHelper_1.transformAmenities)(field.amenities)
+                : [];
+            return {
+                id: booking.id,
+                userId: booking.userId,
+                fieldId: booking.fieldId,
+                date: booking.date,
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                timeSlot: booking.timeSlot,
+                numberOfDogs: booking.numberOfDogs,
+                totalPrice: booking.totalPrice,
+                status: booking.status,
+                paymentStatus: booking.paymentStatus,
+                repeatBooking: booking.repeatBooking,
+                rescheduleCount: booking.rescheduleCount,
+                createdAt: booking.createdAt,
+                updatedAt: booking.updatedAt,
+                // Field data - only what's needed for display
+                field: {
+                    id: field?.id,
+                    name: field?.name,
+                    address: field?.address,
+                    city: field?.city,
+                    state: field?.state,
+                    zipCode: field?.zipCode,
+                    postalCode: field?.zipCode, // Alias for frontend compatibility
+                    price: field?.price,
+                    bookingDuration: field?.bookingDuration,
+                    size: field?.size,
+                    terrainType: field?.terrainType,
+                    fenceType: field?.fenceType,
+                    fenceSize: field?.fenceSize,
+                    surfaceType: field?.surfaceType,
+                    images: field?.images || [],
+                    averageRating: field?.averageRating || 0,
+                    totalReviews: field?.totalReviews || 0,
+                    // Amenities with labels and icon URLs from database
+                    amenities: transformedAmenities,
+                    // Owner information
+                    owner: owner ? {
+                        id: owner.id,
+                        name: owner.name,
+                        email: owner.email,
+                        emailVerified: owner.emailVerified,
+                        createdAt: owner.createdAt
+                    } : null
+                },
+                // User information (for field owners viewing bookings)
+                user: user ? {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email
+                } : null
+            };
+        }));
         res.json({
             success: true,
-            data: processedBookings,
+            data: optimizedBookings,
             pagination: {
                 page: pageNum,
                 limit: limitNum,
@@ -1171,6 +1347,14 @@ class BookingController {
     getMyRecurringBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const userId = req.user.id;
         const { status = 'active' } = req.query;
+        // Get system settings for maxAdvanceBookingDays
+        const settings = await database_1.default.systemSettings.findFirst({
+            select: { maxAdvanceBookingDays: true }
+        });
+        const maxAdvanceBookingDays = settings?.maxAdvanceBookingDays || 30;
+        // Calculate the max date for future bookings
+        const maxFutureDate = new Date();
+        maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
         // Get both subscriptions and bookings with repeatBooking !== 'none'
         const [subscriptions, recurringBookings] = await Promise.all([
             // Get user's subscriptions from subscription table
@@ -1203,9 +1387,11 @@ class BookingController {
                 }
             }),
             // Get regular bookings with repeatBooking set (handle case variations)
+            // Exclude bookings that are already linked to a subscription to avoid duplicates
             database_1.default.booking.findMany({
                 where: {
                     userId,
+                    subscriptionId: null, // ✅ Only get bookings WITHOUT a subscription
                     AND: [
                         {
                             repeatBooking: {
@@ -1260,7 +1446,9 @@ class BookingController {
             currentPeriodEnd: sub.currentPeriodEnd,
             cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
             canceledAt: sub.canceledAt,
-            recentBookings: sub.bookings.map(booking => ({
+            recentBookings: sub.bookings
+                .filter(booking => new Date(booking.date) <= maxFutureDate) // Filter by advance booking days
+                .map(booking => ({
                 id: booking.id,
                 date: booking.date,
                 status: booking.status,
@@ -1315,20 +1503,38 @@ class BookingController {
     // Cancel recurring booking (subscription)
     cancelRecurringBooking = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const userId = req.user.id;
-        const { id: subscriptionId } = req.params;
+        const { id } = req.params;
         const { cancelImmediately = false } = req.body;
-        // Find the subscription
-        const subscription = await database_1.default.subscription.findUnique({
+        // Find the subscription - try direct lookup first
+        let subscription = await database_1.default.subscription.findUnique({
             where: {
-                id: subscriptionId
+                id: id
             },
             include: {
                 field: true
             }
         });
+        // If not found, the ID might be a booking ID - try to find subscription through booking
+        if (!subscription) {
+            const booking = await database_1.default.booking.findUnique({
+                where: { id: id },
+                select: { subscriptionId: true }
+            });
+            if (booking?.subscriptionId) {
+                subscription = await database_1.default.subscription.findUnique({
+                    where: {
+                        id: booking.subscriptionId
+                    },
+                    include: {
+                        field: true
+                    }
+                });
+            }
+        }
         if (!subscription) {
             throw new AppError_1.AppError('Recurring booking not found', 404);
         }
+        const subscriptionId = subscription.id;
         // Verify ownership
         if (subscription.userId !== userId) {
             throw new AppError_1.AppError('You are not authorized to cancel this recurring booking', 403);

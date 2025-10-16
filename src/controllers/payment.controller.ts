@@ -341,6 +341,100 @@ export class PaymentController {
         select: { name: true, email: true }
       });
 
+      // If this is a recurring booking, create subscription first
+      let subscriptionId = undefined;
+      const recurringOptions = ['everyday', 'weekly', 'monthly'];
+      const normalizedRepeatBooking = repeatBooking?.toLowerCase();
+
+      console.log('🔍 REPEAT BOOKING CHECK:', {
+        repeatBooking,
+        normalizedRepeatBooking,
+        isIncluded: recurringOptions.includes(normalizedRepeatBooking),
+        recurringOptions
+      });
+
+      if (repeatBooking && recurringOptions.includes(normalizedRepeatBooking)) {
+        console.log('✅ Creating subscription for recurring booking...');
+        try {
+          // Create subscription record in database
+          const bookingDate = new Date(date);
+          const dayOfWeek = bookingDate.toLocaleDateString('en-US', { weekday: 'long' });
+          const dayOfMonth = bookingDate.getDate();
+
+          // Calculate next billing date
+          let nextBillingDate: Date;
+          let currentPeriodEnd: Date;
+
+          if (normalizedRepeatBooking === 'everyday') {
+            // Next billing is 1 day after the booking date
+            nextBillingDate = new Date(bookingDate);
+            nextBillingDate.setDate(bookingDate.getDate() + 1);
+
+            currentPeriodEnd = new Date(bookingDate);
+            currentPeriodEnd.setDate(bookingDate.getDate() + 1);
+          } else if (normalizedRepeatBooking === 'weekly') {
+            // Next billing is 7 days after the booking date
+            nextBillingDate = new Date(bookingDate);
+            nextBillingDate.setDate(bookingDate.getDate() + 7);
+
+            currentPeriodEnd = new Date(bookingDate);
+            currentPeriodEnd.setDate(bookingDate.getDate() + 7);
+          } else {
+            // Monthly - next billing is same date next month
+            nextBillingDate = new Date(bookingDate);
+            nextBillingDate.setMonth(bookingDate.getMonth() + 1);
+
+            // Handle edge case: if current day is 31 and next month has fewer days
+            // JavaScript automatically adjusts (e.g., Jan 31 + 1 month = Mar 3 if Feb has 28 days)
+            // To fix this, we ensure it stays on the last day of the month
+            if (nextBillingDate.getDate() !== dayOfMonth) {
+              nextBillingDate.setDate(0); // Go to last day of previous month
+            }
+
+            currentPeriodEnd = new Date(nextBillingDate);
+          }
+
+          console.log('Recurring booking calculation:', {
+            bookingDate: bookingDate.toISOString(),
+            interval: repeatBooking,
+            normalizedInterval: normalizedRepeatBooking,
+            nextBillingDate: nextBillingDate.toISOString(),
+            currentPeriodEnd: currentPeriodEnd.toISOString(),
+            dayOfWeek: normalizedRepeatBooking === 'weekly' ? dayOfWeek : null,
+            dayOfMonth: normalizedRepeatBooking === 'monthly' ? dayOfMonth : null
+          });
+
+          const subscription = await prisma.subscription.create({
+            data: {
+              userId,
+              fieldId,
+              stripeSubscriptionId: paymentIntent.id, // Use payment intent ID as reference
+              stripeCustomerId: user.stripeCustomerId || '',
+              status: 'active',
+              interval: normalizedRepeatBooking,
+              intervalCount: 1,
+              currentPeriodStart: bookingDate,
+              currentPeriodEnd: currentPeriodEnd,
+              timeSlot,
+              dayOfWeek: normalizedRepeatBooking === 'weekly' ? dayOfWeek : null,
+              dayOfMonth: normalizedRepeatBooking === 'monthly' ? dayOfMonth : null,
+              startTime: startTimeStr,
+              endTime: endTimeStr,
+              numberOfDogs: parseInt(numberOfDogs),
+              totalPrice: amount,
+              nextBillingDate: nextBillingDate,
+              lastBookingDate: bookingDate
+            }
+          });
+
+          subscriptionId = subscription.id;
+          console.log('Created subscription for recurring booking:', subscriptionId);
+        } catch (subscriptionError) {
+          console.error('Error creating subscription:', subscriptionError);
+          // Continue with booking creation even if subscription fails
+        }
+      }
+
       const booking = await prisma.booking.create({
         data: {
           fieldId,
@@ -358,7 +452,8 @@ export class PaymentController {
           paymentIntentId: paymentIntent.id,
           payoutStatus,
           payoutHeldReason,
-          repeatBooking: repeatBooking || 'none'
+          repeatBooking: normalizedRepeatBooking || repeatBooking || 'none',
+          subscriptionId: subscriptionId // Link to subscription if created
         }
       });
 

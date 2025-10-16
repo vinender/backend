@@ -51,6 +51,7 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
     const {
       defaultCommissionRate,
       cancellationWindowHours,
+      maxAdvanceBookingDays,
       maxBookingsPerUser,
       minimumFieldOperatingHours,
       payoutReleaseSchedule,
@@ -69,6 +70,16 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
       aboutDogIcons
     } = req.body;
 
+    // Validate maxAdvanceBookingDays is between 30 and 60
+    if (maxAdvanceBookingDays !== undefined) {
+      if (maxAdvanceBookingDays < 30 || maxAdvanceBookingDays > 60) {
+        return res.status(400).json({
+          success: false,
+          message: 'Max advance booking days must be between 30 and 60 days'
+        });
+      }
+    }
+
     // Get existing settings or create if not exists
     let settings = await prisma.systemSettings.findFirst();
     
@@ -78,6 +89,7 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
         data: {
           defaultCommissionRate: defaultCommissionRate || 20,
           cancellationWindowHours: cancellationWindowHours || 24,
+          maxAdvanceBookingDays: maxAdvanceBookingDays || 30,
           maxBookingsPerUser: maxBookingsPerUser || 10,
           minimumFieldOperatingHours: minimumFieldOperatingHours || 4,
           payoutReleaseSchedule: payoutReleaseSchedule || 'after_cancellation_window',
@@ -104,6 +116,7 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
           ...(defaultCommissionRate !== undefined && { defaultCommissionRate }),
           ...(payoutReleaseSchedule !== undefined && { payoutReleaseSchedule }),
           ...(cancellationWindowHours !== undefined && { cancellationWindowHours }),
+          ...(maxAdvanceBookingDays !== undefined && { maxAdvanceBookingDays }),
           ...(maxBookingsPerUser !== undefined && { maxBookingsPerUser }),
           ...(minimumFieldOperatingHours !== undefined && { minimumFieldOperatingHours }),
           ...(siteName !== undefined && { siteName }),
@@ -234,6 +247,7 @@ export const getPublicSettings = async (req: Request, res: Response) => {
     let settings = await prisma.systemSettings.findFirst({
       select: {
         cancellationWindowHours: true,
+        maxAdvanceBookingDays: true,
         maxBookingsPerUser: true,
         minimumFieldOperatingHours: true,
         siteName: true,
@@ -262,6 +276,7 @@ export const getPublicSettings = async (req: Request, res: Response) => {
       // Return default values if no settings exist
       settings = {
         cancellationWindowHours: 24,
+        maxAdvanceBookingDays: 30,
         maxBookingsPerUser: 10,
         minimumFieldOperatingHours: 4,
         siteName: 'Fieldsy',

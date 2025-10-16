@@ -102,45 +102,88 @@ class ReviewController {
         try {
             const { fieldId } = req.params;
             const userId = req.user?.id;
-            const { rating, title, comment, images = [] } = req.body;
+            const { rating, title, comment, images = [], bookingId } = req.body;
             if (!userId) {
                 return res.status(401).json({
                     success: false,
                     message: 'Unauthorized',
                 });
             }
-            // Check if user already reviewed this field
-            const existingReview = await database_1.default.fieldReview.findFirst({
-                where: {
-                    fieldId,
-                    userId,
-                },
-            });
-            if (existingReview) {
-                return res.status(409).json({
-                    success: false,
-                    message: 'You have already reviewed this field. You can edit your existing review instead.',
-                    code: 'REVIEW_ALREADY_EXISTS',
+            // If bookingId provided, validate it
+            let completedBooking;
+            if (bookingId) {
+                // Check if this specific booking exists, belongs to user, and is completed
+                completedBooking = await database_1.default.booking.findFirst({
+                    where: {
+                        id: bookingId,
+                        fieldId,
+                        userId,
+                        status: 'COMPLETED',
+                    },
                 });
+                if (!completedBooking) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Invalid booking or booking not completed.',
+                        code: 'INVALID_BOOKING',
+                    });
+                }
+                // Check if this booking already has a review
+                const existingReviewForBooking = await database_1.default.fieldReview.findFirst({
+                    where: {
+                        bookingId,
+                    },
+                });
+                if (existingReviewForBooking) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'You have already reviewed this booking.',
+                        code: 'BOOKING_ALREADY_REVIEWED',
+                    });
+                }
             }
-            // Check if user has a completed booking for this field
-            const completedBooking = await database_1.default.booking.findFirst({
-                where: {
-                    fieldId,
-                    userId,
-                    status: 'COMPLETED',
-                },
-                orderBy: {
-                    date: 'desc', // Get the most recent booking
-                },
-            });
-            // Validate booking requirements
-            if (!completedBooking) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'You can only review fields you have booked and visited.',
-                    code: 'NO_COMPLETED_BOOKING',
+            else {
+                // No bookingId provided - find any completed booking without a review
+                // First get all completed bookings for this field by this user
+                const completedBookings = await database_1.default.booking.findMany({
+                    where: {
+                        fieldId,
+                        userId,
+                        status: 'COMPLETED',
+                    },
+                    orderBy: {
+                        date: 'desc',
+                    },
                 });
+                if (completedBookings.length === 0) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'You can only review fields you have booked and visited.',
+                        code: 'NO_COMPLETED_BOOKING',
+                    });
+                }
+                // Find a booking that hasn't been reviewed yet
+                const bookingIds = completedBookings.map(b => b.id);
+                const existingReviews = await database_1.default.fieldReview.findMany({
+                    where: {
+                        bookingId: {
+                            in: bookingIds,
+                        },
+                    },
+                    select: {
+                        bookingId: true,
+                    },
+                });
+                const reviewedBookingIds = new Set(existingReviews.map(r => r.bookingId));
+                const unreviewedBooking = completedBookings.find(b => !reviewedBookingIds.has(b.id));
+                if (!unreviewedBooking) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'You have already reviewed all your bookings for this field.',
+                        code: 'ALL_BOOKINGS_REVIEWED',
+                    });
+                }
+                completedBooking = unreviewedBooking;
             }
             // Check if the booking date has passed
             const bookingDate = new Date(completedBooking.date);
@@ -172,6 +215,7 @@ class ReviewController {
                 data: {
                     fieldId,
                     userId,
+                    bookingId: completedBooking.id, // Link review to specific booking
                     userName: user?.name,
                     userImage: user?.image,
                     rating,

@@ -245,6 +245,7 @@ model Booking {
   field         Field         @relation(fields: [fieldId], references: [id])
   payment       Payment?
   review        Review?
+  fieldReview   FieldReview?
   transactions  Transaction[]
   subscription  Subscription? @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
 
@@ -347,6 +348,7 @@ model FieldReview {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   fieldId     String   @db.ObjectId
   userId      String   @db.ObjectId
+  bookingId   String?  @db.ObjectId // Link to specific booking - allows multiple reviews per user per field
   userName    String?  // Denormalized for performance
   userImage   String?  // Denormalized for performance
   rating      Int      // 1-5
@@ -363,7 +365,9 @@ model FieldReview {
   // Relations
   field       Field    @relation(fields: [fieldId], references: [id])
   user        User     @relation(fields: [userId], references: [id])
+  booking     Booking? @relation(fields: [bookingId], references: [id])
 
+  @@unique([bookingId]) // Each booking can only have one review
   @@index([fieldId, createdAt])
   @@index([userId])
   @@index([rating])
@@ -637,6 +641,7 @@ model SystemSettings {
   id                    String    @id @default(auto()) @map("_id") @db.ObjectId
   defaultCommissionRate Float     @default(20) // Default commission rate (0-100), default 20%
   cancellationWindowHours Int     @default(24) // Hours before booking when cancellation with refund is allowed
+  maxAdvanceBookingDays Int       @default(30) // Maximum days in advance a booking can be made
   maxBookingsPerUser    Int?      @default(10) // Maximum number of active bookings per user
   minimumFieldOperatingHours Int  @default(4) // Minimum hours between field opening and closing time
   payoutReleaseSchedule String?   @default("after_cancellation_window") // "immediate", "on_weekend", "after_cancellation_window"

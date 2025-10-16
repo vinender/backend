@@ -4,6 +4,7 @@ interface AmenityObject {
   id: string;
   label: string;
   value: string;
+  iconUrl?: string;
 }
 
 /**
@@ -19,13 +20,12 @@ export async function transformAmenitiesToObjects(
   }
 
   try {
-    // Fetch all amenities from database that match the names
+    // Normalize function for case-insensitive matching
+    const normalizeKey = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Fetch ALL amenities from database (we'll match them with normalization)
     const amenities = await prisma.amenity.findMany({
-      where: {
-        name: {
-          in: amenityNames,
-        },
-      },
       select: {
         id: true,
         name: true,
@@ -33,20 +33,22 @@ export async function transformAmenitiesToObjects(
       },
     });
 
-    // Create a map for quick lookup
+    // Create a normalized map for case-insensitive matching
     const amenityMap = new Map(
-      amenities.map((amenity) => [amenity.name, amenity])
+      amenities.map((amenity) => [normalizeKey(amenity.name), amenity])
     );
 
-    // Transform the amenity names to objects, maintaining order - id, label and value
+    // Transform the amenity names to objects, maintaining order - id, label, value, and iconUrl
     const transformedAmenities: AmenityObject[] = amenityNames
       .map((name) => {
-        const amenity = amenityMap.get(name);
+        const normalizedName = normalizeKey(name);
+        const amenity = amenityMap.get(normalizedName);
         if (amenity) {
           return {
             id: amenity.id,
-            label: formatAmenityLabel(amenity.name),
-            value: amenity.name,
+            label: amenity.name, // Use the DB name as label (proper case)
+            value: name, // Keep original field value
+            iconUrl: amenity.icon || undefined,
           };
         }
         // If amenity not found in database, return a default object with empty id
@@ -54,6 +56,7 @@ export async function transformAmenitiesToObjects(
           id: '',
           label: formatAmenityLabel(name),
           value: name,
+          iconUrl: undefined,
         };
       });
 
@@ -116,21 +119,12 @@ export async function enrichFieldWithAmenities(field: any): Promise<any> {
 export async function enrichFieldsWithAmenities(fields: any[]): Promise<any[]> {
   if (!fields || fields.length === 0) return fields;
 
-  // Get all unique amenity names from all fields
-  const allAmenityNames = new Set<string>();
-  fields.forEach((field) => {
-    if (field.amenities && Array.isArray(field.amenities)) {
-      field.amenities.forEach((name: string) => allAmenityNames.add(name));
-    }
-  });
+  // Normalize function for case-insensitive matching
+  const normalizeKey = (str: string) =>
+    str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // Fetch all amenities at once for better performance
+  // Fetch ALL amenities at once for better performance
   const amenities = await prisma.amenity.findMany({
-    where: {
-      name: {
-        in: Array.from(allAmenityNames),
-      },
-    },
     select: {
       id: true,
       name: true,
@@ -138,14 +132,15 @@ export async function enrichFieldsWithAmenities(fields: any[]): Promise<any[]> {
     },
   });
 
-  // Create a map for quick lookup - id, label and value for field cards
+  // Create a normalized map for case-insensitive lookup
   const amenityMap = new Map(
     amenities.map((amenity) => [
-      amenity.name,
+      normalizeKey(amenity.name),
       {
         id: amenity.id,
-        label: formatAmenityLabel(amenity.name),
+        label: amenity.name, // Use DB name as label (proper case)
         value: amenity.name,
+        iconUrl: amenity.icon || undefined,
       },
     ])
   );
@@ -160,7 +155,10 @@ export async function enrichFieldsWithAmenities(fields: any[]): Promise<any[]> {
     }
 
     const transformedAmenities = field.amenities
-      .map((name: string) => amenityMap.get(name))
+      .map((name: string) => {
+        const normalizedName = normalizeKey(name);
+        return amenityMap.get(normalizedName);
+      })
       .filter((amenity: any) => amenity !== undefined);
 
     return {

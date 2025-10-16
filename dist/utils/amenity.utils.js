@@ -17,30 +17,29 @@ async function transformAmenitiesToObjects(amenityNames) {
         return [];
     }
     try {
-        // Fetch all amenities from database that match the names
+        // Normalize function for case-insensitive matching
+        const normalizeKey = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Fetch ALL amenities from database (we'll match them with normalization)
         const amenities = await database_1.default.amenity.findMany({
-            where: {
-                name: {
-                    in: amenityNames,
-                },
-            },
             select: {
                 id: true,
                 name: true,
                 icon: true,
             },
         });
-        // Create a map for quick lookup
-        const amenityMap = new Map(amenities.map((amenity) => [amenity.name, amenity]));
-        // Transform the amenity names to objects, maintaining order - id, label and value
+        // Create a normalized map for case-insensitive matching
+        const amenityMap = new Map(amenities.map((amenity) => [normalizeKey(amenity.name), amenity]));
+        // Transform the amenity names to objects, maintaining order - id, label, value, and iconUrl
         const transformedAmenities = amenityNames
             .map((name) => {
-            const amenity = amenityMap.get(name);
+            const normalizedName = normalizeKey(name);
+            const amenity = amenityMap.get(normalizedName);
             if (amenity) {
                 return {
                     id: amenity.id,
-                    label: formatAmenityLabel(amenity.name),
-                    value: amenity.name,
+                    label: amenity.name, // Use the DB name as label (proper case)
+                    value: name, // Keep original field value
+                    iconUrl: amenity.icon || undefined,
                 };
             }
             // If amenity not found in database, return a default object with empty id
@@ -48,6 +47,7 @@ async function transformAmenitiesToObjects(amenityNames) {
                 id: '',
                 label: formatAmenityLabel(name),
                 value: name,
+                iconUrl: undefined,
             };
         });
         return transformedAmenities;
@@ -104,33 +104,24 @@ async function enrichFieldWithAmenities(field) {
 async function enrichFieldsWithAmenities(fields) {
     if (!fields || fields.length === 0)
         return fields;
-    // Get all unique amenity names from all fields
-    const allAmenityNames = new Set();
-    fields.forEach((field) => {
-        if (field.amenities && Array.isArray(field.amenities)) {
-            field.amenities.forEach((name) => allAmenityNames.add(name));
-        }
-    });
-    // Fetch all amenities at once for better performance
+    // Normalize function for case-insensitive matching
+    const normalizeKey = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Fetch ALL amenities at once for better performance
     const amenities = await database_1.default.amenity.findMany({
-        where: {
-            name: {
-                in: Array.from(allAmenityNames),
-            },
-        },
         select: {
             id: true,
             name: true,
             icon: true,
         },
     });
-    // Create a map for quick lookup - id, label and value for field cards
+    // Create a normalized map for case-insensitive lookup
     const amenityMap = new Map(amenities.map((amenity) => [
-        amenity.name,
+        normalizeKey(amenity.name),
         {
             id: amenity.id,
-            label: formatAmenityLabel(amenity.name),
+            label: amenity.name, // Use DB name as label (proper case)
             value: amenity.name,
+            iconUrl: amenity.icon || undefined,
         },
     ]));
     // Transform all fields
@@ -142,7 +133,10 @@ async function enrichFieldsWithAmenities(fields) {
             };
         }
         const transformedAmenities = field.amenities
-            .map((name) => amenityMap.get(name))
+            .map((name) => {
+            const normalizedName = normalizeKey(name);
+            return amenityMap.get(normalizedName);
+        })
             .filter((amenity) => amenity !== undefined);
         return {
             ...field,
