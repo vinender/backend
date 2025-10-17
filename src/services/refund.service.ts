@@ -128,7 +128,7 @@ export class RefundService {
             userId: booking.userId,
             type: 'refund_processed',
             title: 'Refund Processed',
-            message: `Your refund of €${refundAmount.toFixed(2)} for ${booking.field.name} has been processed. It will appear in your account within 5-7 business days.`,
+            message: `Your refund of £${refundAmount.toFixed(2)} for ${booking.field.name} has been processed. It will appear in your account within 5-7 business days.`,
             data: {
               bookingId: booking.id,
               refundAmount,
@@ -147,7 +147,7 @@ export class RefundService {
             refundAmount,
             refundPercentage,
             stripeRefundId: stripeRefund.id,
-            message: `Refund of €${refundAmount.toFixed(2)} processed successfully`
+            message: `Refund of £${refundAmount.toFixed(2)} processed successfully`
           };
         } catch (stripeError: any) {
           console.error('Stripe refund error:', stripeError);
@@ -208,7 +208,7 @@ export class RefundService {
           userId: booking.field.ownerId,
           type: 'payout_pending',
           title: 'Payout Pending',
-          message: `A payout of €${netPayoutAmount.toFixed(2)} is pending. Please complete your Stripe account setup to receive payments.`,
+          message: `A payout of £${netPayoutAmount.toFixed(2)} is pending. Please complete your Stripe account setup to receive payments.`,
           data: {
             bookingId: booking.id,
             amount: netPayoutAmount
@@ -261,7 +261,7 @@ export class RefundService {
           userId: booking.field.ownerId,
           type: 'payout_processed',
           title: 'Payout Processed',
-          message: `A payout of €${netPayoutAmount.toFixed(2)} has been sent to your account for the cancelled booking.`,
+          message: `A payout of £${netPayoutAmount.toFixed(2)} has been sent to your account for the cancelled booking.`,
           data: {
             bookingId: booking.id,
             payoutId: payout.id,

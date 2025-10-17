@@ -441,11 +441,18 @@ class Server {
     this.app.use((err: any, req: Request, res: Response, next: NextFunction) => {
       console.error('Error caught:', err.message);
       console.error('Stack:', err.stack);
-      
-      const statusCode = err.statusCode || 500;
+
+      const statusCode = err.statusCode || err.status || 500;
+      const status = err.status || (statusCode >= 400 && statusCode < 500 ? 'fail' : 'error');
+
       res.status(statusCode).json({
+        success: false,
+        status,
         message: err.message || 'Internal Server Error',
-        error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+        ...(process.env.NODE_ENV === 'development' && {
+          stack: err.stack,
+          error: err
+        }),
       });
     });
   }

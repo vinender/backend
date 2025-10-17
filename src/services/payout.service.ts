@@ -193,7 +193,7 @@ export class PayoutService {
           userId: fieldOwner.id,
           type: 'PAYOUT_PROCESSED',
           title: 'Payment Received!',
-          message: `€${payoutAmount.toFixed(2)} has been transferred to your account for ${field.name} booking.`,
+          message: `£${payoutAmount.toFixed(2)} has been transferred to your account for ${field.name} booking.`,
           data: {
             bookingId,
             payoutId: payout.id,

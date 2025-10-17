@@ -122,7 +122,7 @@ const getOtpEmailTemplate = (otp, name) => {
             <p>If you didn't request this verification, please ignore this email.</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -290,7 +290,7 @@ const getFieldClaimStatusTemplate = (statusData) => {
             `}
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -470,7 +470,7 @@ const getFieldClaimTemplate = (claimData) => {
             <p>Thank you for choosing Fieldsy to list your field!</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
             <p>This is an automated confirmation email. Please do not reply directly to this message.</p>
           </div>
@@ -552,7 +552,7 @@ const getPasswordResetTemplate = (otp, name) => {
             <p>If you didn't request a password reset, please ignore this email and your password will remain unchanged.</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -676,7 +676,7 @@ const getBookingConfirmationTemplate = (bookingData) => {
                 <span class="info-label">Field Owner:</span> ${bookingData.fieldOwnerName}
               </div>
               <div class="info-item" style="margin-top: 20px; padding-top: 15px; border-top: 2px dashed #ccc;">
-                <span class="info-label">Total Paid:</span> <span class="price">€${bookingData.totalPrice.toFixed(2)}</span>
+                <span class="info-label">Total Paid:</span> <span class="price">£${bookingData.totalPrice.toFixed(2)}</span>
               </div>
             </div>
 
@@ -693,7 +693,7 @@ const getBookingConfirmationTemplate = (bookingData) => {
             <p>Thank you for choosing Fieldsy!</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -825,13 +825,13 @@ const getNewBookingNotificationTemplate = (bookingData) => {
             <div class="earnings-box">
               <h3 style="margin-top: 0;">💰 Your Earnings</h3>
               <div class="info-item">
-                <span class="info-label">Total Booking Price:</span> €${bookingData.totalPrice.toFixed(2)}
+                <span class="info-label">Total Booking Price:</span> £${bookingData.totalPrice.toFixed(2)}
               </div>
               <div class="info-item">
-                <span class="info-label">Platform Commission:</span> €${bookingData.platformCommission.toFixed(2)}
+                <span class="info-label">Platform Commission:</span> £${bookingData.platformCommission.toFixed(2)}
               </div>
               <div class="info-item" style="margin-top: 15px; padding-top: 15px; border-top: 2px dashed #4CAF50;">
-                <span class="info-label">Your Payout:</span> <span class="price">€${bookingData.fieldOwnerAmount.toFixed(2)}</span>
+                <span class="info-label">Your Payout:</span> <span class="price">£${bookingData.fieldOwnerAmount.toFixed(2)}</span>
               </div>
             </div>
 
@@ -848,7 +848,7 @@ const getNewBookingNotificationTemplate = (bookingData) => {
             <p>Thank you for being part of Fieldsy!</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -994,7 +994,7 @@ const getFieldSubmissionTemplate = (data) => {
             <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -1159,7 +1159,7 @@ const getFieldApprovalTemplate = (data) => {
             <p><strong>Happy hosting!</strong></p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -1312,7 +1312,7 @@ const getBookingStatusChangeTemplate = (emailData) => {
             <p>Thank you for using Fieldsy!</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>

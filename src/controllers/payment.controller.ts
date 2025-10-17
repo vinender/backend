@@ -588,7 +588,7 @@ export class PaymentController {
               userId: field.ownerId,
               type: 'PAYOUT_PROCESSED',
               title: '💰 Instant Payment Received!',
-              message: `€${fieldOwnerAmount.toFixed(2)} has been instantly transferred to your account for the ${field.name} booking.`,
+              message: `£${fieldOwnerAmount.toFixed(2)} has been instantly transferred to your account for the ${field.name} booking.`,
               data: {
                 bookingId: booking.id,
                 payoutId: payout.id,

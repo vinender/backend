@@ -126,7 +126,7 @@ const getOtpEmailTemplate = (otp, name)=>{
             <p>If you didn't request this verification, please ignore this email.</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -292,7 +292,7 @@ const getFieldClaimStatusTemplate = (statusData)=>{
             `}
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>
@@ -470,7 +470,7 @@ const getFieldClaimTemplate = (claimData)=>{
             <p>Thank you for choosing Fieldsy to list your field!</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
             <p>This is an automated confirmation email. Please do not reply directly to this message.</p>
           </div>
@@ -552,7 +552,7 @@ const getPasswordResetTemplate = (otp, name)=>{
             <p>If you didn't request a password reset, please ignore this email and your password will remain unchanged.</p>
           </div>
           <div class="footer">
-            <p>© 2024 Fieldsy. All rights reserved.</p>
+            <p>© 2025 Fieldsy. All rights reserved.</p>
             <p>Find secure fields for your furry friends 🐕</p>
           </div>
         </div>

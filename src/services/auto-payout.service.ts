@@ -235,7 +235,7 @@ export class AutomaticPayoutService {
           userId: fieldOwner.id,
           type: 'PAYOUT_PENDING',
           title: 'Set up payment account for automatic payouts',
-          message: `You have a pending payout of €${payoutAmount.toFixed(2)} from a booking that's ready for payment. Please set up your payment account to receive funds automatically.`,
+          message: `You have a pending payout of £${payoutAmount.toFixed(2)} from a booking that's ready for payment. Please set up your payment account to receive funds automatically.`,
           data: {
             bookingId,
             amount: payoutAmount,
@@ -269,7 +269,7 @@ export class AutomaticPayoutService {
           userId: fieldOwner.id,
           type: 'PAYOUT_PENDING',
           title: 'Complete payment account setup',
-          message: `Complete your payment account setup to receive €${payoutAmount.toFixed(2)} from a recent booking.`,
+          message: `Complete your payment account setup to receive £${payoutAmount.toFixed(2)} from a recent booking.`,
           data: {
             bookingId,
             amount: payoutAmount,
@@ -360,7 +360,7 @@ export class AutomaticPayoutService {
           userId: fieldOwner.id,
           type: 'PAYOUT_PROCESSED',
           title: '💰 Payment Received!',
-          message: `€${payoutAmount.toFixed(2)} has been automatically transferred to your account for the ${field.name} booking.`,
+          message: `£${payoutAmount.toFixed(2)} has been automatically transferred to your account for the ${field.name} booking.`,
           data: {
             bookingId,
             payoutId: payout.id,
@@ -371,7 +371,7 @@ export class AutomaticPayoutService {
           }
         });
 
-        console.log(`Automatic payout processed successfully for booking ${bookingId}: €${payoutAmount}`);
+        console.log(`Automatic payout processed successfully for booking ${bookingId}: £${payoutAmount}`);
         
         return payout;
 

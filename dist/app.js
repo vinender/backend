@@ -411,9 +411,16 @@ app.get("/health", (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(err.status || 500).json({
+    const statusCode = err.statusCode || err.status || 500;
+    const status = err.status || (statusCode >= 400 && statusCode < 500 ? 'fail' : 'error');
+    res.status(statusCode).json({
+        success: false,
+        status,
         message: err.message || "Internal Server Error",
-        ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+        ...(process.env.NODE_ENV === "development" && {
+            stack: err.stack,
+            error: err
+        }),
     });
 });
 // 404 handler

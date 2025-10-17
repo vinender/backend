@@ -51,7 +51,7 @@ class PayoutProcessorJob {
                 if (results.processed > 0) {
                     console.log('📊 Successful payouts:', results.details
                         .filter(d => d.status === 'processed')
-                        .map(d => `Booking ${d.bookingId}: €${d.amount}`)
+                        .map(d => `Booking ${d.bookingId}: £${d.amount}`)
                         .join(', '));
                 }
             }
@@ -137,7 +137,7 @@ class PayoutProcessorJob {
                 const summaryMessage = `
 Daily Payout Summary for ${yesterday.toLocaleDateString()}:
 - Total Payouts: ${totalPayouts}
-- Total Amount: €${totalAmount.toFixed(2)}
+- Total Amount: £${totalAmount.toFixed(2)}
 - Field Owners Paid: ${Object.keys(payoutsByOwner).length}
 
 Top Recipients:

@@ -194,12 +194,7 @@ export const requestPasswordReset = asyncHandler(async (req: Request, res: Respo
   });
 
   if (!user) {
-    // Don't reveal if user exists or not
-    res.json({
-      success: true,
-      message: 'If an account exists with this email, you will receive a password reset code.',
-    });
-    return;
+    throw new AppError('No account found with this email address', 404);
   }
 
   // Send OTP
