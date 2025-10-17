@@ -123,7 +123,7 @@ const getOtpEmailTemplate = (otp, name) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -291,7 +291,7 @@ const getFieldClaimStatusTemplate = (statusData) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -471,7 +471,7 @@ const getFieldClaimTemplate = (claimData) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
             <p>This is an automated confirmation email. Please do not reply directly to this message.</p>
           </div>
         </div>
@@ -553,7 +553,7 @@ const getPasswordResetTemplate = (otp, name) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -694,7 +694,7 @@ const getBookingConfirmationTemplate = (bookingData) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -849,7 +849,7 @@ const getNewBookingNotificationTemplate = (bookingData) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -995,7 +995,7 @@ const getFieldSubmissionTemplate = (data) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -1160,7 +1160,7 @@ const getFieldApprovalTemplate = (data) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
@@ -1313,7 +1313,7 @@ const getBookingStatusChangeTemplate = (emailData) => {
           </div>
           <div class="footer">
             <p>© 2025 Fieldsy. All rights reserved.</p>
-            <p>Find secure fields for your furry friends 🐕</p>
+            <p>Find  or Host secure fields for your furry friends 🐕</p>
           </div>
         </div>
       </body>
