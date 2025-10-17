@@ -242,19 +242,51 @@ class SubscriptionService {
         if (!invoice.subscription)
             return;
         const subscription = await database_1.default.subscription.findUnique({
-            where: { stripeSubscriptionId: invoice.subscription }
+            where: { stripeSubscriptionId: invoice.subscription },
+            include: { field: true }
         });
         if (!subscription)
             return;
+        // Get system settings for max advance booking days
+        const settings = await database_1.default.systemSettings.findFirst({
+            select: { maxAdvanceBookingDays: true }
+        });
+        const maxAdvanceBookingDays = settings?.maxAdvanceBookingDays || 30;
         // Calculate next booking date
         let nextBookingDate = new Date();
-        if (subscription.interval === 'weekly') {
+        if (subscription.interval === 'everyday') {
+            // Next day
+            nextBookingDate = (0, date_fns_1.addDays)(subscription.lastBookingDate || new Date(), 1);
+        }
+        else if (subscription.interval === 'weekly') {
             // Next week on the same day
             nextBookingDate = (0, date_fns_1.addDays)(subscription.lastBookingDate || new Date(), 7);
         }
         else {
             // Next month on the same date
             nextBookingDate = (0, date_fns_1.addMonths)(subscription.lastBookingDate || new Date(), 1);
+        }
+        // Validate that next booking date is within advance booking days range
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const maxFutureDate = new Date(today);
+        maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
+        // Only create booking if it falls within the advance booking range
+        if (nextBookingDate > maxFutureDate) {
+            console.log(`⏭️  Next booking date (${(0, date_fns_1.format)(nextBookingDate, 'PPP')}) is beyond max advance booking days (${maxAdvanceBookingDays}) for subscription ${subscription.id}`);
+            // Notify user that booking will be created closer to the date
+            await (0, notification_controller_1.createNotification)({
+                userId: subscription.userId,
+                type: 'recurring_booking_pending',
+                title: 'Recurring Booking Scheduled',
+                message: `Your ${subscription.interval} booking payment was successful. The booking will be automatically created closer to ${(0, date_fns_1.format)(nextBookingDate, 'PPP')} at ${subscription.timeSlot}`,
+                data: {
+                    subscriptionId: subscription.id,
+                    nextBookingDate: nextBookingDate.toISOString(),
+                    fieldName: subscription.field?.name
+                }
+            });
+            return;
         }
         // Create the booking for the next period
         await this.createBookingFromSubscription(subscription.id, nextBookingDate);
