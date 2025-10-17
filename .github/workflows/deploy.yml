@@ -75,10 +75,10 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Stop backend service
+      - name: Stop backend with PM2
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            sudo systemctl stop fieldsy-backend || true
+            pm2 stop fieldsy-backend || true
           EOF
 
       - name: Deploy to EC2
@@ -112,11 +112,11 @@ jobs:
             sudo chmod -R 755 ${{ env.DEPLOY_PATH }}
           EOF
 
-      - name: Start backend service
+      - name: Start backend with PM2
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            sudo systemctl start fieldsy-backend
-            sudo systemctl status fieldsy-backend
+            pm2 restart fieldsy-backend || pm2 start /var/www/fieldsy/ecosystem.config.js --only fieldsy-backend
+            pm2 save
           EOF
 
       - name: Health check
@@ -124,8 +124,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             sleep 10
 
-            if sudo systemctl is-active --quiet fieldsy-backend; then
-              echo "✅ Backend service is running"
+            # Check if process is running in PM2
+            if pm2 describe fieldsy-backend | grep -q "online"; then
+              echo "✅ Backend service is running in PM2"
 
               if curl -f http://localhost:5000/api/health 2>/dev/null; then
                 echo "✅ API health check passed"
@@ -134,7 +135,7 @@ jobs:
               fi
             else
               echo "❌ Backend service failed to start"
-              sudo journalctl -u fieldsy-backend -n 50
+              pm2 logs fieldsy-backend --lines 50 --nostream
               exit 1
             fi
           EOF
@@ -147,10 +148,11 @@ jobs:
 
             if [ -n "$BACKUP" ]; then
               echo "Rolling back to $BACKUP"
-              sudo systemctl stop fieldsy-backend
+              pm2 stop fieldsy-backend || true
               sudo rm -rf ${{ env.DEPLOY_PATH }}
               sudo cp -r $(dirname ${{ env.DEPLOY_PATH }})/$BACKUP ${{ env.DEPLOY_PATH }}
-              sudo systemctl start fieldsy-backend
+              pm2 restart fieldsy-backend || pm2 start /var/www/fieldsy/ecosystem.config.js --only fieldsy-backend
+              pm2 save
               echo "✅ Rollback completed"
             else
               echo "❌ No backup found for rollback"
