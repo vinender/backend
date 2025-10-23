@@ -14,6 +14,7 @@ import { generateApiDocsHTML } from "./utils/api-docs-template"
 
 // Import routes
 import authRoutes from "./routes/auth.routes"
+import authOtpRoutes from "./routes/auth.otp.routes"
 import userRoutes from "./routes/user.routes"
 import fieldRoutes from "./routes/field.routes"
 import bookingRoutes from "./routes/booking.routes"
@@ -404,6 +405,7 @@ app.get("/api/socket-docs", (req, res) => {
 
 // Routes
 app.use("/api/auth", authRoutes)
+app.use("/api/auth-otp", authOtpRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/fields", fieldRoutes)
 app.use("/api/bookings", bookingRoutes)

@@ -35,7 +35,17 @@ jobs:
         run: npm run prisma:generate
 
       - name: Build with SWC (Fast Build)
-        run: npm run build:fast
+        run: |
+          npm run build:fast
+
+          # Verify build was successful
+          if [ ! -d "dist" ]; then
+            echo "ERROR: Build failed - dist directory not created!"
+            exit 1
+          fi
+
+          echo "✅ Build successful - dist directory created"
+          ls -la dist/
         env:
           NODE_OPTIONS: '--max-old-space-size=2048'
 
@@ -46,7 +56,22 @@ jobs:
           cp -r node_modules deploy/
           cp package*.json deploy/
           cp -r prisma deploy/
+          cp tsconfig.json deploy/ 2>/dev/null || true
           cp .env.example deploy/.env.example 2>/dev/null || true
+
+          # Verify dist directory exists in package
+          if [ ! -d "deploy/dist" ]; then
+            echo "ERROR: dist directory not found in deploy package!"
+            exit 1
+          fi
+
+          # Verify server.js exists
+          if [ ! -f "deploy/dist/server.js" ]; then
+            echo "ERROR: server.js not found in deploy/dist/"
+            exit 1
+          fi
+
+          echo "✅ Deployment package created successfully"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

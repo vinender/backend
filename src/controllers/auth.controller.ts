@@ -257,27 +257,53 @@ class AuthController {
   socialLogin = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { email, name, image, provider, providerId, role } = req.body;
 
+    // Comprehensive logging for social login payload
+    console.log('==================== SOCIAL LOGIN PAYLOAD ====================');
+    console.log('Full Request Body:', JSON.stringify(req.body, null, 2));
+    console.log('Individual Fields:');
+    console.log('  - Email:', email);
+    console.log('  - Name:', name);
+    console.log('  - Image:', image);
+    console.log('  - Provider:', provider);
+    console.log('  - Provider ID:', providerId);
+    console.log('  - Role:', role);
+    console.log('==============================================================');
+
     // Validate input
     if (!email || !provider || !providerId) {
+      console.log('❌ VALIDATION FAILED: Missing required fields');
+      console.log('  - Email present:', !!email);
+      console.log('  - Provider present:', !!provider);
+      console.log('  - Provider ID present:', !!providerId);
       throw new AppError('Missing required fields', 400);
     }
 
     // Validate provider
     const validProviders = ['google', 'apple'];
     if (!validProviders.includes(provider)) {
+      console.log('❌ VALIDATION FAILED: Invalid provider -', provider);
       throw new AppError('Invalid provider', 400);
     }
+    console.log('✅ Provider validation passed:', provider);
 
     // Validate role if provided
     const validRoles = ['DOG_OWNER', 'FIELD_OWNER'];
     if (role && !validRoles.includes(role)) {
+      console.log('❌ VALIDATION FAILED: Invalid role -', role);
       throw new AppError('Invalid role specified', 400);
     }
+    console.log('✅ Role validation passed:', role || 'DOG_OWNER (default)');
 
     // Check if user already exists AND is verified
+    console.log('🔍 Checking for existing user with email:', email);
     const existingUser = await UserModel.findByEmail(email);
 
     if (existingUser && existingUser.emailVerified) {
+      console.log('✅ Existing verified user found - logging in immediately');
+      console.log('  - User ID:', existingUser.id);
+      console.log('  - User Role:', existingUser.role);
+      console.log('  - Provider:', existingUser.provider);
+
       // User exists and is verified - log them in immediately
       const token = jwt.sign(
         {
@@ -292,6 +318,7 @@ class AuthController {
         }
       );
 
+      console.log('✅ Token generated for existing user');
       return res.json({
         success: true,
         message: 'Social login successful',
@@ -303,6 +330,14 @@ class AuthController {
     }
 
     // Create or update user (NOT VERIFIED YET)
+    console.log('📝 Creating or updating social user...');
+    console.log('  - Email:', email);
+    console.log('  - Name:', name);
+    console.log('  - Image:', image);
+    console.log('  - Provider:', provider);
+    console.log('  - Provider ID:', providerId);
+    console.log('  - Role:', role || 'DOG_OWNER');
+
     const user = await UserModel.createOrUpdateSocialUser({
       email,
       name,
@@ -312,14 +347,21 @@ class AuthController {
       role: role || 'DOG_OWNER',
     });
 
+    console.log('✅ User created/updated successfully');
+    console.log('  - User ID:', user.id);
+    console.log('  - Email Verified:', user.emailVerified);
+
     // NOTE: Empty field creation removed - fields are now created dynamically
     // when the field owner first saves their field details.
     // See comment in register method for more details.
 
     // Send OTP for verification
+    console.log('📧 Sending OTP for email verification...');
     const { otpService } = require('../services/otp.service');
     await otpService.sendOtp(email, 'SOCIAL_LOGIN', name);
+    console.log('✅ OTP sent successfully to:', email);
 
+    console.log('📤 Sending response - OTP verification required');
     res.status(200).json({
       success: true,
       requiresVerification: true,
@@ -329,6 +371,7 @@ class AuthController {
         role: user.role,
       },
     });
+    console.log('==================== SOCIAL LOGIN COMPLETE ====================');
   });
 
   // Update user role (for OAuth users who selected role after account creation)
