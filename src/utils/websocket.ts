@@ -22,47 +22,11 @@ const socketError = (...args: any[]) => {
 };
 
 export function setupWebSocket(server: HTTPServer) {
-  // Define allowed origins for WebSocket connections
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-    'http://localhost:3003',
-    'http://localhost:8081',
-    'https://fieldsy.indiitserver.in',
-    'https://fieldsy-admin.indiitserver.in',
-    'http://fieldsy.indiitserver.in',
-    'http://fieldsy-admin.indiitserver.in',
-  ];
-
-  // Add FRONTEND_URL if it's defined and not already in the list
-  if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL)) {
-    allowedOrigins.push(process.env.FRONTEND_URL);
-  }
-
-  console.log('[WebSocket] Allowed origins:', allowedOrigins);
+  console.log('[WebSocket] CORS: Allowing all origins (*)');
 
   const io = new Server(server, {
     cors: {
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or server-side requests)
-        if (!origin) {
-          return callback(null, true);
-        }
-
-        // In development, be more permissive
-        if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
-          return callback(null, true);
-        }
-
-        // Check if the origin is allowed
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          console.log('[WebSocket] Rejected origin:', origin);
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
+      origin: '*', // TEMPORARILY ALLOW ALL ORIGINS FOR DEVELOPMENT
       credentials: true,
       methods: ['GET', 'POST', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
