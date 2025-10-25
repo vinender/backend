@@ -102,7 +102,7 @@ class Server {
           'http://localhost:5000',
           'http://localhost:3002',
           "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
-      "exp://*",
+          "exp://*",
           'http://localhost:3003', // Admin dashboard
           'http://localhost:8081', // Expo web
           'https://fieldsy.indiitserver.in', // Production frontend
