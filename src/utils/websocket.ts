@@ -6,6 +6,21 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Socket debug logging flag - controlled by environment variable
+const SOCKET_DEBUG = process.env.SOCKET_DEBUG_LOGGING === 'true';
+
+// Debug logger - only logs if SOCKET_DEBUG is true
+const socketLog = (...args: any[]) => {
+  if (SOCKET_DEBUG) {
+    console.log(...args);
+  }
+};
+
+// Always log errors regardless of debug flag
+const socketError = (...args: any[]) => {
+  console.error(...args);
+};
+
 export function setupWebSocket(server: HTTPServer) {
   // Define allowed origins for WebSocket connections
   const allowedOrigins = [
@@ -109,12 +124,12 @@ export function setupWebSocket(server: HTTPServer) {
     const userRole = (socket as any).userRole;
     const userEmail = (socket as any).user?.email;
 
-    console.log('=== WebSocket Connection (websocket.ts) ===');
-    console.log(`User connected:`);
-    console.log(`  - ID (ObjectId): ${userId}`);
-    console.log(`  - Email: ${userEmail}`);
-    console.log(`  - Role: ${userRole}`);
-    console.log(`  - Socket ID: ${socket.id}`);
+    socketLog('=== WebSocket Connection (websocket.ts) ===');
+    socketLog(`User connected:`);
+    socketLog(`  - ID (ObjectId): ${userId}`);
+    socketLog(`  - Email: ${userEmail}`);
+    socketLog(`  - Role: ${userRole}`);
+    socketLog(`  - Socket ID: ${socket.id}`);
 
     // Leave all rooms first (except the socket's own room)
     const rooms = Array.from(socket.rooms);
@@ -127,7 +142,7 @@ export function setupWebSocket(server: HTTPServer) {
     // Join user-specific room based on ObjectId
     const userRoom = `user-${userId}`;
     socket.join(userRoom);
-    console.log(`  - Joined room: ${userRoom}`);
+    socketLog(`  - Joined room: ${userRoom}`);
 
     // Auto-join all conversation rooms for this user
     try {
@@ -143,21 +158,23 @@ export function setupWebSocket(server: HTTPServer) {
       conversations.forEach(conv => {
         const convRoom = `conversation:${conv.id}`;
         socket.join(convRoom);
-        console.log(`  - Auto-joined conversation: ${convRoom}`);
+        socketLog(`  - Auto-joined conversation: ${convRoom}`);
       });
 
-      console.log(`  - Total conversations joined: ${conversations.length}`);
+      socketLog(`  - Total conversations joined: ${conversations.length}`);
     } catch (error) {
-      console.error('Error auto-joining conversations:', error);
+      socketError('Error auto-joining conversations:', error);
     }
 
     // Verify room membership
-    const roomsAfterJoin = Array.from(socket.rooms);
-    console.log(`  - Socket is in rooms:`, roomsAfterJoin);
+    if (SOCKET_DEBUG) {
+      const roomsAfterJoin = Array.from(socket.rooms);
+      socketLog(`  - Socket is in rooms:`, roomsAfterJoin);
 
-    // Check how many sockets are in this user's room
-    const socketsInRoom = await io.in(userRoom).fetchSockets();
-    console.log(`  - Total sockets in ${userRoom}: ${socketsInRoom.length}`);
+      // Check how many sockets are in this user's room
+      const socketsInRoom = await io.in(userRoom).fetchSockets();
+      socketLog(`  - Total sockets in ${userRoom}: ${socketsInRoom.length}`);
+    }
 
     // Send initial unread count
     sendUnreadCount(userId);
@@ -334,57 +351,46 @@ export function setupWebSocket(server: HTTPServer) {
 
     // Send a message via socket (with acknowledgment callback)
     socket.on('send-message', async (data: { conversationId: string; content: string; receiverId: string; correlationId?: string }, callback?: Function) => {
-      console.log(`[Socket] === SEND-MESSAGE EVENT RECEIVED ===`);
-      console.log(`[Socket] From user: ${userId}`);
-      console.log(`[Socket] Data:`, data);
-      console.log(`[Socket] Has callback:`, !!callback);
+      socketLog(`[Socket] === SEND-MESSAGE EVENT RECEIVED ===`);
+      socketLog(`[Socket] From user: ${userId}`);
+      socketLog(`[Socket] Data:`, data);
+      socketLog(`[Socket] Has callback:`, !!callback);
 
       try {
         const { conversationId, content, receiverId, correlationId } = data;
 
+        // Quick validation
         if (!conversationId || !content || !receiverId) {
-          console.log(`[Socket] Missing required fields, sending error`);
+          socketLog(`[Socket] Missing required fields, sending error`);
           const error = { error: 'Missing required fields', correlationId };
           socket.emit('message-error', error);
           if (callback) callback({ success: false, error: 'Missing required fields' });
           return;
         }
 
-        console.log(`[Socket] User ${userId} sending message to conversation ${conversationId}`);
-
-        // Check what rooms this socket is currently in
-        const socketRooms = Array.from(socket.rooms);
-        console.log(`[Socket] Current socket rooms:`, socketRooms);
-
         const convRoom = `conversation:${conversationId}`;
-        const isInConvRoom = socketRooms.includes(convRoom);
-        console.log(`[Socket] Is socket in conversation room? ${isInConvRoom}`);
+        socketLog(`[Socket] User ${userId} sending message to conversation ${conversationId}`);
 
-        // Make sure sender is in the conversation room to receive their own message
-        if (!isInConvRoom) {
-          console.log(`[Socket] Adding sender to conversation room: ${convRoom}`);
+        // Join conversation room if not already in it
+        if (!socket.rooms.has(convRoom)) {
+          socketLog(`[Socket] Adding sender to conversation room: ${convRoom}`);
           socket.join(convRoom);
+        } else {
+          socketLog(`[Socket] Sender already in conversation room: ${convRoom}`);
         }
 
-        // Verify user is participant
-        const conversation = await prisma.conversation.findFirst({
-          where: {
-            id: conversationId,
-            participants: {
-              has: userId
+        // Parallel database operations for speed
+        const [conversation, senderBlockedReceiver, receiverBlockedSender] = await Promise.all([
+          // Verify user is participant
+          prisma.conversation.findFirst({
+            where: {
+              id: conversationId,
+              participants: {
+                has: userId
+              }
             }
-          }
-        });
-
-        if (!conversation) {
-          const error = { error: 'Access denied', correlationId };
-          socket.emit('message-error', error);
-          if (callback) callback({ success: false, error: 'Access denied' });
-          return;
-        }
-
-        // Check if users have blocked each other
-        const [senderBlockedReceiver, receiverBlockedSender] = await Promise.all([
+          }),
+          // Check if sender blocked receiver
           prisma.userBlock.findUnique({
             where: {
               blockerId_blockedUserId: {
@@ -393,6 +399,7 @@ export function setupWebSocket(server: HTTPServer) {
               }
             }
           }),
+          // Check if receiver blocked sender
           prisma.userBlock.findUnique({
             where: {
               blockerId_blockedUserId: {
@@ -403,7 +410,17 @@ export function setupWebSocket(server: HTTPServer) {
           })
         ]);
 
+        // Validation checks
+        if (!conversation) {
+          socketLog(`[Socket] Access denied - user not participant in conversation`);
+          const error = { error: 'Access denied', correlationId };
+          socket.emit('message-error', error);
+          if (callback) callback({ success: false, error: 'Access denied' });
+          return;
+        }
+
         if (senderBlockedReceiver || receiverBlockedSender) {
+          socketLog(`[Socket] Cannot send - users have blocked each other`);
           const error = {
             error: 'Cannot send messages. One or both users have blocked each other.',
             blocked: true,
@@ -414,114 +431,63 @@ export function setupWebSocket(server: HTTPServer) {
           return;
         }
 
-        // Save message to DB
-        const savedMessage = await prisma.message.create({
-          data: {
-            conversationId,
-            senderId: userId,
-            receiverId,
-            content,
-            createdAt: new Date()
-          },
-          include: {
-            sender: {
-              select: {
-                id: true,
-                name: true,
-                image: true,
-                role: true
-              }
+        // Save message and update conversation in parallel
+        const [savedMessage] = await Promise.all([
+          prisma.message.create({
+            data: {
+              conversationId,
+              senderId: userId,
+              receiverId,
+              content,
+              createdAt: new Date()
             },
-            receiver: {
-              select: {
-                id: true,
-                name: true,
-                image: true,
-                role: true
+            include: {
+              sender: {
+                select: {
+                  id: true,
+                  name: true,
+                  image: true,
+                  role: true
+                }
+              },
+              receiver: {
+                select: {
+                  id: true,
+                  name: true,
+                  image: true,
+                  role: true
+                }
               }
             }
-          }
-        });
+          }),
+          prisma.conversation.update({
+            where: { id: conversationId },
+            data: {
+              lastMessage: content,
+              lastMessageAt: new Date()
+            }
+          })
+        ]);
 
-        // Update conversation's last message
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: {
-            lastMessage: content,
-            lastMessageAt: new Date()
-          }
-        });
+        socketLog(`[Socket] Message saved to database with ID: ${savedMessage.id}`);
+        socketLog(`[Socket] Message content: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`);
 
-        console.log(`[Socket] Message saved to database with ID: ${savedMessage.id}`);
-        console.log(`[Socket] Message content: "${content.substring(0, 50)}..."`);
+        // Broadcast to conversation room immediately (no need to fetch sockets first)
+        io.to(convRoom).emit('new-message', savedMessage);
+        socketLog(`[Socket] ✅ Broadcasted 'new-message' to conversation room: ${convRoom}`);
 
-        // Broadcast to conversation room (all participants)
-        // convRoom already defined above on line 353
-
-        // Broadcast to conversation room (both sender and receiver if they're in the room)
-        const socketsInConvRoom = await io.in(convRoom).fetchSockets();
-        console.log(`[Socket] === BROADCASTING MESSAGE ===`);
-        console.log(`[Socket] Broadcasting to ${convRoom} - ${socketsInConvRoom.length} sockets connected`);
-        console.log(`[Socket] Message sender ID: ${userId}, Receiver ID: ${receiverId}`);
-
-        if (socketsInConvRoom.length > 0) {
-          console.log(`[Socket] Socket IDs in conversation room: ${socketsInConvRoom.map(s => s.id).join(', ')}`);
-
-          // Enhanced logging: Show which user each socket belongs to
-          const socketUserMappings = socketsInConvRoom.map((s: any) => ({
-            socketId: s.id,
-            userId: (s as any).userId || 'UNKNOWN'
-          }));
-          console.log(`[Socket] Socket-to-User mappings:`, JSON.stringify(socketUserMappings, null, 2));
-
-          // Check if sender is in room
-          const senderSocketsCount = socketsInConvRoom.filter((s: any) => (s as any).userId === userId).length;
-          console.log(`[Socket] Sender (${userId}) has ${senderSocketsCount} socket(s) in room`);
-
-          // Check if receiver is in room
-          const receiverSocketsCount = socketsInConvRoom.filter((s: any) => (s as any).userId === receiverId).length;
-          console.log(`[Socket] Receiver (${receiverId}) has ${receiverSocketsCount} socket(s) in room`);
-
-          if (receiverSocketsCount === 0) {
-            console.log(`[Socket] ⚠️ WARNING: Receiver is NOT in conversation room! Message will not be delivered in real-time.`);
-          } else {
-            console.log(`[Socket] ✅ Receiver IS in conversation room - message will be delivered in real-time`);
-          }
-
-          // Emit to everyone in the conversation room
-          io.to(convRoom).emit('new-message', savedMessage);
-          console.log(`[Socket] ✅ Emitted 'new-message' to conversation room with message ID: ${savedMessage.id}`);
-        } else {
-          console.log(`[Socket] ⚠️ WARNING: No sockets in conversation room! Nobody will receive this message in real-time.`);
-        }
-
-        // If receiver is NOT in the conversation room, send notification to their user room
+        // Send notification to receiver's user room (they might not be in conversation)
+        // This is fast because we just emit, we don't need to check if anyone is listening
         const receiverRoom = `user-${receiverId}`;
-        const receiverInConvRoom = socketsInConvRoom.some((s: any) => {
-          // FIX: userId is attached directly to socket, not in s.data
-          return (s as any).userId === receiverId;
+        io.to(receiverRoom).emit('new-message-notification', {
+          conversationId,
+          message: savedMessage
         });
+        socketLog(`[Socket] ✅ Sent 'new-message-notification' to receiver room: ${receiverRoom}`);
 
-        if (!receiverInConvRoom) {
-          // Receiver is not in the conversation (probably on different page)
-          // Send notification to their user room
-          const socketsInReceiverRoom = await io.in(receiverRoom).fetchSockets();
-          console.log(`[Socket] Receiver not in conv room, notifying ${receiverRoom} - ${socketsInReceiverRoom.length} sockets`);
-
-          if (socketsInReceiverRoom.length > 0) {
-            io.to(receiverRoom).emit('new-message-notification', {
-              conversationId,
-              message: savedMessage
-            });
-            console.log(`[Socket] Emitted 'new-message-notification' to receiver room`);
-          }
-        }
-
-        console.log(`[Socket] Message broadcasted successfully`);
-
-        // Send acknowledgment to sender with the saved message
+        // Send acknowledgment to sender immediately
         if (callback) {
-          console.log(`[Socket] Sending ACK to sender for message ${savedMessage.id}`);
+          socketLog(`[Socket] Sending ACK to sender for message ${savedMessage.id}`);
           callback({
             success: true,
             message: savedMessage,
@@ -529,8 +495,10 @@ export function setupWebSocket(server: HTTPServer) {
           });
         }
 
+        socketLog(`[Socket] Message flow completed successfully`);
+
       } catch (error) {
-        console.error('[Socket] Error sending message:', error);
+        socketError('[Socket] Error sending message:', error);
         const errorResponse = { error: 'Failed to send message', correlationId: data.correlationId };
         socket.emit('message-error', errorResponse);
         if (callback) callback({ success: false, error: 'Failed to send message' });
@@ -581,7 +549,7 @@ export function setupWebSocket(server: HTTPServer) {
 
     // Handle disconnect
     socket.on('disconnect', () => {
-      console.log(`User ${userId} disconnected`);
+      socketLog(`User ${userId} disconnected`);
     });
 
     // Handle marking notifications as read
