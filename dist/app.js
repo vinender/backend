@@ -18,6 +18,7 @@ const api_documentation_1 = require("./utils/api-documentation");
 const api_docs_template_1 = require("./utils/api-docs-template");
 // Import routes
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const auth_otp_routes_1 = __importDefault(require("./routes/auth.otp.routes"));
 const user_routes_1 = __importDefault(require("./routes/user.routes"));
 const field_routes_1 = __importDefault(require("./routes/field.routes"));
 const booking_routes_1 = __importDefault(require("./routes/booking.routes"));
@@ -390,6 +391,7 @@ app.get("/api/socket-docs", (req, res) => {
 });
 // Routes
 app.use("/api/auth", auth_routes_1.default);
+app.use("/api/auth-otp", auth_otp_routes_1.default);
 app.use("/api/users", user_routes_1.default);
 app.use("/api/fields", field_routes_1.default);
 app.use("/api/bookings", booking_routes_1.default);
