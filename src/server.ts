@@ -93,37 +93,49 @@ class Server {
     this.app.set('trust proxy', 1);
 
     // CORS configuration - MUST come before other middleware
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests from these origins
-        const allowedOrigins = [
-          'http://localhost:3000',
-          'http://localhost:3001',
-          'http://localhost:5000',
-          'http://localhost:3002',
-          "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
-          "exp://*",
-          'http://localhost:3003', // Admin dashboard
-          'http://localhost:8081', // Expo web
-          'https://fieldsy.indiitserver.in', // Production frontend
-          'https://fieldsy-admin.indiitserver.in', // Production admin
-          'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
-          'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
-          FRONTEND_URL
-        ];
+    // TEMPORARILY ALLOW ALL ORIGINS FOR MOBILE APP TESTING
+    console.log('[REST API] CORS: Allowing all origins (*)');
 
-        // Allow requests with no origin (like mobile apps or Postman)
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
+    // COMMENTED OUT: Specific origin validation (restore for production)
+    // const allowedOrigins = [
+    //   'http://localhost:3000',
+    //   'http://localhost:3001',
+    //   'http://localhost:5000',
+    //   'http://localhost:3002',
+    //   "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
+    //   "exp://*",
+    //   'http://localhost:3003', // Admin dashboard
+    //   'http://localhost:8081', // Expo web
+    //   'https://fieldsy.indiitserver.in', // Production frontend
+    //   'https://fieldsy-admin.indiitserver.in', // Production admin
+    //   'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
+    //   'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
+    //   FRONTEND_URL
+    // ];
+
+    this.app.use(cors({
+      origin: '*', // Allow all origins
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
       optionsSuccessStatus: 200,
     }));
+
+    // COMMENTED OUT: Origin validation function (restore for production)
+    // this.app.use(cors({
+    //   origin: (origin, callback) => {
+    //     // Allow requests with no origin (like mobile apps or Postman)
+    //     if (!origin || allowedOrigins.includes(origin)) {
+    //       callback(null, true);
+    //     } else {
+    //       callback(new Error('Not allowed by CORS'));
+    //     }
+    //   },
+    //   credentials: true,
+    //   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    //   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    //   optionsSuccessStatus: 200,
+    // }));
 
     // Security middleware - configure helmet to allow CORS
     this.app.use(helmet({

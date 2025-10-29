@@ -52,36 +52,72 @@ class FieldModel {
     }
     // Find field by ID
     async findById(id) {
-        return database_1.default.field.findUnique({
-            where: { id },
-            include: {
-                owner: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        image: true,
+        try {
+            // First, try to fetch with owner relation
+            return await database_1.default.field.findUnique({
+                where: { id },
+                include: {
+                    owner: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            image: true,
+                        },
                     },
-                },
-                reviews: {
-                    include: {
-                        user: {
-                            select: {
-                                name: true,
-                                image: true,
+                    reviews: {
+                        include: {
+                            user: {
+                                select: {
+                                    name: true,
+                                    image: true,
+                                },
                             },
                         },
                     },
-                },
-                _count: {
-                    select: {
-                        bookings: true,
-                        reviews: true,
-                        favorites: true,
+                    _count: {
+                        select: {
+                            bookings: true,
+                            reviews: true,
+                            favorites: true,
+                        },
                     },
                 },
-            },
-        });
+            });
+        }
+        catch (error) {
+            // If owner relation fails (orphaned field), fetch without owner
+            console.warn(`Field ${id} has invalid owner reference, fetching without owner relation`);
+            const field = await database_1.default.field.findUnique({
+                where: { id },
+                include: {
+                    reviews: {
+                        include: {
+                            user: {
+                                select: {
+                                    name: true,
+                                    image: true,
+                                },
+                            },
+                        },
+                    },
+                    _count: {
+                        select: {
+                            bookings: true,
+                            reviews: true,
+                            favorites: true,
+                        },
+                    },
+                },
+            });
+            if (!field)
+                return null;
+            // Return field with null owner (using denormalized ownerName instead)
+            return {
+                ...field,
+                owner: null,
+            };
+        }
     }
     // Find all fields with filters and pagination
     async findAll(filters) {
@@ -374,6 +410,21 @@ class FieldModel {
     async update(id, data) {
         // Remove apartment field as it doesn't exist in the schema
         const { apartment, ...dataWithoutApartment } = data;
+        // Get existing field data to check if address has changed
+        const existingField = await database_1.default.field.findUnique({
+            where: { id },
+            select: {
+                address: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                latitude: true,
+                longitude: true,
+            },
+        });
+        if (!existingField) {
+            throw new Error('Field not found');
+        }
         // If updating owner, also update owner name and joined date
         let updateData = { ...dataWithoutApartment };
         if (data.ownerId && (!data.ownerName || !data.joinedOn)) {
@@ -392,6 +443,28 @@ class FieldModel {
                     updateData.joinedOn = `${month} ${year}`;
                 }
             }
+        }
+        // Check if address fields have changed
+        const addressChanged = (data.address !== undefined && data.address !== existingField.address) ||
+            (data.city !== undefined && data.city !== existingField.city) ||
+            (data.state !== undefined && data.state !== existingField.state) ||
+            (data.zipCode !== undefined && data.zipCode !== existingField.zipCode);
+        // Preserve existing latitude and longitude if:
+        // 1. Address hasn't changed
+        // 2. New lat/lng values are not provided
+        if (!addressChanged) {
+            if (updateData.latitude === undefined || updateData.latitude === null) {
+                updateData.latitude = existingField.latitude;
+            }
+            if (updateData.longitude === undefined || updateData.longitude === null) {
+                updateData.longitude = existingField.longitude;
+            }
+        }
+        // If address changed but no new coordinates provided, preserve existing ones
+        // This prevents null values when address is updated without geocoding
+        if (addressChanged && !data.latitude && !data.longitude && existingField.latitude && existingField.longitude) {
+            updateData.latitude = existingField.latitude;
+            updateData.longitude = existingField.longitude;
         }
         return database_1.default.field.update({
             where: { id },
@@ -563,18 +636,31 @@ class FieldModel {
     // Search fields by location
     async searchByLocation(lat, lng, radius = 10) {
         // Get all active fields
+        // Using select instead of include to avoid owner relation issues
         const allFields = await database_1.default.field.findMany({
             where: {
                 isActive: true,
                 isSubmitted: true,
             },
-            include: {
-                owner: {
-                    select: {
-                        name: true,
-                        image: true,
-                    },
-                },
+            select: {
+                id: true,
+                name: true,
+                city: true,
+                state: true,
+                address: true,
+                zipCode: true,
+                latitude: true,
+                longitude: true,
+                location: true,
+                price: true,
+                bookingDuration: true,
+                averageRating: true,
+                totalReviews: true,
+                images: true,
+                amenities: true,
+                isClaimed: true,
+                ownerId: true,
+                ownerName: true, // Use denormalized field instead of relation
                 _count: {
                     select: {
                         bookings: true,
@@ -583,12 +669,13 @@ class FieldModel {
                 },
             },
         });
-        // Calculate distance for fields with coordinates and filter by radius
+        // Calculate distance for all fields
+        // Fields with coordinates get actual distance, fields without get Infinity (appear last)
         const R = 3959; // Earth's radius in miles
         const fieldsWithDistance = allFields
             .map((field) => {
             if (field.latitude && field.longitude) {
-                // Haversine formula
+                // Haversine formula for fields with coordinates
                 const dLat = (field.latitude - lat) * Math.PI / 180;
                 const dLng = (field.longitude - lng) * Math.PI / 180;
                 const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -601,9 +688,12 @@ class FieldModel {
                     distanceMiles: Number(distanceMiles.toFixed(1))
                 };
             }
-            return null;
+            // Fields without coordinates are included with Infinity distance
+            return {
+                ...field,
+                distanceMiles: Infinity
+            };
         })
-            .filter((field) => field !== null && field.distanceMiles !== undefined && field.distanceMiles <= radius)
             .sort((a, b) => a.distanceMiles - b.distanceMiles);
         return fieldsWithDistance;
     }

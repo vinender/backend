@@ -527,7 +527,7 @@ class FieldController {
 
   // Get nearby fields based on lat/lng
   getNearbyFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    const { lat, lng, radius = 10, page = 1, limit = 12 } = req.query;
+    const { lat, lng, radius = 10, page = 1, limit = 9 } = req.query;
 
     // Validate required parameters
     if (!lat || !lng) {
@@ -555,16 +555,27 @@ class FieldController {
     const limitNum = Number(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Search for nearby fields
-    const nearbyFields = await FieldModel.searchByLocation(
+    // Get all active fields with distance calculated
+    const allFieldsWithDistance = await FieldModel.searchByLocation(
       latitude,
       longitude,
-      radiusNum
+      999999 // Very large radius to get all fields
     );
 
-    // Apply pagination to results
-    const total = nearbyFields.length;
-    const paginatedFields = nearbyFields.slice(skip, skip + limitNum);
+    // Split into nearby and remaining fields
+    const nearbyFields = allFieldsWithDistance.filter(
+      (field: any) => field.distanceMiles <= radiusNum
+    );
+    const remainingFields = allFieldsWithDistance.filter(
+      (field: any) => field.distanceMiles > radiusNum
+    );
+
+    // Combine: nearby fields first, then remaining fields
+    const combinedFields = [...nearbyFields, ...remainingFields];
+
+    // Apply pagination to combined results
+    const total = combinedFields.length;
+    const paginatedFields = combinedFields.slice(skip, skip + limitNum);
     const totalPages = Math.ceil(total / limitNum);
 
     // Transform to optimized field card format
@@ -597,8 +608,10 @@ class FieldController {
           lng: fieldLng,
         },
         locationDisplay: [field.city, field.state].filter(Boolean).join(', '),
-        distance: field.distanceMiles,
-        distanceDisplay: field.distanceMiles < 1
+        distance: field.distanceMiles === Infinity ? null : field.distanceMiles,
+        distanceDisplay: field.distanceMiles === Infinity
+          ? 'Location not available'
+          : field.distanceMiles < 1
           ? `${(field.distanceMiles * 1760).toFixed(0)} yards`
           : `${field.distanceMiles.toFixed(1)} miles`,
       };
@@ -607,9 +620,15 @@ class FieldController {
     // Enrich fields with full amenity objects
     const enrichedFields = await enrichFieldsWithAmenities(transformedFields);
 
+    // Transform amenities to only include label array (not full objects)
+    const fieldsWithLabelArray = enrichedFields.map(field => ({
+      ...field,
+      amenities: field.amenities?.map((amenity: any) => amenity.label) || []
+    }));
+
     res.json({
       success: true,
-      data: enrichedFields,
+      data: fieldsWithLabelArray,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -617,6 +636,11 @@ class FieldController {
         totalPages,
         hasNextPage: pageNum < totalPages,
         hasPrevPage: pageNum > 1,
+      },
+      metadata: {
+        nearbyCount: nearbyFields.length,
+        remainingCount: remainingFields.length,
+        radius: radiusNum,
       },
     });
   });
