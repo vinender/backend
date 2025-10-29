@@ -617,18 +617,12 @@ class FieldController {
       };
     });
 
-    // Enrich fields with full amenity objects
+    // Enrich fields with amenity labels (string array only)
     const enrichedFields = await enrichFieldsWithAmenities(transformedFields);
-
-    // Transform amenities to only include label array (not full objects)
-    const fieldsWithLabelArray = enrichedFields.map(field => ({
-      ...field,
-      amenities: field.amenities?.map((amenity: any) => amenity.label) || []
-    }));
 
     res.json({
       success: true,
-      data: fieldsWithLabelArray,
+      data: enrichedFields,
       pagination: {
         page: pageNum,
         limit: limitNum,

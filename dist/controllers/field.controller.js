@@ -492,16 +492,11 @@ class FieldController {
                         : `${field.distanceMiles.toFixed(1)} miles`,
             };
         });
-        // Enrich fields with full amenity objects
+        // Enrich fields with amenity labels (string array only)
         const enrichedFields = await (0, amenity_utils_1.enrichFieldsWithAmenities)(transformedFields);
-        // Transform amenities to only include label array (not full objects)
-        const fieldsWithLabelArray = enrichedFields.map(field => ({
-            ...field,
-            amenities: field.amenities?.map((amenity) => amenity.label) || []
-        }));
         res.json({
             success: true,
-            data: fieldsWithLabelArray,
+            data: enrichedFields,
             pagination: {
                 page: pageNum,
                 limit: limitNum,

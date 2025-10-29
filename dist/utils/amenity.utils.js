@@ -82,24 +82,26 @@ function formatAmenityLabel(name) {
         .trim();
 }
 /**
- * Transform a single field object to include full amenity objects
+ * Transform a single field object to include amenities as string array (labels only)
  * @param field - Field object with amenities as string array
- * @returns Field object with transformed amenities
+ * @returns Field object with amenity labels as string array
  */
 async function enrichFieldWithAmenities(field) {
     if (!field)
         return field;
     const amenities = field.amenities || [];
+    // Transform to objects first, then extract only labels
     const transformedAmenities = await transformAmenitiesToObjects(amenities);
+    const amenityLabels = transformedAmenities.map(amenity => amenity.label);
     return {
         ...field,
-        amenities: transformedAmenities,
+        amenities: amenityLabels,
     };
 }
 /**
- * Transform multiple field objects to include full amenity objects
+ * Transform multiple field objects to include amenities as string array (labels only)
  * @param fields - Array of field objects with amenities as string arrays
- * @returns Array of field objects with transformed amenities
+ * @returns Array of field objects with amenity labels as string arrays
  */
 async function enrichFieldsWithAmenities(fields) {
     if (!fields || fields.length === 0)
@@ -114,15 +116,10 @@ async function enrichFieldsWithAmenities(fields) {
             icon: true,
         },
     });
-    // Create a normalized map for case-insensitive lookup
+    // Create a normalized map for case-insensitive lookup (store only label/name)
     const amenityMap = new Map(amenities.map((amenity) => [
         normalizeKey(amenity.name),
-        {
-            id: amenity.id,
-            label: amenity.name, // Use DB name as label (proper case)
-            value: amenity.name,
-            iconUrl: amenity.icon || undefined,
-        },
+        amenity.name, // Just the label/name as string
     ]));
     // Transform all fields
     return fields.map((field) => {
@@ -132,15 +129,15 @@ async function enrichFieldsWithAmenities(fields) {
                 amenities: [],
             };
         }
-        const transformedAmenities = field.amenities
+        const amenityLabels = field.amenities
             .map((name) => {
             const normalizedName = normalizeKey(name);
             return amenityMap.get(normalizedName);
         })
-            .filter((amenity) => amenity !== undefined);
+            .filter((label) => label !== undefined);
         return {
             ...field,
-            amenities: transformedAmenities,
+            amenities: amenityLabels,
         };
     });
 }

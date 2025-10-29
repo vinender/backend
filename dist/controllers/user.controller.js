@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const user_model_1 = __importDefault(require("../models/user.model"));
 const asyncHandler_1 = require("../utils/asyncHandler");
 const AppError_1 = require("../utils/AppError");
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const constants_1 = require("../config/constants");
 class UserController {
     // Get all users (admin only)
     getAllUsers = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
@@ -84,8 +86,10 @@ class UserController {
         if (!isPasswordValid) {
             throw new AppError_1.AppError('Current password is incorrect', 401);
         }
-        // Update password
-        await user_model_1.default.update(userId, { password: newPassword });
+        // Hash the new password before updating
+        const hashedPassword = await bcryptjs_1.default.hash(newPassword, constants_1.BCRYPT_ROUNDS);
+        // Update password with hashed version
+        await user_model_1.default.update(userId, { password: hashedPassword });
         res.json({
             success: true,
             message: 'Password changed successfully',
