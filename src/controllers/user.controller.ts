@@ -3,6 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 import UserModel from '../models/user.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
+import bcrypt from 'bcryptjs';
+import { BCRYPT_ROUNDS } from '../config/constants';
 
 class UserController {
   // Get all users (admin only)
@@ -101,8 +103,11 @@ class UserController {
       throw new AppError('Current password is incorrect', 401);
     }
 
-    // Update password
-    await UserModel.update(userId, { password: newPassword } as any);
+    // Hash the new password before updating
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+    // Update password with hashed version
+    await UserModel.update(userId, { password: hashedPassword } as any);
 
     res.json({
       success: true,
