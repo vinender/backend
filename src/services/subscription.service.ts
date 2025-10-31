@@ -459,6 +459,55 @@ export class SubscriptionService {
       }
     });
 
+    // Cancel all future bookings for this subscription
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const futureBookings = await prisma.booking.findMany({
+      where: {
+        subscriptionId: subscriptionId,
+        date: {
+          gte: today
+        },
+        status: {
+          notIn: ['CANCELLED', 'COMPLETED']
+        }
+      }
+    });
+
+    console.log(`📅 Found ${futureBookings.length} future bookings to cancel for subscription ${subscriptionId}`);
+
+    // Cancel each future booking
+    for (const booking of futureBookings) {
+      try {
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            cancelReason: 'Subscription cancelled by user'
+          }
+        });
+        console.log(`✅ Cancelled future booking ${booking.id} for ${booking.date.toISOString().split('T')[0]}`);
+      } catch (error) {
+        console.error(`❌ Failed to cancel booking ${booking.id}:`, error);
+      }
+    }
+
+    // Send notification to user about cancelled bookings
+    if (futureBookings.length > 0) {
+      await createNotification({
+        userId: subscription.userId,
+        type: 'subscription_cancelled',
+        title: 'Recurring Booking Cancelled',
+        message: `Your recurring subscription has been cancelled. ${futureBookings.length} future booking(s) have been cancelled and the time slots are now available.`,
+        data: {
+          subscriptionId: subscription.id,
+          cancelledBookingsCount: futureBookings.length
+        }
+      });
+    }
+
     return stripeSubscription;
   }
 

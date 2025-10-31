@@ -4,7 +4,7 @@ import FieldModel from '../models/field.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import prisma from '../config/database';
-import { enrichFieldWithAmenities, enrichFieldsWithAmenities } from '../utils/amenity.utils';
+import { enrichFieldWithAmenities, enrichFieldsWithAmenities, transformAmenitiesToObjects } from '../utils/amenity.utils';
 import { convertAmenityIdsToNames } from '../utils/amenity.converter';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
@@ -358,8 +358,19 @@ class FieldController {
       (field as any).distanceMiles = Number(distanceMiles.toFixed(1));
     }
 
-    // Enrich field with full amenity objects
-    const enrichedField = await enrichFieldWithAmenities(field);
+    const amenityObjects = await transformAmenitiesToObjects(field.amenities || []);
+    const amenitiesWithIcons = amenityObjects.map((amenity) => ({
+      id: amenity.id,
+      label: amenity.label,
+      value: amenity.value,
+      iconUrl: amenity.iconUrl ?? null,
+      imageIconUrl: amenity.iconUrl ?? null,
+    }));
+
+    const enrichedField = {
+      ...field,
+      amenities: amenitiesWithIcons,
+    };
 
     res.json({
       success: true,

@@ -198,6 +198,25 @@ async function createUpcomingRecurringBookings() {
           }
         });
 
+        // Send email to dog owner
+        try {
+          const { emailService } = await import('../services/email.service');
+          await emailService.sendRecurringBookingEmailToDogOwner({
+            email: subscription.user.email,
+            userName: subscription.user.name || 'Valued Customer',
+            fieldName: subscription.field.name,
+            bookingDate: nextBookingDate,
+            timeSlot: subscription.timeSlot,
+            startTime: subscription.startTime,
+            endTime: subscription.endTime,
+            interval: subscription.interval,
+            numberOfDogs: subscription.numberOfDogs,
+            totalPrice: booking.totalPrice
+          });
+        } catch (emailError) {
+          console.error('Failed to send recurring booking email to dog owner:', emailError);
+        }
+
         // Notify the field owner
         if (subscription.field.ownerId && subscription.field.ownerId !== subscription.userId) {
           await createNotification({
@@ -215,6 +234,27 @@ async function createUpcomingRecurringBookings() {
               dogOwnerName: subscription.user.name
             }
           });
+
+          // Send email to field owner
+          try {
+            const { emailService } = await import('../services/email.service');
+            await emailService.sendRecurringBookingEmailToFieldOwner({
+              email: subscription.field.owner.email,
+              ownerName: subscription.field.owner.name || 'Field Owner',
+              fieldName: subscription.field.name,
+              bookingDate: nextBookingDate,
+              timeSlot: subscription.timeSlot,
+              startTime: subscription.startTime,
+              endTime: subscription.endTime,
+              interval: subscription.interval,
+              numberOfDogs: subscription.numberOfDogs,
+              dogOwnerName: subscription.user.name || 'Dog Owner',
+              totalPrice: booking.totalPrice,
+              fieldOwnerAmount: booking.fieldOwnerAmount
+            });
+          } catch (emailError) {
+            console.error('Failed to send recurring booking email to field owner:', emailError);
+          }
         }
 
         results.created++;

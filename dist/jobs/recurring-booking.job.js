@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -174,6 +207,25 @@ async function createUpcomingRecurringBookings() {
                         timeSlot: subscription.timeSlot
                     }
                 });
+                // Send email to dog owner
+                try {
+                    const { emailService } = await Promise.resolve().then(() => __importStar(require('../services/email.service')));
+                    await emailService.sendRecurringBookingEmailToDogOwner({
+                        email: subscription.user.email,
+                        userName: subscription.user.name || 'Valued Customer',
+                        fieldName: subscription.field.name,
+                        bookingDate: nextBookingDate,
+                        timeSlot: subscription.timeSlot,
+                        startTime: subscription.startTime,
+                        endTime: subscription.endTime,
+                        interval: subscription.interval,
+                        numberOfDogs: subscription.numberOfDogs,
+                        totalPrice: booking.totalPrice
+                    });
+                }
+                catch (emailError) {
+                    console.error('Failed to send recurring booking email to dog owner:', emailError);
+                }
                 // Notify the field owner
                 if (subscription.field.ownerId && subscription.field.ownerId !== subscription.userId) {
                     await (0, notification_controller_1.createNotification)({
@@ -191,6 +243,27 @@ async function createUpcomingRecurringBookings() {
                             dogOwnerName: subscription.user.name
                         }
                     });
+                    // Send email to field owner
+                    try {
+                        const { emailService } = await Promise.resolve().then(() => __importStar(require('../services/email.service')));
+                        await emailService.sendRecurringBookingEmailToFieldOwner({
+                            email: subscription.field.owner.email,
+                            ownerName: subscription.field.owner.name || 'Field Owner',
+                            fieldName: subscription.field.name,
+                            bookingDate: nextBookingDate,
+                            timeSlot: subscription.timeSlot,
+                            startTime: subscription.startTime,
+                            endTime: subscription.endTime,
+                            interval: subscription.interval,
+                            numberOfDogs: subscription.numberOfDogs,
+                            dogOwnerName: subscription.user.name || 'Dog Owner',
+                            totalPrice: booking.totalPrice,
+                            fieldOwnerAmount: booking.fieldOwnerAmount
+                        });
+                    }
+                    catch (emailError) {
+                        console.error('Failed to send recurring booking email to field owner:', emailError);
+                    }
                 }
                 results.created++;
                 console.log(`✅ Created booking ${booking.id} for subscription ${subscription.id}`);

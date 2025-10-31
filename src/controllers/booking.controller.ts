@@ -539,13 +539,7 @@ class BookingController {
         include: {
           field: {
             include: {
-              owner: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
+              owner: true,
             },
           },
           user: {
@@ -560,7 +554,9 @@ class BookingController {
           createdAt: 'desc',
         },
       }),
-      prisma.booking.count({ where: whereClause }),
+      prisma.booking.count({
+        where: whereClause
+      }),
     ]);
 
     const totalPages = Math.ceil(total / limitNum);

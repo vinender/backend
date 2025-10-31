@@ -508,13 +508,7 @@ class BookingController {
                 include: {
                     field: {
                         include: {
-                            owner: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    email: true,
-                                },
-                            },
+                            owner: true,
                         },
                     },
                     user: {
@@ -529,7 +523,9 @@ class BookingController {
                     createdAt: 'desc',
                 },
             }),
-            database_1.default.booking.count({ where: whereClause }),
+            database_1.default.booking.count({
+                where: whereClause
+            }),
         ]);
         const totalPages = Math.ceil(total / limitNum);
         // Automatically mark past CONFIRMED bookings as COMPLETED

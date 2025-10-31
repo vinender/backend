@@ -294,8 +294,18 @@ class FieldController {
             // Add distanceMiles to field response
             field.distanceMiles = Number(distanceMiles.toFixed(1));
         }
-        // Enrich field with full amenity objects
-        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(field);
+        const amenityObjects = await (0, amenity_utils_1.transformAmenitiesToObjects)(field.amenities || []);
+        const amenitiesWithIcons = amenityObjects.map((amenity) => ({
+            id: amenity.id,
+            label: amenity.label,
+            value: amenity.value,
+            iconUrl: amenity.iconUrl ?? null,
+            imageIconUrl: amenity.iconUrl ?? null,
+        }));
+        const enrichedField = {
+            ...field,
+            amenities: amenitiesWithIcons,
+        };
         res.json({
             success: true,
             data: enrichedField,

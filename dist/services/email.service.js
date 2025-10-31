@@ -1320,6 +1320,345 @@ const getBookingStatusChangeTemplate = (emailData) => {
     </html>
   `;
 };
+// Recurring booking email template for dog owner
+const getRecurringBookingCreatedTemplateDogOwner = (data) => {
+    const formattedDate = new Date(data.bookingDate).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Next Recurring Booking Scheduled</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .booking-card {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 25px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .booking-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+          }
+          .booking-detail {
+            display: flex;
+            align-items: center;
+            margin: 12px 0;
+            font-size: 16px;
+          }
+          .booking-icon {
+            margin-right: 12px;
+            font-size: 20px;
+          }
+          .info-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+          }
+          .highlight {
+            background-color: #fff9c4;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #333;
+          }
+          .button {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 20px 0;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+            margin-top: 30px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h2>Hi ${data.userName}! 👋</h2>
+            <p>Great news! Your next <span class="highlight">${data.interval}</span> recurring booking has been automatically scheduled.</p>
+
+            <div class="booking-card">
+              <div class="booking-title">📅 Upcoming Booking Details</div>
+              <div class="booking-detail">
+                <span class="booking-icon">🏞️</span>
+                <strong>Field:</strong> ${data.fieldName}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">📆</span>
+                <strong>Date:</strong> ${formattedDate}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">⏰</span>
+                <strong>Time:</strong> ${data.startTime} - ${data.endTime}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">🐕</span>
+                <strong>Dogs:</strong> ${data.numberOfDogs}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">💰</span>
+                <strong>Amount:</strong> €${data.totalPrice.toFixed(2)}
+              </div>
+            </div>
+
+            <div class="info-box">
+              <p><strong>ℹ️ What You Need to Know:</strong></p>
+              <ul>
+                <li>Your payment has been processed successfully</li>
+                <li>This slot has been reserved for you</li>
+                <li>Your ${data.interval} subscription will continue automatically</li>
+                <li>You can manage or cancel your subscription anytime from your account</li>
+              </ul>
+            </div>
+
+            <p style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3001'}/user/my-bookings" class="button">View Booking</a>
+            </p>
+
+            <p>See you at the field! 🐕‍🦺</p>
+          </div>
+          <div class="footer">
+            <p>© 2025 Fieldsy. All rights reserved.</p>
+            <p>Find or Host secure fields for your furry friends 🐕</p>
+            <p style="font-size: 12px; margin-top: 10px;">
+              You're receiving this email because you have an active recurring booking subscription.
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+// Recurring booking email template for field owner
+const getRecurringBookingCreatedTemplateFieldOwner = (data) => {
+    const formattedDate = new Date(data.bookingDate).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Recurring Booking Scheduled</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .booking-card {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 25px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .booking-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+          }
+          .booking-detail {
+            display: flex;
+            align-items: center;
+            margin: 12px 0;
+            font-size: 16px;
+          }
+          .booking-icon {
+            margin-right: 12px;
+            font-size: 20px;
+          }
+          .earnings-box {
+            background-color: #e8f5e9;
+            border: 2px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            text-align: center;
+          }
+          .earnings-amount {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin: 10px 0;
+          }
+          .highlight {
+            background-color: #fff9c4;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #333;
+          }
+          .button {
+            display: inline-block;
+            background-color: #2196F3;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 20px 0;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+            margin-top: 30px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+          <div class="content">
+            <h2>Hi ${data.ownerName}! 👋</h2>
+            <p>A <span class="highlight">${data.interval}</span> recurring booking has been automatically scheduled for your field.</p>
+
+            <div class="booking-card">
+              <div class="booking-title">📅 Booking Details</div>
+              <div class="booking-detail">
+                <span class="booking-icon">🏞️</span>
+                <strong>Field:</strong> ${data.fieldName}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">👤</span>
+                <strong>Dog Owner:</strong> ${data.dogOwnerName}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">📆</span>
+                <strong>Date:</strong> ${formattedDate}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">⏰</span>
+                <strong>Time:</strong> ${data.startTime} - ${data.endTime}
+              </div>
+              <div class="booking-detail">
+                <span class="booking-icon">🐕</span>
+                <strong>Dogs:</strong> ${data.numberOfDogs}
+              </div>
+            </div>
+
+            <div class="earnings-box">
+              <p><strong>💰 Your Earnings</strong></p>
+              <div class="earnings-amount">€${data.fieldOwnerAmount.toFixed(2)}</div>
+              <p style="font-size: 14px; color: #666;">
+                (Total: €${data.totalPrice.toFixed(2)} - 20% platform fee)
+              </p>
+              <p style="font-size: 13px; color: #888; margin-top: 10px;">
+                Payment will be processed after the booking is completed
+              </p>
+            </div>
+
+            <p><strong>ℹ️ What This Means:</strong></p>
+            <ul>
+              <li>This is an automatic ${data.interval} recurring booking</li>
+              <li>The slot has been reserved in your calendar</li>
+              <li>The dog owner's payment has been processed successfully</li>
+              <li>Please ensure your field is ready for the booking date</li>
+            </ul>
+
+            <p style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3001'}/field-owner/preview" class="button">View Booking</a>
+            </p>
+
+            <p>Thank you for hosting with Fieldsy! 🏞️</p>
+          </div>
+          <div class="footer">
+            <p>© 2025 Fieldsy. All rights reserved.</p>
+            <p>Find or Host secure fields for your furry friends 🐕</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
 // Email service class
 class EmailService {
     async sendMail(to, subject, html) {
@@ -1464,6 +1803,32 @@ class EmailService {
         }
         catch (error) {
             console.error(`❌ Failed to send field approval email to ${data.email}:`, error);
+            return false;
+        }
+    }
+    async sendRecurringBookingEmailToDogOwner(data) {
+        const subject = `Your ${data.interval} booking has been scheduled! - Fieldsy`;
+        const html = getRecurringBookingCreatedTemplateDogOwner(data);
+        try {
+            const result = await this.sendMail(data.email, subject, html);
+            console.log(`✅ Recurring booking email sent to dog owner ${data.email}`);
+            return result;
+        }
+        catch (error) {
+            console.error(`❌ Failed to send recurring booking email to ${data.email}:`, error);
+            return false;
+        }
+    }
+    async sendRecurringBookingEmailToFieldOwner(data) {
+        const subject = `New ${data.interval} recurring booking scheduled - Fieldsy`;
+        const html = getRecurringBookingCreatedTemplateFieldOwner(data);
+        try {
+            const result = await this.sendMail(data.email, subject, html);
+            console.log(`✅ Recurring booking email sent to field owner ${data.email}`);
+            return result;
+        }
+        catch (error) {
+            console.error(`❌ Failed to send recurring booking email to ${data.email}:`, error);
             return false;
         }
     }
