@@ -72,6 +72,7 @@ import { generateApiDocsHTML } from './utils/api-docs-template';
 import { initPayoutJobs } from './jobs/payout.job';
 import { startHeldPayoutReleaseJobs } from './jobs/held-payout-release.job';
 import { initRecurringBookingJobs } from './jobs/recurring-booking.job';
+import { initBookingReminderJobs } from './jobs/booking-reminder.job';
 
 
 class Server {
@@ -489,6 +490,7 @@ class Server {
     initPayoutJobs();
     startHeldPayoutReleaseJobs();
     initRecurringBookingJobs();
+    initBookingReminderJobs();
     console.log('✅ Scheduled jobs initialized');
     
     // Enhanced error handling for port conflicts

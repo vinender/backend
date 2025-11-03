@@ -8,6 +8,7 @@ import { addDays, addMonths, format, isBefore, isAfter } from 'date-fns';
 /**
  * Scheduled job to automatically create recurring bookings for the next billing cycle
  * Runs daily at 2 AM to check for subscriptions that need new bookings created
+ * Also runs hourly to check for completed bookings that need next booking created
  */
 export const initRecurringBookingJobs = () => {
   // Run daily at 2:00 AM to create upcoming recurring bookings
@@ -45,7 +46,25 @@ export const initRecurringBookingJobs = () => {
     }
   });
 
-  console.log('✅ Recurring booking jobs initialized (runs daily at 2:00 AM)');
+  // Run every hour to check for past bookings and auto-create next recurring booking
+  cron.schedule('0 * * * *', async () => {
+    console.log('🔄 Running past bookings check for auto-creation...');
+
+    try {
+      const results = await checkPastBookingsAndCreateNext();
+
+      console.log(`✅ Past bookings check completed:`);
+      console.log(`   - Created: ${results.created}`);
+      console.log(`   - Skipped: ${results.skipped}`);
+      console.log(`   - Failed: ${results.failed}`);
+    } catch (error) {
+      console.error('❌ Past bookings check error:', error);
+    }
+  });
+
+  console.log('✅ Recurring booking jobs initialized');
+  console.log('   - Daily job: 2:00 AM (create upcoming bookings)');
+  console.log('   - Hourly job: Every hour (check past bookings)');
 };
 
 /**
@@ -341,6 +360,224 @@ function calculateNextValidBookingDate(subscription: any, today: Date): Date {
   } else {
     throw new Error(`Unknown subscription interval: ${subscription.interval}`);
   }
+}
+
+/**
+ * Check for past bookings with subscriptions and auto-create next booking
+ */
+async function checkPastBookingsAndCreateNext() {
+  const results = {
+    created: 0,
+    skipped: 0,
+    failed: 0
+  };
+
+  try {
+    const now = new Date();
+
+    // Get system settings for maxAdvanceBookingDays
+    const settings = await prisma.systemSettings.findFirst({
+      select: { maxAdvanceBookingDays: true }
+    });
+    const maxAdvanceBookingDays = settings?.maxAdvanceBookingDays || 30;
+    const maxFutureDate = new Date(now);
+    maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
+
+    // Find all active subscriptions that have bookings in the past
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        status: 'active',
+        cancelAtPeriodEnd: false
+      },
+      include: {
+        field: {
+          include: { owner: true }
+        },
+        user: true,
+        bookings: {
+          where: {
+            status: {
+              in: ['CONFIRMED', 'COMPLETED'] // Include both confirmed and completed bookings
+            },
+            date: {
+              lt: now // Past bookings
+            }
+          },
+          orderBy: {
+            date: 'desc'
+          },
+          take: 1 // Get most recent past booking
+        }
+      }
+    });
+
+    console.log(`📊 Found ${subscriptions.length} active subscriptions to check`);
+
+    for (const subscription of subscriptions) {
+      try {
+        // Skip if no past bookings found
+        if (!subscription.bookings || subscription.bookings.length === 0) {
+          continue;
+        }
+
+        const lastBooking = subscription.bookings[0];
+
+        // Parse the booking end time to check if the session has ended
+        const bookingDate = new Date(lastBooking.date);
+        const [endHourStr, endPeriod] = lastBooking.endTime.split(/(?=[AP]M)/);
+        let endHour = parseInt(endHourStr.split(':')[0]);
+        const endMinute = parseInt(endHourStr.split(':')[1] || '0');
+        if (endPeriod === 'PM' && endHour !== 12) endHour += 12;
+        if (endPeriod === 'AM' && endHour === 12) endHour = 0;
+
+        bookingDate.setHours(endHour, endMinute, 0, 0);
+
+        // Only process if the booking end time has passed
+        if (bookingDate >= now) {
+          continue;
+        }
+
+        // Calculate next booking date
+        const lastBookingDate = subscription.lastBookingDate || lastBooking.date;
+        let nextBookingDate = new Date();
+
+        if (subscription.interval === 'everyday') {
+          nextBookingDate = addDays(lastBookingDate, 1);
+        } else if (subscription.interval === 'weekly') {
+          nextBookingDate = addDays(lastBookingDate, 7);
+        } else if (subscription.interval === 'monthly') {
+          nextBookingDate = addMonths(lastBookingDate, 1);
+        }
+
+        // Ensure next booking date is in the future
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (isBefore(nextBookingDate, today)) {
+          // Calculate a valid future date
+          nextBookingDate = calculateNextValidBookingDate(subscription, today);
+        }
+
+        // Check if next booking is within advance booking range
+        if (isAfter(nextBookingDate, maxFutureDate)) {
+          console.log(`⏭️  Next booking date (${format(nextBookingDate, 'PPP')}) is beyond max advance booking days for subscription ${subscription.id}`);
+          results.skipped++;
+          continue;
+        }
+
+        // Check if booking already exists for this date
+        const existingBooking = await prisma.booking.findFirst({
+          where: {
+            subscriptionId: subscription.id,
+            date: nextBookingDate,
+            status: { not: 'CANCELLED' }
+          }
+        });
+
+        if (existingBooking) {
+          console.log(`⏭️  Booking already exists for subscription ${subscription.id} on ${format(nextBookingDate, 'PPP')}`);
+          results.skipped++;
+          continue;
+        }
+
+        // Create the next booking
+        console.log(`✨ Auto-creating next booking for subscription ${subscription.id} on ${format(nextBookingDate, 'PPP')}`);
+
+        const newBooking = await subscriptionService.createBookingFromSubscription(
+          subscription.id,
+          nextBookingDate
+        );
+
+        // Notify user
+        await createNotification({
+          userId: subscription.userId,
+          type: 'recurring_booking_created',
+          title: 'Next Booking Scheduled',
+          message: `Your next ${subscription.interval} booking at ${subscription.field.name} has been automatically scheduled for ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot}`,
+          data: {
+            bookingId: newBooking.id,
+            subscriptionId: subscription.id,
+            fieldId: subscription.fieldId,
+            fieldName: subscription.field.name,
+            bookingDate: nextBookingDate.toISOString(),
+            timeSlot: subscription.timeSlot
+          }
+        });
+
+        // Send email to dog owner
+        try {
+          const { emailService } = await import('../services/email.service');
+          await emailService.sendRecurringBookingEmailToDogOwner({
+            email: subscription.user.email,
+            userName: subscription.user.name || 'Valued Customer',
+            fieldName: subscription.field.name,
+            bookingDate: nextBookingDate,
+            timeSlot: subscription.timeSlot,
+            startTime: subscription.startTime,
+            endTime: subscription.endTime,
+            interval: subscription.interval,
+            numberOfDogs: subscription.numberOfDogs,
+            totalPrice: newBooking.totalPrice
+          });
+        } catch (emailError) {
+          console.error('Failed to send email to dog owner:', emailError);
+        }
+
+        // Notify field owner
+        if (subscription.field.ownerId && subscription.field.ownerId !== subscription.userId) {
+          await createNotification({
+            userId: subscription.field.ownerId,
+            type: 'recurring_booking_scheduled',
+            title: 'Recurring Booking Scheduled',
+            message: `A ${subscription.interval} booking has been scheduled for ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot}`,
+            data: {
+              bookingId: newBooking.id,
+              subscriptionId: subscription.id,
+              fieldId: subscription.fieldId,
+              fieldName: subscription.field.name,
+              bookingDate: nextBookingDate.toISOString(),
+              timeSlot: subscription.timeSlot,
+              dogOwnerName: subscription.user.name
+            }
+          });
+
+          // Send email to field owner
+          try {
+            const { emailService } = await import('../services/email.service');
+            await emailService.sendRecurringBookingEmailToFieldOwner({
+              email: subscription.field.owner.email,
+              ownerName: subscription.field.owner.name || 'Field Owner',
+              fieldName: subscription.field.name,
+              bookingDate: nextBookingDate,
+              timeSlot: subscription.timeSlot,
+              startTime: subscription.startTime,
+              endTime: subscription.endTime,
+              interval: subscription.interval,
+              numberOfDogs: subscription.numberOfDogs,
+              dogOwnerName: subscription.user.name || 'Dog Owner',
+              totalPrice: newBooking.totalPrice,
+              fieldOwnerAmount: newBooking.fieldOwnerAmount
+            });
+          } catch (emailError) {
+            console.error('Failed to send email to field owner:', emailError);
+          }
+        }
+
+        results.created++;
+        console.log(`✅ Created booking ${newBooking.id} for subscription ${subscription.id}`);
+
+      } catch (error) {
+        console.error(`❌ Failed to process subscription ${subscription.id}:`, error);
+        results.failed++;
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Error in checkPastBookingsAndCreateNext:', error);
+    throw error;
+  }
+
+  return results;
 }
 
 /**

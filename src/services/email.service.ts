@@ -2036,6 +2036,225 @@ class EmailService {
       return false;
     }
   }
+
+  async sendBookingReminderEmail(data: {
+    email: string;
+    userName: string;
+    fieldName: string;
+    bookingDate: Date;
+    timeSlot: string;
+    startTime: string;
+    endTime: string;
+    numberOfDogs: number;
+    address: string;
+    hoursUntilBooking: number;
+  }): Promise<boolean> {
+    const subject = `Reminder: Your booking at ${data.fieldName} is coming up! - Fieldsy`;
+    const html = getBookingReminderTemplate(data);
+
+    try {
+      const result = await this.sendMail(data.email, subject, html);
+      console.log(`✅ Booking reminder email sent to ${data.email}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to send booking reminder email to ${data.email}:`, error);
+      return false;
+    }
+  }
 }
+
+// Email template for booking reminder
+const getBookingReminderTemplate = (data: {
+  userName: string;
+  fieldName: string;
+  bookingDate: Date;
+  timeSlot: string;
+  startTime: string;
+  endTime: string;
+  numberOfDogs: number;
+  address: string;
+  hoursUntilBooking: number;
+}) => {
+  const { format } = require('date-fns');
+  const formattedDate = format(data.bookingDate, 'EEEE, MMMM d, yyyy');
+  const reminderText = data.hoursUntilBooking >= 2
+    ? `in ${data.hoursUntilBooking} hours`
+    : 'very soon';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Reminder</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            padding: 20px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px 10px 0 0;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffffff;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .reminder-badge {
+            display: inline-block;
+            background-color: #ff6b6b;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+          }
+          .booking-details {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+          }
+          .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+          }
+          .detail-row:last-child {
+            border-bottom: none;
+          }
+          .detail-label {
+            font-weight: 600;
+            color: #495057;
+          }
+          .detail-value {
+            color: #212529;
+          }
+          .highlight {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+            text-align: center;
+            margin: 20px 0;
+          }
+          .cta-button {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            margin: 20px 0;
+          }
+          .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666666;
+            font-size: 14px;
+            border-top: 1px solid #eeeeee;
+          }
+          .tips {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-left: 4px solid #2196F3;
+            margin: 20px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🐾 Fieldsy</div>
+          </div>
+
+          <div class="content">
+            <div style="text-align: center;">
+              <span class="reminder-badge">⏰ UPCOMING BOOKING</span>
+            </div>
+
+            <h2 style="color: #333; text-align: center;">Hi ${data.userName}!</h2>
+
+            <p style="font-size: 16px; text-align: center;">
+              Your booking at <strong>${data.fieldName}</strong> is coming up ${reminderText}!
+            </p>
+
+            <div class="highlight">
+              ${data.timeSlot}
+            </div>
+
+            <div class="booking-details">
+              <div class="detail-row">
+                <span class="detail-label">📍 Location:</span>
+                <span class="detail-value">${data.fieldName}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">📅 Date:</span>
+                <span class="detail-value">${formattedDate}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">⏰ Time:</span>
+                <span class="detail-value">${data.startTime} - ${data.endTime}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">🐕 Number of Dogs:</span>
+                <span class="detail-value">${data.numberOfDogs}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">📍 Address:</span>
+                <span class="detail-value">${data.address}</span>
+              </div>
+            </div>
+
+            <div class="tips">
+              <strong>💡 Quick Tips:</strong>
+              <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>Bring water and treats for your dogs</li>
+                <li>Arrive 5-10 minutes early</li>
+                <li>Make sure your dogs are ready for playtime!</li>
+                <li>Check the field rules before arrival</li>
+              </ul>
+            </div>
+
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/user/my-bookings" class="cta-button">
+                View Booking Details
+              </a>
+            </div>
+
+            <p style="text-align: center; color: #666; margin-top: 30px;">
+              Have a great time with your furry friends! 🐾
+            </p>
+          </div>
+
+          <div class="footer">
+            <p>Need to reschedule or cancel? Log in to your account to manage your bookings.</p>
+            <p>&copy; ${new Date().getFullYear()} Fieldsy. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
 
 export const emailService = new EmailService();

@@ -18,6 +18,7 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/refresh-token', authController.refreshToken);
 router.post('/social-login', socialAuthLimiter, authController.socialLogin);
+router.post('/apple-signin', socialAuthLimiter, authController.appleSignIn);
 
 // Protected routes
 router.get('/me', protect, authController.getMe);

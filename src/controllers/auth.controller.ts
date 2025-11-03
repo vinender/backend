@@ -429,6 +429,123 @@ class AuthController {
       },
     });
   });
+
+  // Apple Sign In - Mobile & Web friendly
+  // Handles Apple ID token verification on backend
+  appleSignIn = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { idToken, name, role } = req.body;
+
+    console.log('==================== APPLE SIGN IN ====================');
+    console.log('Request Body:', { hasIdToken: !!idToken, name, role });
+
+    // Validate input
+    if (!idToken) {
+      console.log('❌ VALIDATION FAILED: Missing ID token');
+      throw new AppError('Apple ID token is required', 400);
+    }
+
+    // Validate role if provided
+    const validRoles = ['DOG_OWNER', 'FIELD_OWNER'];
+    if (role && !validRoles.includes(role)) {
+      console.log('❌ VALIDATION FAILED: Invalid role -', role);
+      throw new AppError('Invalid role specified', 400);
+    }
+    console.log('✅ Role validation passed:', role || 'DOG_OWNER (default)');
+
+    try {
+      // Verify Apple ID token using backend service
+      console.log('🔐 Verifying Apple ID token...');
+      const { appleSignInService } = require('../services/apple-signin.service');
+      const appleUser = await appleSignInService.verifyIdToken(idToken);
+
+      console.log('✅ Apple token verified successfully');
+      console.log('  - Apple User ID:', appleUser.sub);
+      console.log('  - Email:', appleUser.email);
+      console.log('  - Email Verified:', appleUser.emailVerified);
+
+      // Check if user already exists AND is verified
+      console.log('🔍 Checking for existing user with email:', appleUser.email);
+      const existingUser = await UserModel.findByEmail(appleUser.email);
+
+      if (existingUser && existingUser.emailVerified) {
+        console.log('✅ Existing verified user found - logging in immediately');
+        console.log('  - User ID:', existingUser.id);
+        console.log('  - User Role:', existingUser.role);
+
+        // User exists and is verified - log them in immediately
+        const token = jwt.sign(
+          {
+            id: existingUser.id,
+            email: existingUser.email,
+            role: existingUser.role,
+            provider: 'apple'
+          },
+          JWT_SECRET as jwt.Secret,
+          {
+            expiresIn: JWT_EXPIRES_IN as string | number
+          }
+        );
+
+        console.log('✅ Token generated for existing user');
+        return res.json({
+          success: true,
+          message: 'Apple sign in successful',
+          data: {
+            user: existingUser,
+            token,
+          },
+        });
+      }
+
+      // Create or update user (NOT VERIFIED YET)
+      console.log('📝 Creating or updating Apple user...');
+      console.log('  - Email:', appleUser.email);
+      console.log('  - Name:', name || appleUser.name);
+      console.log('  - Provider ID:', appleUser.sub);
+      console.log('  - Role:', role || 'DOG_OWNER');
+
+      const user = await UserModel.createOrUpdateSocialUser({
+        email: appleUser.email,
+        name: name || (appleUser.name ? `${appleUser.name.firstName || ''} ${appleUser.name.lastName || ''}`.trim() : undefined),
+        image: undefined, // Apple doesn't provide profile images
+        provider: 'apple',
+        providerId: appleUser.sub,
+        role: role || 'DOG_OWNER',
+      });
+
+      console.log('✅ User created/updated successfully');
+      console.log('  - User ID:', user.id);
+      console.log('  - Email Verified:', user.emailVerified);
+
+      // Send OTP for verification
+      console.log('📧 Sending OTP for email verification...');
+      const { otpService } = require('../services/otp.service');
+      await otpService.sendOtp(appleUser.email, 'SOCIAL_LOGIN', name || user.name);
+      console.log('✅ OTP sent successfully to:', appleUser.email);
+
+      console.log('📤 Sending response - OTP verification required');
+      res.status(200).json({
+        success: true,
+        requiresVerification: true,
+        message: 'Please check your email for verification code',
+        data: {
+          email: appleUser.email,
+          role: user.role,
+        },
+      });
+      console.log('==================== APPLE SIGN IN COMPLETE ====================');
+    } catch (error: any) {
+      console.error('❌ Apple Sign In failed:', error);
+
+      // Handle specific Apple Sign In errors
+      if (error.message && error.message.includes('Invalid Apple ID token')) {
+        throw new AppError('Invalid or expired Apple ID token', 401);
+      }
+
+      // Re-throw other errors
+      throw error;
+    }
+  });
 }
 
 export default new AuthController();

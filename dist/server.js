@@ -58,6 +58,7 @@ const api_docs_template_1 = require("./utils/api-docs-template");
 const payout_job_1 = require("./jobs/payout.job");
 const held_payout_release_job_1 = require("./jobs/held-payout-release.job");
 const recurring_booking_job_1 = require("./jobs/recurring-booking.job");
+const booking_reminder_job_1 = require("./jobs/booking-reminder.job");
 class Server {
     app;
     httpServer;
@@ -423,6 +424,7 @@ class Server {
         (0, payout_job_1.initPayoutJobs)();
         (0, held_payout_release_job_1.startHeldPayoutReleaseJobs)();
         (0, recurring_booking_job_1.initRecurringBookingJobs)();
+        (0, booking_reminder_job_1.initBookingReminderJobs)();
         console.log('✅ Scheduled jobs initialized');
         // Enhanced error handling for port conflicts
         this.httpServer.on('error', (error) => {

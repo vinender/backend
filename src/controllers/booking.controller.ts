@@ -780,6 +780,84 @@ class BookingController {
         console.error('Error sending completion email:', emailError);
       }
 
+      // Auto-create next recurring booking if this booking is part of a subscription
+      if ((booking as any).subscriptionId) {
+        try {
+          console.log(`📅 Booking ${id} is part of subscription ${(booking as any).subscriptionId}, creating next booking...`);
+          const { subscriptionService } = await import('../services/subscription.service');
+
+          // Get subscription details
+          const subscription = await prisma.subscription.findUnique({
+            where: { id: (booking as any).subscriptionId }
+          });
+
+          if (subscription && subscription.status === 'active') {
+            // Get system settings for maxAdvanceBookingDays
+            const settings = await prisma.systemSettings.findFirst({
+              select: { maxAdvanceBookingDays: true }
+            });
+            const maxAdvanceBookingDays = settings?.maxAdvanceBookingDays || 30;
+
+            // Calculate next booking date based on interval
+            const { addDays, addMonths, format, isAfter } = await import('date-fns');
+            const lastBookingDate = subscription.lastBookingDate || booking.date;
+
+            let nextBookingDate = new Date();
+            if (subscription.interval === 'everyday') {
+              nextBookingDate = addDays(lastBookingDate, 1);
+            } else if (subscription.interval === 'weekly') {
+              nextBookingDate = addDays(lastBookingDate, 7);
+            } else if (subscription.interval === 'monthly') {
+              nextBookingDate = addMonths(lastBookingDate, 1);
+            }
+
+            // Check if next booking is within advance booking range
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const maxFutureDate = new Date(today);
+            maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
+
+            if (!isAfter(nextBookingDate, maxFutureDate)) {
+              // Check if booking already exists for this date
+              const existingBooking = await prisma.booking.findFirst({
+                where: {
+                  subscriptionId: subscription.id,
+                  date: nextBookingDate,
+                  status: { not: 'CANCELLED' }
+                }
+              });
+
+              if (!existingBooking) {
+                const newBooking = await subscriptionService.createBookingFromSubscription(
+                  subscription.id,
+                  nextBookingDate
+                );
+                console.log(`✅ Auto-created next recurring booking ${newBooking.id} for ${format(nextBookingDate, 'PPP')}`);
+
+                // Notify user about the auto-created booking
+                await createNotification({
+                  userId: subscription.userId,
+                  type: 'recurring_booking_created',
+                  title: 'Next Booking Scheduled',
+                  message: `Your next ${subscription.interval} booking at ${field.name} has been automatically scheduled for ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot}`,
+                  data: {
+                    bookingId: newBooking.id,
+                    subscriptionId: subscription.id,
+                    fieldId: subscription.fieldId,
+                    fieldName: field.name,
+                    bookingDate: nextBookingDate.toISOString(),
+                    timeSlot: subscription.timeSlot
+                  }
+                });
+              }
+            }
+          }
+        } catch (recurringError) {
+          console.error(`Failed to auto-create next recurring booking for ${id}:`, recurringError);
+          // Don't throw - this shouldn't block the completion
+        }
+      }
+
       // Trigger automatic payout to field owner
       try {
         console.log(`Triggering automatic payout for completed booking ${id}`);
@@ -1354,9 +1432,84 @@ class BookingController {
         startTime: true,
         endTime: true,
         timeSlot: true,
-        status: true
+        status: true,
+        subscriptionId: true
       }
     });
+
+    // Get all active subscriptions for this field to mark recurring time slots
+    const activeSubscriptions = await prisma.subscription.findMany({
+      where: {
+        fieldId,
+        status: 'active',
+        cancelAtPeriodEnd: false
+      },
+      select: {
+        id: true,
+        interval: true,
+        dayOfWeek: true,
+        dayOfMonth: true,
+        timeSlot: true,
+        startTime: true,
+        endTime: true,
+        lastBookingDate: true,
+        createdAt: true
+      }
+    });
+
+    // Get system settings for maxAdvanceBookingDays
+    const settings = await prisma.systemSettings.findFirst({
+      select: { maxAdvanceBookingDays: true }
+    });
+    const maxAdvanceBookingDays = settings?.maxAdvanceBookingDays || 30;
+    const maxFutureDate = new Date(selectedDate);
+    maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
+
+    // Filter subscriptions that apply to the selected date
+    const { addDays, addMonths } = await import('date-fns');
+    const recurringTimeSlots: Set<string> = new Set();
+
+    for (const subscription of activeSubscriptions) {
+      // Check if the selected date falls on a recurring booking day
+      let isRecurringDay = false;
+
+      if (subscription.interval === 'everyday') {
+        // Every day is a recurring day
+        isRecurringDay = true;
+      } else if (subscription.interval === 'weekly') {
+        // Check if selected date's day of week matches subscription's day
+        const selectedDayOfWeek = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+        if (subscription.dayOfWeek && selectedDayOfWeek.toLowerCase() === subscription.dayOfWeek.toLowerCase()) {
+          isRecurringDay = true;
+        }
+      } else if (subscription.interval === 'monthly') {
+        // Check if selected date's day of month matches subscription's day
+        if (subscription.dayOfMonth && selectedDate.getDate() === subscription.dayOfMonth) {
+          isRecurringDay = true;
+        }
+      }
+
+      // If this is a recurring day, check if it's within the booking window
+      if (isRecurringDay) {
+        // Check if this date is within maxAdvanceBookingDays from last booking date
+        const lastBookingDate = subscription.lastBookingDate || subscription.createdAt;
+        const daysSinceLastBooking = Math.floor((selectedDate.getTime() - new Date(lastBookingDate).getTime()) / (1000 * 60 * 60 * 24));
+
+        // Only mark as booked if it's a future potential booking date within the advance booking window
+        if (selectedDate >= new Date() && selectedDate <= maxFutureDate) {
+          // Check if a booking doesn't already exist for this date and subscription
+          const hasExistingBooking = bookings.some(b =>
+            b.subscriptionId === subscription.id &&
+            (b.timeSlot === subscription.timeSlot || b.startTime === subscription.startTime)
+          );
+
+          // If no booking exists yet, mark the time slot as reserved for recurring booking
+          if (!hasExistingBooking) {
+            recurringTimeSlots.add(subscription.timeSlot || `${subscription.startTime} - ${subscription.endTime}`);
+          }
+        }
+      }
+    }
 
     // Generate time slots based on field's operating hours and booking duration
     // Parse opening and closing times to include minutes
@@ -1441,15 +1594,21 @@ class BookingController {
       const isPast = slotDateTime < now;
 
       // Check if slot is booked (private booking system)
-      const isBooked = bookings.some(
+      const isBookedByBooking = bookings.some(
         booking => booking.timeSlot === slotTime || booking.startTime === startTime
       );
+
+      // Check if slot is reserved by recurring booking
+      const isBookedByRecurring = recurringTimeSlots.has(slotTime);
+
+      const isBooked = isBookedByBooking || isBookedByRecurring;
 
       slots.push({
         time: slotTime,
         startHour: startHour,
         isPast,
         isBooked,
+        isBookedByRecurring, // Add flag to indicate it's a recurring booking
         isAvailable: !isPast && !isBooked
       });
 

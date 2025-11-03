@@ -190,7 +190,22 @@ class SubscriptionService {
             where: { id: field.ownerId },
             select: { name: true, email: true }
         });
-        // Create booking with field snapshot
+        // Get the first booking in this subscription series to use as parent
+        const firstBooking = await database_1.default.booking.findFirst({
+            where: {
+                subscriptionId: subscription.id
+            },
+            orderBy: {
+                createdAt: 'asc'
+            }
+        });
+        // Map subscription interval to recurring frequency
+        const recurringFrequencyMap = {
+            'everyday': 'EVERYDAY',
+            'weekly': 'WEEKLY',
+            'monthly': 'MONTHLY'
+        };
+        // Create booking with field snapshot and recurring fields
         const booking = await database_1.default.booking.create({
             data: {
                 userId: subscription.userId,
@@ -206,7 +221,11 @@ class SubscriptionService {
                 repeatBooking: subscription.interval,
                 subscriptionId: subscription.id,
                 platformCommission: totalPrice * 0.20,
-                fieldOwnerAmount: totalPrice * 0.80
+                fieldOwnerAmount: totalPrice * 0.80,
+                // Recurring fields
+                isRecurring: true,
+                recurringFrequency: recurringFrequencyMap[subscription.interval.toLowerCase()] || 'EVERYDAY',
+                parentBookingId: firstBooking?.id || null
             }
         });
         // Update subscription last booking date

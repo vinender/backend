@@ -166,8 +166,8 @@ export const resendOtp = asyncHandler(async (req: Request, res: Response) => {
 
   try {
     await otpService.resendOtp(
-      email, 
-      type as 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION',
+      email,
+      type as 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN',
       user?.name || undefined
     );
   } catch (error: any) {

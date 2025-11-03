@@ -21,7 +21,7 @@ export class OtpService {
   }
 
   // Create and save OTP to database
-  async createOtp(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION'): Promise<string> {
+  async createOtp(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN'): Promise<string> {
     try {
       // Delete any existing OTPs for this email and type
       await prisma.otpVerification.deleteMany({
@@ -57,7 +57,7 @@ export class OtpService {
   }
 
   // Check if OTP is valid without marking as verified
-  async checkOtpValidity(email: string, otp: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION'): Promise<boolean> {
+  async checkOtpValidity(email: string, otp: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN'): Promise<boolean> {
     try {
       const otpRecord = await prisma.otpVerification.findFirst({
         where: {
@@ -79,7 +79,7 @@ export class OtpService {
   }
 
   // Verify OTP and mark as used
-  async verifyOtp(email: string, otp: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION'): Promise<boolean> {
+  async verifyOtp(email: string, otp: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN'): Promise<boolean> {
     try {
       // Find the OTP record
       const otpRecord = await prisma.otpVerification.findFirst({
@@ -116,7 +116,7 @@ export class OtpService {
   }
 
   // Send OTP via email
-  async sendOtp(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION', name?: string): Promise<void> {
+  async sendOtp(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN', name?: string): Promise<void> {
     try {
       // Create OTP
       const otp = await this.createOtp(email, type);
@@ -130,7 +130,7 @@ export class OtpService {
   }
 
   // Resend OTP
-  async resendOtp(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION', name?: string): Promise<void> {
+  async resendOtp(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN', name?: string): Promise<void> {
     try {
       // Check if there's a recent OTP (prevent spam)
       const recentOtp = await prisma.otpVerification.findFirst({
@@ -182,7 +182,7 @@ export class OtpService {
   }
 
   // Check if email has pending verification
-  async hasPendingVerification(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION'): Promise<boolean> {
+  async hasPendingVerification(email: string, type: 'SIGNUP' | 'RESET_PASSWORD' | 'EMAIL_VERIFICATION' | 'SOCIAL_LOGIN'): Promise<boolean> {
     const otpRecord = await prisma.otpVerification.findFirst({
       where: {
         email,
