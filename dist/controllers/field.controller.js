@@ -1893,5 +1893,38 @@ class FieldController {
             }
         });
     });
+    // Get price range (min and max) of all active fields
+    getPriceRange = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        // Get all approved and active fields with prices
+        const fields = await database_1.default.field.findMany({
+            where: {
+                isSubmitted: true,
+                isActive: true,
+                isClaimed: true,
+                price: { not: null }
+            },
+            select: {
+                price: true
+            }
+        });
+        // Calculate min and max from the results
+        let minPrice = 0;
+        let maxPrice = 100;
+        if (fields.length > 0) {
+            const prices = fields.map(f => f.price).filter((p) => p !== null);
+            if (prices.length > 0) {
+                minPrice = Math.min(...prices);
+                maxPrice = Math.max(...prices);
+            }
+        }
+        res.status(200).json({
+            success: true,
+            status: 'success',
+            data: {
+                minPrice,
+                maxPrice
+            }
+        });
+    });
 }
 exports.default = new FieldController();

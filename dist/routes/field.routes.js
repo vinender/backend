@@ -12,6 +12,7 @@ const router = (0, express_1.Router)();
 // Public routes (with optional auth for better data)
 router.get('/', auth_middleware_2.optionalAuth, field_controller_1.default.getAllFields);
 router.get('/active', field_controller_1.default.getActiveFields); // Public endpoint for active fields only
+router.get('/price-range', field_controller_1.default.getPriceRange); // Get min and max prices
 router.get('/suggestions', field_controller_1.default.getFieldSuggestions);
 router.get('/search/location', field_controller_1.default.searchByLocation);
 router.get('/nearby', field_controller_1.default.getNearbyFields);
