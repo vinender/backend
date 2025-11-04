@@ -1332,9 +1332,11 @@ class BookingController {
       req.body.rescheduleCount = rescheduleCount + 1;
     }
 
-    // Update recurring if provided
+    // Update repeatBooking if recurring is provided (map recurring to repeatBooking field)
     if (recurring !== undefined) {
-      req.body.recurring = recurring;
+      req.body.repeatBooking = recurring;
+      // Remove the recurring field as it doesn't exist in the schema
+      delete req.body.recurring;
     }
 
     // Log the final update data
