@@ -29,6 +29,30 @@ const errorHandler = (err, req, res, next) => {
         const message = `Invalid input data. ${errors.join('. ')}`;
         error = new AppError_1.AppError(message, 400);
     }
+    // Prisma errors
+    if (err.code && err.code.startsWith('P')) {
+        // Prisma error codes start with 'P'
+        const prismaCode = err.code;
+        let message = 'Something went wrong. Please try again.';
+        // Handle specific Prisma errors
+        if (prismaCode === 'P2002') {
+            message = 'This record already exists. Please use different values.';
+        }
+        else if (prismaCode === 'P2025') {
+            message = 'Record not found.';
+        }
+        else if (prismaCode === 'P2003') {
+            message = 'Invalid reference. Related record not found.';
+        }
+        else if (prismaCode === 'P2014') {
+            message = 'Invalid relation. Please check your input.';
+        }
+        error = new AppError_1.AppError(message, 400);
+    }
+    // Generic Prisma validation errors (Invalid invocation)
+    if (err.message && err.message.includes('Invalid `prisma.')) {
+        error = new AppError_1.AppError('Something went wrong. Please try again.', 400);
+    }
     // JWT errors
     if (err.name === 'JsonWebTokenError') {
         error = new AppError_1.AppError('Invalid token. Please log in again!', 401);
