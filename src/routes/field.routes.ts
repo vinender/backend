@@ -9,6 +9,7 @@ const router = Router();
 // Public routes (with optional auth for better data)
 router.get('/', optionalAuth, fieldController.getAllFields);
 router.get('/active', fieldController.getActiveFields); // Public endpoint for active fields only
+router.get('/price-range', fieldController.getPriceRange); // Get min and max prices
 router.get('/suggestions', fieldController.getFieldSuggestions);
 router.get('/search/location', fieldController.searchByLocation);
 router.get('/nearby', fieldController.getNearbyFields);

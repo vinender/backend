@@ -2160,6 +2160,43 @@ class FieldController {
       }
     });
   });
+
+  // Get price range (min and max) of all active fields
+  getPriceRange = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    // Get all approved and active fields with prices
+    const fields = await prisma.field.findMany({
+      where: {
+        isSubmitted: true,
+        isActive: true,
+        isClaimed: true,
+        price: { not: null }
+      },
+      select: {
+        price: true
+      }
+    });
+
+    // Calculate min and max from the results
+    let minPrice = 0;
+    let maxPrice = 100;
+
+    if (fields.length > 0) {
+      const prices = fields.map(f => f.price).filter((p): p is number => p !== null);
+      if (prices.length > 0) {
+        minPrice = Math.min(...prices);
+        maxPrice = Math.max(...prices);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      status: 'success',
+      data: {
+        minPrice,
+        maxPrice
+      }
+    });
+  });
 }
 
 export default new FieldController();
