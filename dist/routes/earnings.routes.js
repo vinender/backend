@@ -13,5 +13,6 @@ router.use(auth_middleware_1.protect);
 // Field owner routes
 router.get('/dashboard', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.getEarningsDashboard);
 router.get('/payout-history', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.getPayoutHistory);
+router.get('/held-payouts', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.getHeldPayouts);
 router.get('/export', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.exportPayoutHistory);
 exports.default = router;

@@ -211,6 +211,7 @@ const getPublicSettings = async (req, res) => {
     try {
         let settings = await prisma.systemSettings.findFirst({
             select: {
+                defaultCommissionRate: true,
                 cancellationWindowHours: true,
                 maxAdvanceBookingDays: true,
                 maxBookingsPerUser: true,
@@ -239,6 +240,7 @@ const getPublicSettings = async (req, res) => {
         if (!settings) {
             // Return default values if no settings exist
             settings = {
+                defaultCommissionRate: 20,
                 cancellationWindowHours: 24,
                 maxAdvanceBookingDays: 30,
                 maxBookingsPerUser: 10,

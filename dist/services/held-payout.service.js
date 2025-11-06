@@ -51,11 +51,7 @@ class HeldPayoutService {
             for (const booking of heldBookings) {
                 let newPayoutStatus = 'PENDING';
                 // Check payout release schedule
-                if (payoutReleaseSchedule === 'immediate') {
-                    // Release immediately
-                    newPayoutStatus = 'PENDING';
-                }
-                else if (payoutReleaseSchedule === 'on_weekend') {
+                if (payoutReleaseSchedule === 'on_weekend') {
                     // Will be processed on weekend
                     newPayoutStatus = 'PENDING';
                 }
@@ -148,10 +144,7 @@ class HeldPayoutService {
                     continue;
                 }
                 // Field owner has Stripe account, check release schedule
-                if (payoutReleaseSchedule === 'immediate') {
-                    shouldRelease = true;
-                }
-                else if (payoutReleaseSchedule === 'on_weekend') {
+                if (payoutReleaseSchedule === 'on_weekend') {
                     // Check if today is Friday-Sunday
                     const today = new Date().getDay();
                     if (today >= 5 || today === 0) { // Friday = 5, Saturday = 6, Sunday = 0

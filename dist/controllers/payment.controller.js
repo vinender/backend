@@ -278,10 +278,6 @@ class PaymentController {
                     payoutStatus = 'HELD';
                     payoutHeldReason = 'NO_STRIPE_ACCOUNT';
                 }
-                else if (payoutReleaseSchedule === 'immediate') {
-                    // Process immediate payout if configured
-                    payoutStatus = 'PENDING'; // Will be processed immediately after booking creation
-                }
                 else if (payoutReleaseSchedule === 'on_weekend') {
                     // Check if today is weekend
                     const today = new Date().getDay();
@@ -483,70 +479,6 @@ class PaymentController {
                 catch (emailError) {
                     console.error('Error sending booking emails:', emailError);
                     // Don't fail the booking if email fails
-                }
-                // Process immediate payout if configured and Stripe account is connected
-                if (payoutReleaseSchedule === 'immediate' && fieldOwnerStripeAccount &&
-                    fieldOwnerStripeAccount.chargesEnabled && fieldOwnerStripeAccount.payoutsEnabled) {
-                    try {
-                        console.log(`Processing immediate payout for booking ${booking.id}`);
-                        // Create a transfer to the connected account
-                        const transfer = await stripe_config_1.stripe.transfers.create({
-                            amount: Math.round(fieldOwnerAmount * 100), // Convert to cents
-                            currency: 'eur',
-                            destination: fieldOwnerStripeAccount.stripeAccountId,
-                            transfer_group: `booking_${booking.id}`,
-                            metadata: {
-                                bookingId: booking.id,
-                                fieldId: field.id,
-                                fieldOwnerId: field.ownerId,
-                                type: 'immediate_booking_payout',
-                                processingReason: 'immediate_release_configured'
-                            },
-                            description: `Immediate payout for booking ${booking.id} - ${field.name}`
-                        });
-                        // Create payout record in database
-                        const payout = await database_1.default.payout.create({
-                            data: {
-                                stripeAccountId: fieldOwnerStripeAccount.id,
-                                stripePayoutId: transfer.id,
-                                amount: fieldOwnerAmount,
-                                currency: 'eur',
-                                status: 'paid',
-                                method: 'standard',
-                                description: `Immediate payout for booking ${booking.id}`,
-                                bookingIds: [booking.id],
-                                arrivalDate: new Date()
-                            }
-                        });
-                        // Update booking with payout details
-                        await database_1.default.booking.update({
-                            where: { id: booking.id },
-                            data: {
-                                payoutStatus: 'COMPLETED',
-                                payoutId: payout.id
-                            }
-                        });
-                        // Notify field owner about immediate payout
-                        await (0, notification_controller_1.createNotification)({
-                            userId: field.ownerId,
-                            type: 'PAYOUT_PROCESSED',
-                            title: '💰 Instant Payment Received!',
-                            message: `£${fieldOwnerAmount.toFixed(2)} has been instantly transferred to your account for the ${field.name} booking.`,
-                            data: {
-                                bookingId: booking.id,
-                                payoutId: payout.id,
-                                amount: fieldOwnerAmount,
-                                fieldName: field.name,
-                                customerName: user.name || user.email
-                            }
-                        });
-                        console.log(`Immediate payout processed successfully for booking ${booking.id}`);
-                    }
-                    catch (payoutError) {
-                        console.error('Error processing immediate payout:', payoutError);
-                        // Don't fail the booking, just log the error
-                        // Payout will be retried by the scheduled job
-                    }
                 }
             }
             res.json({

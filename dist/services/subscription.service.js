@@ -166,16 +166,66 @@ class SubscriptionService {
     async createBookingFromSubscription(subscriptionId, bookingDate) {
         const subscription = await database_1.default.subscription.findUnique({
             where: { id: subscriptionId },
-            include: { field: true }
+            include: {
+                field: true,
+                user: true // Include user to verify it exists
+            }
         });
         if (!subscription) {
             throw new Error('Subscription not found');
         }
+        if (!subscription.user) {
+            throw new Error(`User not found for subscription ${subscriptionId}`);
+        }
         // Calculate price based on field duration
         const { field } = subscription;
         const pricePerUnit = field.price || 0;
-        const [startHour, startMin] = subscription.startTime.split(':').map(Number);
-        const [endHour, endMin] = subscription.endTime.split(':').map(Number);
+        // Safely parse time strings - handle both "HH:mm" and "H:mmAM/PM" formats
+        let startHour = 0, startMin = 0, endHour = 0, endMin = 0;
+        try {
+            // Check if time is already in "H:mmAM/PM" format or "HH:mm" format
+            if (subscription.startTime.includes('AM') || subscription.startTime.includes('PM')) {
+                // Parse "4:00PM" format
+                const startMatch = subscription.startTime.match(/(\d+):(\d+)(AM|PM)/i);
+                if (startMatch) {
+                    startHour = parseInt(startMatch[1]);
+                    startMin = parseInt(startMatch[2]);
+                    const period = startMatch[3].toUpperCase();
+                    if (period === 'PM' && startHour !== 12)
+                        startHour += 12;
+                    if (period === 'AM' && startHour === 12)
+                        startHour = 0;
+                }
+                const endMatch = subscription.endTime.match(/(\d+):(\d+)(AM|PM)/i);
+                if (endMatch) {
+                    endHour = parseInt(endMatch[1]);
+                    endMin = parseInt(endMatch[2]);
+                    const period = endMatch[3].toUpperCase();
+                    if (period === 'PM' && endHour !== 12)
+                        endHour += 12;
+                    if (period === 'AM' && endHour === 12)
+                        endHour = 0;
+                }
+            }
+            else {
+                // Parse "HH:mm" or "H:mm" format
+                const startParts = subscription.startTime.split(':');
+                const endParts = subscription.endTime.split(':');
+                startHour = parseInt(startParts[0]) || 0;
+                startMin = parseInt(startParts[1]) || 0;
+                endHour = parseInt(endParts[0]) || 0;
+                endMin = parseInt(endParts[1]) || 0;
+            }
+        }
+        catch (error) {
+            console.error(`Failed to parse time for subscription ${subscriptionId}:`, error);
+            console.error(`  startTime: ${subscription.startTime}, endTime: ${subscription.endTime}`);
+            throw new Error(`Invalid time format in subscription: ${subscription.startTime} - ${subscription.endTime}`);
+        }
+        // Validate parsed times
+        if (isNaN(startHour) || isNaN(startMin) || isNaN(endHour) || isNaN(endMin)) {
+            throw new Error(`Failed to parse times - startTime: ${subscription.startTime}, endTime: ${subscription.endTime}`);
+        }
         const durationHours = (endHour * 60 + endMin - startHour * 60 - startMin) / 60;
         let totalPrice = 0;
         if (field.bookingDuration === '30min') {
@@ -185,11 +235,16 @@ class SubscriptionService {
         else {
             totalPrice = pricePerUnit * durationHours * subscription.numberOfDogs;
         }
-        // Get field owner for snapshot
-        const fieldOwner = await database_1.default.user.findUnique({
-            where: { id: field.ownerId },
-            select: { name: true, email: true }
-        });
+        // Validate calculated price
+        if (isNaN(totalPrice) || totalPrice <= 0) {
+            console.error(`Invalid price calculation for subscription ${subscriptionId}:`, {
+                pricePerUnit,
+                durationHours,
+                numberOfDogs: subscription.numberOfDogs,
+                totalPrice
+            });
+            throw new Error('Failed to calculate booking price');
+        }
         // Get the first booking in this subscription series to use as parent
         const firstBooking = await database_1.default.booking.findFirst({
             where: {
@@ -205,21 +260,30 @@ class SubscriptionService {
             'weekly': 'WEEKLY',
             'monthly': 'MONTHLY'
         };
-        // Create booking with field snapshot and recurring fields
+        // Format times for booking - use the parsed values
+        const formattedStartTime = this.formatTimeFromComponents(startHour, startMin);
+        const formattedEndTime = this.formatTimeFromComponents(endHour, endMin);
+        // Create booking with user relation using connect
         const booking = await database_1.default.booking.create({
             data: {
-                userId: subscription.userId,
-                fieldId: subscription.fieldId,
+                user: {
+                    connect: { id: subscription.userId }
+                },
+                field: {
+                    connect: { id: subscription.fieldId }
+                },
                 date: bookingDate,
-                startTime: this.formatTimeForBooking(subscription.startTime),
-                endTime: this.formatTimeForBooking(subscription.endTime),
+                startTime: formattedStartTime,
+                endTime: formattedEndTime,
                 timeSlot: subscription.timeSlot,
                 numberOfDogs: subscription.numberOfDogs,
                 totalPrice,
                 status: 'CONFIRMED',
                 paymentStatus: 'PAID',
                 repeatBooking: subscription.interval,
-                subscriptionId: subscription.id,
+                subscription: {
+                    connect: { id: subscription.id }
+                },
                 platformCommission: totalPrice * 0.20,
                 fieldOwnerAmount: totalPrice * 0.80,
                 // Recurring fields
@@ -475,6 +539,14 @@ class SubscriptionService {
      */
     formatTimeForBooking(time) {
         const [hours, minutes] = time.split(':').map(Number);
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+        return `${displayHour}:${minutes.toString().padStart(2, '0')}${period}`;
+    }
+    /**
+     * Format time from hour and minute components (e.g., 16, 30 to "4:30PM")
+     */
+    formatTimeFromComponents(hours, minutes) {
         const period = hours >= 12 ? 'PM' : 'AM';
         const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
         return `${displayHour}:${minutes.toString().padStart(2, '0')}${period}`;

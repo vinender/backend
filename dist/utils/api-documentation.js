@@ -2587,7 +2587,7 @@ exports.apiDocumentation = {
                     authorization: "ADMIN",
                     requestBody: {
                         platformFee: 12,
-                        payoutReleaseSchedule: "immediate"
+                        payoutReleaseSchedule: "after_cancellation_window"
                     },
                     responses: {
                         success: {

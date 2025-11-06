@@ -81,11 +81,7 @@ class AutomaticPayoutService {
     async shouldReleasePayout(booking, settings) {
         const payoutReleaseSchedule = settings?.payoutReleaseSchedule || 'after_cancellation_window';
         const cancellationWindowHours = settings?.cancellationWindowHours || 24;
-        if (payoutReleaseSchedule === 'immediate') {
-            // Release immediately after payment confirmation
-            return true;
-        }
-        else if (payoutReleaseSchedule === 'on_weekend') {
+        if (payoutReleaseSchedule === 'on_weekend') {
             // Check if today is Friday-Sunday
             const today = new Date().getDay();
             // Friday = 5, Saturday = 6, Sunday = 0

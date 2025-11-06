@@ -259,6 +259,19 @@ class EarningsController {
       hoursUntilPayout: Math.max(0, Math.floor((new Date(b.payoutAvailableAt).getTime() - now.getTime()) / (1000 * 60 * 60)))
     }));
 
+    // Get held payouts summary (payouts awaiting Stripe account or other conditions)
+    const heldBookings = await prisma.booking.findMany({
+      where: {
+        fieldId: { in: fieldIds },
+        payoutStatus: 'HELD',
+        payoutHeldReason: { in: ['NO_STRIPE_ACCOUNT', 'WITHIN_CANCELLATION_WINDOW', 'WAITING_FOR_WEEKEND'] },
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
+        paymentStatus: 'PAID'
+      }
+    });
+
+    const heldAmount = await calculateBookingEarnings(heldBookings);
+
     res.json({
       success: true,
       data: {
@@ -267,22 +280,24 @@ class EarningsController {
         pendingPayouts: payoutSummary.pendingPayouts,
         completedPayouts: completedPayoutAmount,
         upcomingPayouts: payoutSummary.upcomingPayouts,
-        
+        heldPayouts: heldAmount, // ✅ New field
+        heldBookingsCount: heldBookings.length, // ✅ New field
+
         // Period-based earnings
         todayEarnings,
         weekEarnings,
         monthEarnings,
         yearEarnings,
-        
+
         // Recent payouts
         recentPayouts,
-        
+
         // Upcoming earnings (in cancellation window)
         upcomingEarnings,
-        
+
         // Earnings by field
         fieldEarnings,
-        
+
         // Stripe account status
         hasStripeAccount: !!stripeAccount,
         stripeAccountComplete: stripeAccount ? (stripeAccount.chargesEnabled && stripeAccount.payoutsEnabled) : false
@@ -396,6 +411,149 @@ class EarningsController {
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum)
+      }
+    });
+  });
+
+  /**
+   * Get held/pending payouts summary for field owners without Stripe Connect
+   */
+  getHeldPayouts = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    if (userRole !== 'FIELD_OWNER' && userRole !== 'ADMIN') {
+      throw new AppError('Only field owners can view held payouts', 403);
+    }
+
+    // Get all fields owned by this user
+    const userFields = await prisma.field.findMany({
+      where: { ownerId: userId },
+      select: { id: true, name: true }
+    });
+
+    if (userFields.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          totalHeldAmount: 0,
+          heldBookingsCount: 0,
+          heldBookings: [],
+          hasStripeAccount: false,
+          requiresAction: true,
+          message: 'Connect your bank account to receive payments'
+        }
+      });
+    }
+
+    const fieldIds = userFields.map(f => f.id);
+
+    // Check Stripe account status
+    const stripeAccount = await prisma.stripeAccount.findUnique({
+      where: { userId }
+    });
+
+    const hasStripeAccount = !!stripeAccount;
+    const stripeAccountFullyEnabled = stripeAccount?.chargesEnabled && stripeAccount?.payoutsEnabled;
+
+    // Get all held bookings (payouts waiting for Stripe account connection)
+    const heldBookings = await prisma.booking.findMany({
+      where: {
+        fieldId: { in: fieldIds },
+        payoutStatus: 'HELD',
+        payoutHeldReason: { in: ['NO_STRIPE_ACCOUNT', 'WITHIN_CANCELLATION_WINDOW', 'WAITING_FOR_WEEKEND'] },
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
+        paymentStatus: 'PAID'
+      },
+      include: {
+        field: { select: { name: true, id: true } },
+        user: { select: { name: true, email: true } }
+      },
+      orderBy: { date: 'desc' }
+    });
+
+    // Calculate total held amount
+    const { calculatePayoutAmounts } = require('../utils/commission.utils');
+
+    const enhancedHeldBookings = await Promise.all(
+      heldBookings.map(async (booking) => {
+        let fieldOwnerAmount = booking.fieldOwnerAmount;
+        if (!fieldOwnerAmount) {
+          const calc = await calculatePayoutAmounts(booking.totalPrice, userId);
+          fieldOwnerAmount = calc.fieldOwnerAmount;
+        }
+
+        return {
+          id: booking.id,
+          fieldId: booking.fieldId,
+          fieldName: booking.field.name,
+          customerName: booking.user.name || booking.user.email,
+          date: booking.date,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          totalPrice: booking.totalPrice,
+          fieldOwnerAmount,
+          platformCommission: booking.platformCommission,
+          payoutHeldReason: booking.payoutHeldReason,
+          status: booking.status,
+          createdAt: booking.createdAt
+        };
+      })
+    );
+
+    const totalHeldAmount = enhancedHeldBookings.reduce((sum, booking) => sum + booking.fieldOwnerAmount, 0);
+
+    // Group by held reason for better clarity
+    const heldByReason = {
+      NO_STRIPE_ACCOUNT: enhancedHeldBookings.filter(b => b.payoutHeldReason === 'NO_STRIPE_ACCOUNT'),
+      WITHIN_CANCELLATION_WINDOW: enhancedHeldBookings.filter(b => b.payoutHeldReason === 'WITHIN_CANCELLATION_WINDOW'),
+      WAITING_FOR_WEEKEND: enhancedHeldBookings.filter(b => b.payoutHeldReason === 'WAITING_FOR_WEEKEND')
+    };
+
+    // Determine action required message
+    let requiresAction = false;
+    let actionMessage = '';
+
+    if (!hasStripeAccount) {
+      requiresAction = true;
+      actionMessage = 'Connect your bank account to receive your pending payments';
+    } else if (!stripeAccountFullyEnabled) {
+      requiresAction = true;
+      actionMessage = 'Complete your bank account setup to unlock your pending payments';
+    } else if (heldByReason.NO_STRIPE_ACCOUNT.length > 0) {
+      // This shouldn't happen if account is fully enabled, but just in case
+      requiresAction = true;
+      actionMessage = 'Some payments require manual review';
+    } else {
+      actionMessage = heldBookings.length > 0
+        ? 'Payments are held per your payout schedule settings'
+        : 'No pending payments awaiting release';
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalHeldAmount,
+        heldBookingsCount: heldBookings.length,
+        heldBookings: enhancedHeldBookings,
+        heldByReason: {
+          noStripeAccount: {
+            count: heldByReason.NO_STRIPE_ACCOUNT.length,
+            amount: heldByReason.NO_STRIPE_ACCOUNT.reduce((sum, b) => sum + b.fieldOwnerAmount, 0)
+          },
+          withinCancellationWindow: {
+            count: heldByReason.WITHIN_CANCELLATION_WINDOW.length,
+            amount: heldByReason.WITHIN_CANCELLATION_WINDOW.reduce((sum, b) => sum + b.fieldOwnerAmount, 0)
+          },
+          waitingForWeekend: {
+            count: heldByReason.WAITING_FOR_WEEKEND.length,
+            amount: heldByReason.WAITING_FOR_WEEKEND.reduce((sum, b) => sum + b.fieldOwnerAmount, 0)
+          }
+        },
+        hasStripeAccount,
+        stripeAccountFullyEnabled,
+        requiresAction,
+        actionMessage
       }
     });
   });

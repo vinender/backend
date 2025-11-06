@@ -11,6 +11,7 @@ router.use(protect);
 // Field owner routes
 router.get('/dashboard', restrictTo('FIELD_OWNER', 'ADMIN'), earningsController.getEarningsDashboard);
 router.get('/payout-history', restrictTo('FIELD_OWNER', 'ADMIN'), earningsController.getPayoutHistory);
+router.get('/held-payouts', restrictTo('FIELD_OWNER', 'ADMIN'), earningsController.getHeldPayouts);
 router.get('/export', restrictTo('FIELD_OWNER', 'ADMIN'), earningsController.exportPayoutHistory);
 
 export default router;
