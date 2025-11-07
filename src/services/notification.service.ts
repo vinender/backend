@@ -28,6 +28,14 @@ export class NotificationService {
         }
       });
 
+      // Emit socket event for user notification
+      const io = (global as any).io;
+      if (io && userNotification) {
+        const userRoomName = `user-${notificationData.userId}`;
+        console.log('[NotificationService] Emitting user notification to room:', userRoomName);
+        io.to(userRoomName).emit('notification', userNotification);
+      }
+
       // If notifyAdmin is true and it's an important notification type, also notify admin
       if (notifyAdmin && this.shouldNotifyAdmin(notificationData.type)) {
         // Get admin users
@@ -36,9 +44,11 @@ export class NotificationService {
           select: { id: true }
         });
 
-        // Create notification for each admin
+        console.log(`[NotificationService] Creating admin notifications for ${adminUsers.length} admin(s)`);
+
+        // Create notification for each admin and emit socket event
         for (const admin of adminUsers) {
-          await prisma.notification.create({
+          const adminNotification = await prisma.notification.create({
             data: {
               userId: admin.id,
               type: notificationData.type,
@@ -51,6 +61,13 @@ export class NotificationService {
               }
             }
           });
+
+          // Emit socket event for admin notification
+          if (io) {
+            const adminRoomName = `user-${admin.id}`;
+            console.log('[NotificationService] Emitting admin notification to room:', adminRoomName);
+            io.to(adminRoomName).emit('notification', adminNotification);
+          }
         }
       }
 

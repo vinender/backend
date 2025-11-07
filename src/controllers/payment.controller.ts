@@ -4,6 +4,7 @@ import { stripe } from '../config/stripe.config';
 import prisma from '../config/database';
 import Stripe from 'stripe';
 import { createNotification } from './notification.controller';
+import { NotificationService } from '../services/notification.service';
 import { calculatePayoutAmounts } from '../utils/commission.utils';
 import { subscriptionService } from '../services/subscription.service';
 import { emailService } from '../services/email.service';
@@ -601,11 +602,11 @@ export class PaymentController {
           }
         });
 
-        // Send notification to field owner about new booking
+        // Send notification to field owner about new booking (also notifies admins)
         if (field?.ownerId && field.ownerId !== booking.userId) {
-          await createNotification({
+          await NotificationService.createNotification({
             userId: field.ownerId,
-            type: 'new_booking_received',
+            type: 'booking_received',
             title: 'New Booking Received!',
             message: `You have a new booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} at ${booking.startTime}`,
             data: {
@@ -618,7 +619,7 @@ export class PaymentController {
               numberOfDogs: booking.numberOfDogs,
               amount: booking.totalPrice
             }
-          });
+          }, true); // true = also notify admins
         }
 
         // Send confirmation notification to dog owner

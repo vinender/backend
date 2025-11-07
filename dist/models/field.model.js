@@ -119,6 +119,123 @@ class FieldModel {
             };
         }
     }
+    // Find field by ID with minimal data (optimized for SSG/ISR builds)
+    async findByIdMinimal(id) {
+        try {
+            return await database_1.default.field.findUnique({
+                where: { id },
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    location: true,
+                    address: true,
+                    city: true,
+                    state: true,
+                    zipCode: true,
+                    latitude: true,
+                    longitude: true,
+                    price: true,
+                    pricePerDay: true,
+                    bookingDuration: true,
+                    images: true,
+                    size: true,
+                    type: true,
+                    terrainType: true,
+                    surfaceType: true,
+                    fenceType: true,
+                    fenceSize: true,
+                    maxDogs: true,
+                    amenities: true,
+                    rules: true,
+                    cancellationPolicy: true,
+                    openingTime: true,
+                    closingTime: true,
+                    operatingDays: true,
+                    instantBooking: true,
+                    isActive: true,
+                    isClaimed: true,
+                    ownerName: true,
+                    joinedOn: true,
+                    ownerId: true,
+                    averageRating: true,
+                    totalReviews: true,
+                    approvalStatus: true,
+                    isApproved: true,
+                    isSubmitted: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    owner: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            image: true,
+                        },
+                    },
+                    _count: {
+                        select: {
+                            reviews: true,
+                        },
+                    },
+                },
+            });
+        }
+        catch (error) {
+            // If owner relation fails, fetch without owner
+            console.warn(`Field ${id} has invalid owner reference, fetching without owner relation`);
+            return await database_1.default.field.findUnique({
+                where: { id },
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    location: true,
+                    address: true,
+                    city: true,
+                    state: true,
+                    zipCode: true,
+                    latitude: true,
+                    longitude: true,
+                    price: true,
+                    pricePerDay: true,
+                    bookingDuration: true,
+                    images: true,
+                    size: true,
+                    type: true,
+                    terrainType: true,
+                    surfaceType: true,
+                    fenceType: true,
+                    fenceSize: true,
+                    maxDogs: true,
+                    amenities: true,
+                    rules: true,
+                    cancellationPolicy: true,
+                    openingTime: true,
+                    closingTime: true,
+                    operatingDays: true,
+                    instantBooking: true,
+                    isActive: true,
+                    isClaimed: true,
+                    ownerName: true,
+                    joinedOn: true,
+                    ownerId: true,
+                    averageRating: true,
+                    totalReviews: true,
+                    approvalStatus: true,
+                    isApproved: true,
+                    isSubmitted: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    _count: {
+                        select: {
+                            reviews: true,
+                        },
+                    },
+                },
+            });
+        }
+    }
     // Find all fields with filters and pagination
     async findAll(filters) {
         const { skip = 0, take = 10, sortBy = 'createdAt', sortOrder = 'desc', ...where } = filters;

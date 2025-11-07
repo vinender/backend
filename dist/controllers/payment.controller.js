@@ -7,6 +7,7 @@ exports.PaymentController = void 0;
 const stripe_config_1 = require("../config/stripe.config");
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("./notification.controller");
+const notification_service_1 = require("../services/notification.service");
 const commission_utils_1 = require("../utils/commission.utils");
 const email_service_1 = require("../services/email.service");
 class PaymentController {
@@ -538,11 +539,11 @@ class PaymentController {
                         stripePaymentIntentId: paymentIntentId
                     }
                 });
-                // Send notification to field owner about new booking
+                // Send notification to field owner about new booking (also notifies admins)
                 if (field?.ownerId && field.ownerId !== booking.userId) {
-                    await (0, notification_controller_1.createNotification)({
+                    await notification_service_1.NotificationService.createNotification({
                         userId: field.ownerId,
-                        type: 'new_booking_received',
+                        type: 'booking_received',
                         title: 'New Booking Received!',
                         message: `You have a new booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} at ${booking.startTime}`,
                         data: {
@@ -555,7 +556,7 @@ class PaymentController {
                             numberOfDogs: booking.numberOfDogs,
                             amount: booking.totalPrice
                         }
-                    });
+                    }, true); // true = also notify admins
                 }
                 // Send confirmation notification to dog owner
                 await (0, notification_controller_1.createNotification)({

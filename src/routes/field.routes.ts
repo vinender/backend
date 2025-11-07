@@ -23,6 +23,9 @@ router.post('/claim-ownership', protect, restrictTo('FIELD_OWNER'), fieldControl
 // My fields route (must come before /:id to avoid conflict)
 router.get('/my-fields', protect, restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.getMyFields);
 
+// Optimized minimal field data endpoint (for SSG/ISR builds)
+router.get('/:id/minimal', fieldController.getFieldMinimal);
+
 // Public route with ID parameter (must come after specific routes)
 router.get('/:id', optionalAuth, fieldController.getField);
 

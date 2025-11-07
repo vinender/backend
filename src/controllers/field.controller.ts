@@ -378,6 +378,35 @@ class FieldController {
     });
   });
 
+  // Get field by ID with minimal data (optimized for SSG/ISR builds)
+  getFieldMinimal = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+
+    const field = await FieldModel.findByIdMinimal(id);
+    if (!field) {
+      throw new AppError('Field not found', 404);
+    }
+
+    // Transform amenities to objects
+    const amenityObjects = await transformAmenitiesToObjects(field.amenities || []);
+    const amenitiesWithIcons = amenityObjects.map((amenity) => ({
+      id: amenity.id,
+      label: amenity.label,
+      value: amenity.value,
+      iconUrl: amenity.iconUrl ?? null,
+    }));
+
+    const enrichedField = {
+      ...field,
+      amenities: amenitiesWithIcons,
+    };
+
+    res.json({
+      success: true,
+      data: enrichedField,
+    });
+  });
+
   // Get fields by owner
   getMyFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const ownerId = (req as any).user.id;

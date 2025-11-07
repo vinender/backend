@@ -23,6 +23,8 @@ router.get('/unclaimed', auth_middleware_1.protect, (0, auth_middleware_1.restri
 router.post('/claim-ownership', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), field_controller_1.default.claimField);
 // My fields route (must come before /:id to avoid conflict)
 router.get('/my-fields', auth_middleware_1.protect, (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.getMyFields);
+// Optimized minimal field data endpoint (for SSG/ISR builds)
+router.get('/:id/minimal', field_controller_1.default.getFieldMinimal);
 // Public route with ID parameter (must come after specific routes)
 router.get('/:id', auth_middleware_2.optionalAuth, field_controller_1.default.getField);
 // All remaining routes require authentication
