@@ -17,7 +17,7 @@ exports.notificationController = {
                     message: 'User not authenticated',
                 });
             }
-            const { page = 1, limit = 20, unreadOnly = false } = req.query;
+            const { page = 1, limit = 20, unreadOnly = false, markAsRead = 'false' } = req.query;
             const skip = (Number(page) - 1) * Number(limit);
             const where = { userId };
             if (unreadOnly === 'true') {
@@ -33,6 +33,32 @@ exports.notificationController = {
                 prisma.notification.count({ where }),
                 prisma.notification.count({ where: { userId, read: false } }),
             ]);
+            // If markAsRead query param is true, mark all fetched notifications as read
+            if (markAsRead === 'true' && notifications.length > 0) {
+                const notificationIds = notifications
+                    .filter(n => !n.read)
+                    .map(n => n.id);
+                if (notificationIds.length > 0) {
+                    await prisma.notification.updateMany({
+                        where: {
+                            id: { in: notificationIds },
+                            userId, // Ensure user owns these notifications
+                        },
+                        data: {
+                            read: true,
+                            readAt: new Date(),
+                        },
+                    });
+                    console.log(`Marked ${notificationIds.length} notifications as read for user ${userId}`);
+                    // Update the notifications array to reflect the changes
+                    notifications.forEach(notification => {
+                        if (notificationIds.includes(notification.id)) {
+                            notification.read = true;
+                            notification.readAt = new Date();
+                        }
+                    });
+                }
+            }
             res.json({
                 success: true,
                 data: notifications,
@@ -42,7 +68,7 @@ exports.notificationController = {
                     total,
                     totalPages: Math.ceil(total / Number(limit)),
                 },
-                unreadCount,
+                unreadCount: markAsRead === 'true' ? 0 : unreadCount, // If we just marked all as read, unread count is 0
             });
         }
         catch (error) {
