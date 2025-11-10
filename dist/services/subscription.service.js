@@ -285,11 +285,7 @@ class SubscriptionService {
                     connect: { id: subscription.id }
                 },
                 platformCommission: totalPrice * 0.20,
-                fieldOwnerAmount: totalPrice * 0.80,
-                // Recurring fields
-                isRecurring: true,
-                recurringFrequency: recurringFrequencyMap[subscription.interval.toLowerCase()] || 'EVERYDAY',
-                parentBookingId: firstBooking?.id || null
+                fieldOwnerAmount: totalPrice * 0.80
             }
         });
         // Update subscription last booking date

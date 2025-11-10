@@ -1671,154 +1671,101 @@ class BookingController {
     const maxFutureDate = new Date();
     maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
 
-    // Get both subscriptions and bookings with repeatBooking !== 'none'
-    const [subscriptions, recurringBookings] = await Promise.all([
-      // Get user's subscriptions from subscription table
-      prisma.subscription.findMany({
-        where: {
-          userId,
-          ...(status && { status: status as string })
-        },
-        include: {
-          field: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
+    // Get user's subscriptions from subscription table
+    // Only show subscription cards - individual recurring bookings are created from subscriptions
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        userId,
+        ...(status && { status: status as string })
+      },
+      include: {
+        field: {
+          include: {
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                email: true
               }
-            }
-          },
-          bookings: {
-            take: 5,
-            orderBy: {
-              date: 'desc'
             }
           }
         },
-        orderBy: {
-          createdAt: 'desc'
-        }
-      }),
-      // Get regular bookings with repeatBooking set (handle case variations)
-      // Exclude bookings that are already linked to a subscription to avoid duplicates
-      prisma.booking.findMany({
-        where: {
-          userId,
-          subscriptionId: null, // ✅ Only get bookings WITHOUT a subscription
-          AND: [
-            {
-              repeatBooking: {
-                not: null
-              }
-            },
-            {
-              repeatBooking: {
-                notIn: ['none', 'None', 'NONE', '']
-              }
-            }
-          ],
-          status: status === 'active' ? 'CONFIRMED' : { in: ['CANCELLED', 'COMPLETED'] }
-        },
-        include: {
-          field: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
-              }
-            }
+        bookings: {
+          where: {
+            status: { not: 'CANCELLED' }
           },
-          payment: true
-        },
-        orderBy: {
-          createdAt: 'desc'
+          orderBy: {
+            date: 'asc'
+          }
         }
-      })
-    ]);
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
 
-    // Format subscriptions
-    const formattedSubscriptions = subscriptions.map(sub => ({
-      id: sub.id,
-      type: 'subscription',
-      fieldId: sub.fieldId,
-      fieldName: sub.field.name,
-      fieldAddress: sub.field.address,
-      fieldOwner: sub.field.owner.name,
-      interval: sub.interval,
-      dayOfWeek: sub.dayOfWeek,
-      dayOfMonth: sub.dayOfMonth,
-      timeSlot: sub.timeSlot,
-      startTime: sub.startTime,
-      endTime: sub.endTime,
-      numberOfDogs: sub.numberOfDogs,
-      totalPrice: sub.totalPrice,
-      status: sub.status,
-      nextBillingDate: sub.nextBillingDate,
-      currentPeriodEnd: sub.currentPeriodEnd,
-      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
-      canceledAt: sub.canceledAt,
-      recentBookings: sub.bookings
-        .filter(booking => new Date(booking.date) <= maxFutureDate) // Filter by advance booking days
+    const now = new Date();
+
+    // Format subscriptions with calculated next billing date
+    const formattedSubscriptions = subscriptions.map(sub => {
+      // Filter bookings: only future bookings or the most recent past booking
+      const futureBookings = sub.bookings.filter(booking =>
+        new Date(booking.date) > now && new Date(booking.date) <= maxFutureDate
+      );
+      const pastBookings = sub.bookings.filter(booking =>
+        new Date(booking.date) <= now
+      );
+
+      // Calculate next billing date from upcoming bookings
+      let calculatedNextBillingDate = sub.nextBillingDate;
+      if (futureBookings.length > 0) {
+        // Use the earliest future booking date as next billing date
+        calculatedNextBillingDate = futureBookings[0].date;
+      }
+
+      // For recent bookings, show up to 5 most recent bookings (past + future)
+      const recentBookingsToShow = [
+        ...pastBookings.slice(-2), // Last 2 past bookings
+        ...futureBookings.slice(0, 3) // Next 3 future bookings
+      ]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(0, 5)
         .map(booking => ({
           id: booking.id,
           date: booking.date,
           status: booking.status,
           paymentStatus: booking.paymentStatus
-        })),
-      createdAt: sub.createdAt
-    }));
+        }));
 
-    // Format regular bookings with repeatBooking
-    const formattedRecurringBookings = recurringBookings.map(booking => ({
-      id: booking.id,
-      type: 'booking',
-      fieldId: booking.fieldId,
-      fieldName: booking.field.name,
-      fieldAddress: booking.field.address,
-      fieldOwner: booking.field.owner.name || booking.field.owner.email,
-      interval: booking.repeatBooking, // 'weekly' or 'monthly'
-      dayOfWeek: null, // Could extract from date if needed
-      dayOfMonth: null,
-      timeSlot: booking.timeSlot,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
-      numberOfDogs: booking.numberOfDogs,
-      totalPrice: booking.totalPrice,
-      status: booking.status === 'CONFIRMED' ? 'active' : booking.status.toLowerCase(),
-      nextBillingDate: booking.date, // Use booking date
-      currentPeriodEnd: booking.date,
-      cancelAtPeriodEnd: false,
-      canceledAt: booking.cancelledAt,
-      recentBookings: [{
-        id: booking.id,
-        date: booking.date,
-        status: booking.status,
-        paymentStatus: booking.paymentStatus
-      }],
-      createdAt: booking.createdAt,
-      repeatBooking: booking.repeatBooking // Include original field
-    }));
-
-    // Combine both lists
-    const allRecurringBookings = [...formattedSubscriptions, ...formattedRecurringBookings];
-
-    // Sort by creation date (newest first)
-    allRecurringBookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return {
+        id: sub.id,
+        type: 'subscription',
+        fieldId: sub.fieldId,
+        fieldName: sub.field.name,
+        fieldAddress: sub.field.address,
+        fieldOwner: sub.field.owner.name,
+        interval: sub.interval,
+        dayOfWeek: sub.dayOfWeek,
+        dayOfMonth: sub.dayOfMonth,
+        timeSlot: sub.timeSlot,
+        startTime: sub.startTime,
+        endTime: sub.endTime,
+        numberOfDogs: sub.numberOfDogs,
+        totalPrice: sub.totalPrice,
+        status: sub.status,
+        nextBillingDate: calculatedNextBillingDate, // Use calculated next billing date
+        currentPeriodEnd: sub.currentPeriodEnd,
+        cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        canceledAt: sub.canceledAt,
+        recentBookings: recentBookingsToShow,
+        createdAt: sub.createdAt
+      };
+    });
 
     res.json({
       success: true,
-      data: allRecurringBookings,
-      total: allRecurringBookings.length,
-      breakdown: {
-        subscriptions: formattedSubscriptions.length,
-        recurringBookings: formattedRecurringBookings.length
-      }
+      data: formattedSubscriptions,
+      total: formattedSubscriptions.length
     });
   });
 

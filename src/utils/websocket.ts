@@ -487,6 +487,7 @@ export function setupWebSocket(server: HTTPServer) {
           conversationId,
           message: savedMessage
         });
+        
         socketLog(`[Socket] ✅ Sent 'new-message-notification' to receiver room: ${receiverRoom}`);
 
         // Send acknowledgment to sender immediately

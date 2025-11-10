@@ -78,23 +78,24 @@ class Server {
         // TEMPORARILY ALLOW ALL ORIGINS FOR MOBILE APP TESTING
         console.log('[REST API] CORS: Allowing all origins (*)');
         // COMMENTED OUT: Specific origin validation (restore for production)
-        // const allowedOrigins = [
-        //   'http://localhost:3000',
-        //   'http://localhost:3001',
-        //   'http://localhost:5000',
-        //   'http://localhost:3002',
-        //   "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
-        //   "exp://*",
-        //   'http://localhost:3003', // Admin dashboard
-        //   'http://localhost:8081', // Expo web
-        //   'https://fieldsy.indiitserver.in', // Production frontend
-        //   'https://fieldsy-admin.indiitserver.in', // Production admin
-        //   'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
-        //   'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
-        //   FRONTEND_URL
-        // ];
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://localhost:5000',
+            'http://localhost:3002',
+            "exp+fieldsy://*", // ✅ your Expo app scheme (for dev client)
+            "exp://*",
+            'http://localhost:3003', // Admin dashboard
+            'http://localhost:8081', // Expo web
+            'https://fieldsy.indiitserver.in', // Production frontend
+            'https://fieldsy-admin.indiitserver.in', // Production admin
+            'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
+            'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
+            constants_1.FRONTEND_URL
+        ];
         this.app.use((0, cors_1.default)({
-            origin: '*', // Allow all origins
+            // origin: '*', // Allow all origins
+            origin: allowedOrigins,
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
