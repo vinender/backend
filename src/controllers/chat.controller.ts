@@ -358,12 +358,20 @@ export const getUnreadCount = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
 
-    const unreadCount = await prisma.message.count({
+    // Get distinct conversation IDs that have unread messages for this user
+    const unreadConversations = await prisma.message.findMany({
       where: {
         receiverId: userId,
         isRead: false
-      }
+      },
+      select: {
+        conversationId: true
+      },
+      distinct: ['conversationId']
     });
+
+    // Count the number of conversations with unread messages
+    const unreadCount = unreadConversations.length;
 
     res.json({ unreadCount });
   } catch (error) {
