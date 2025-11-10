@@ -22,55 +22,55 @@ const socketError = (...args: any[]) => {
 };
 
 export function setupWebSocket(server: HTTPServer) {
-  // TEMPORARILY ALLOW ALL ORIGINS FOR MOBILE APP TESTING
-  console.log('[WebSocket] CORS: Allowing all origins (*)');
+  console.log('[WebSocket] CORS: Using specific allowed origins with credentials');
 
-  // COMMENTED OUT: Specific origin validation (restore for production)
-  // const allowedOrigins = [
-  //   'http://localhost:3000',
-  //   'http://localhost:3001',
-  //   'http://localhost:3002',
-  //   'http://localhost:3003',
-  //   'http://localhost:8081',
-  //   'https://fieldsy.indiitserver.in',
-  //   'https://fieldsy-admin.indiitserver.in',
-  //   'http://fieldsy.indiitserver.in',
-  //   'http://fieldsy-admin.indiitserver.in',
-  // ];
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://localhost:3003',
+    'http://localhost:3004',
+    'http://localhost:3005',
+    'http://localhost:8081',
+    'http://localhost:19006',
+    'https://fieldsy.indiitserver.in',
+    'https://fieldsy-admin.indiitserver.in',
+    'http://fieldsy.indiitserver.in',
+    'http://fieldsy-admin.indiitserver.in',
+    process.env.FRONTEND_URL,
+    process.env.ADMIN_URL,
+  ].filter(Boolean); // Remove undefined values
 
   const io = new Server(server, {
     cors: {
-      origin: '*', // Allow all origins
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, Postman, React Native)
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        // In development, be more permissive with localhost
+        if (process.env.NODE_ENV === 'development' && (
+          origin.includes('localhost') ||
+          origin.includes('127.0.0.1') ||
+          origin.includes('192.168.') ||
+          origin.includes('10.0.')
+        )) {
+          return callback(null, true);
+        }
+
+        // Check if the origin is in the allowed list
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          console.log('[WebSocket] Rejected origin:', origin);
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
     },
-
-    // COMMENTED OUT: Origin validation function (restore for production)
-    // cors: {
-    //   origin: (origin, callback) => {
-    //     // Allow requests with no origin (like mobile apps)
-    //     if (!origin) {
-    //       return callback(null, true);
-    //     }
-    //
-    //     // In development, be more permissive
-    //     if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
-    //       return callback(null, true);
-    //     }
-    //
-    //     // Check if the origin is allowed
-    //     if (allowedOrigins.includes(origin)) {
-    //       callback(null, true);
-    //     } else {
-    //       console.log('[WebSocket] Rejected origin:', origin);
-    //       callback(new Error('Not allowed by CORS'));
-    //     }
-    //   },
-    //   credentials: true,
-    //   methods: ['GET', 'POST', 'OPTIONS'],
-    //   allowedHeaders: ['Content-Type', 'Authorization'],
-    // },
     transports: ['polling', 'websocket'], // Polling first for better compatibility
     allowEIO3: true, // Allow different Socket.IO versions
     pingTimeout: 60000, // 60 seconds
