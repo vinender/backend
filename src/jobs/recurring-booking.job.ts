@@ -488,80 +488,8 @@ async function checkPastBookingsAndCreateNext() {
           nextBookingDate
         );
 
-        // Notify user
-        await createNotification({
-          userId: subscription.userId,
-          type: 'recurring_booking_created',
-          title: 'Next Booking Scheduled',
-          message: `Your next ${subscription.interval} booking at ${subscription.field.name} has been automatically scheduled for ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot}`,
-          data: {
-            bookingId: newBooking.id,
-            subscriptionId: subscription.id,
-            fieldId: subscription.fieldId,
-            fieldName: subscription.field.name,
-            bookingDate: nextBookingDate.toISOString(),
-            timeSlot: subscription.timeSlot
-          }
-        });
-
-        // Send email to dog owner
-        try {
-          const { emailService } = await import('../services/email.service');
-          await emailService.sendRecurringBookingEmailToDogOwner({
-            email: subscription.user.email,
-            userName: subscription.user.name || 'Valued Customer',
-            fieldName: subscription.field.name,
-            bookingDate: nextBookingDate,
-            timeSlot: subscription.timeSlot,
-            startTime: subscription.startTime,
-            endTime: subscription.endTime,
-            interval: subscription.interval,
-            numberOfDogs: subscription.numberOfDogs,
-            totalPrice: newBooking.totalPrice
-          });
-        } catch (emailError) {
-          console.error('Failed to send email to dog owner:', emailError);
-        }
-
-        // Notify field owner
-        if (subscription.field.ownerId && subscription.field.ownerId !== subscription.userId) {
-          await createNotification({
-            userId: subscription.field.ownerId,
-            type: 'recurring_booking_scheduled',
-            title: 'Recurring Booking Scheduled',
-            message: `A ${subscription.interval} booking has been scheduled for ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot}`,
-            data: {
-              bookingId: newBooking.id,
-              subscriptionId: subscription.id,
-              fieldId: subscription.fieldId,
-              fieldName: subscription.field.name,
-              bookingDate: nextBookingDate.toISOString(),
-              timeSlot: subscription.timeSlot,
-              dogOwnerName: subscription.user.name
-            }
-          });
-
-          // Send email to field owner
-          try {
-            const { emailService } = await import('../services/email.service');
-            await emailService.sendRecurringBookingEmailToFieldOwner({
-              email: subscription.field.owner.email,
-              ownerName: subscription.field.owner.name || 'Field Owner',
-              fieldName: subscription.field.name,
-              bookingDate: nextBookingDate,
-              timeSlot: subscription.timeSlot,
-              startTime: subscription.startTime,
-              endTime: subscription.endTime,
-              interval: subscription.interval,
-              numberOfDogs: subscription.numberOfDogs,
-              dogOwnerName: subscription.user.name || 'Dog Owner',
-              totalPrice: newBooking.totalPrice,
-              fieldOwnerAmount: newBooking.fieldOwnerAmount
-            });
-          } catch (emailError) {
-            console.error('Failed to send email to field owner:', emailError);
-          }
-        }
+        // NOTE: Notifications are sent by the daily job (createUpcomingRecurringBookings)
+        // to avoid duplicate notifications. This hourly job only creates bookings silently.
 
         results.created++;
         console.log(`✅ Created booking ${newBooking.id} for subscription ${subscription.id}`);

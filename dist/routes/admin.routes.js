@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -221,10 +254,21 @@ router.get('/revenue/total', admin_middleware_1.authenticateAdmin, async (req, r
 // Get all bookings for admin
 router.get('/bookings', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
-        const { page = '1', limit = '10' } = req.query;
+        const { page = '1', limit = '10', searchName } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
+        // Build where clause for name search
+        const whereClause = {};
+        if (searchName && typeof searchName === 'string' && searchName.trim()) {
+            whereClause.user = {
+                name: {
+                    contains: searchName.trim(),
+                    mode: 'insensitive' // Case-insensitive search
+                }
+            };
+        }
         const [bookings, total] = await Promise.all([
             prisma.booking.findMany({
+                where: whereClause,
                 skip,
                 take: parseInt(limit),
                 orderBy: { createdAt: 'desc' },
@@ -238,7 +282,7 @@ router.get('/bookings', admin_middleware_1.authenticateAdmin, async (req, res) =
                     payment: true
                 }
             }),
-            prisma.booking.count()
+            prisma.booking.count({ where: whereClause })
         ]);
         res.json({
             success: true,
@@ -1031,6 +1075,83 @@ router.patch('/claims/:claimId/status', admin_middleware_1.authenticateAdmin, as
     }
     catch (error) {
         console.error('Update claim status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+// Update admin profile
+router.patch('/profile', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const adminId = req.userId;
+        const { name, phone, bio } = req.body;
+        const updates = {};
+        if (name !== undefined)
+            updates.name = name;
+        if (phone !== undefined)
+            updates.phone = phone;
+        if (bio !== undefined)
+            updates.bio = bio;
+        const updatedAdmin = await prisma.user.update({
+            where: { id: adminId },
+            data: updates
+        });
+        const { password: _, ...adminData } = updatedAdmin;
+        res.json({
+            success: true,
+            admin: adminData
+        });
+    }
+    catch (error) {
+        console.error('Update admin profile error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+// Upload admin profile image
+router.post('/profile/upload-image', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const adminId = req.userId;
+        const upload = await Promise.resolve().then(() => __importStar(require('../middleware/upload.middleware')));
+        const uploadSingle = upload.uploadSingle('image');
+        uploadSingle(req, res, async (err) => {
+            if (err) {
+                return res.status(400).json({ error: err.message });
+            }
+            const file = req.file;
+            if (!file) {
+                return res.status(400).json({ error: 'No file uploaded' });
+            }
+            const updatedAdmin = await prisma.user.update({
+                where: { id: adminId },
+                data: { image: file.location }
+            });
+            const { password: _, ...adminData } = updatedAdmin;
+            res.json({
+                success: true,
+                admin: adminData,
+                imageUrl: file.location
+            });
+        });
+    }
+    catch (error) {
+        console.error('Upload admin profile image error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+// Delete admin profile image
+router.delete('/profile/delete-image', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const adminId = req.userId;
+        const updatedAdmin = await prisma.user.update({
+            where: { id: adminId },
+            data: { image: null }
+        });
+        const { password: _, ...adminData } = updatedAdmin;
+        res.json({
+            success: true,
+            admin: adminData
+        });
+    }
+    catch (error) {
+        console.error('Delete admin profile image error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

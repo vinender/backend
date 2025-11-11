@@ -491,23 +491,25 @@ class BookingController {
     // Handle multiple statuses and date filtering
     if (status) {
       const statuses = (status as string).split(',');
+      const now = new Date();
+      now.setHours(0, 0, 0, 0); // Set to start of day for consistent date comparisons
+      const hasCustomDateFilter = !!(startDate && endDate) || !!dateRange;
 
       // If multiple statuses, use OR condition
       if (statuses.length > 1) {
         const statusConditions: any[] = [];
-        const now = new Date();
-        const hasCustomDateFilter = !!(startDate && endDate) || !!dateRange;
 
         for (const s of statuses) {
           const statusCondition: any = { status: s };
 
-          // For CANCELLED bookings, filter by date only if no custom date filter is applied
-          if (s === 'CANCELLED' && !hasCustomDateFilter) {
+          // Apply date filtering based on includeFuture and includeExpired flags
+          // This applies to ALL statuses to ensure proper filtering
+          if (!hasCustomDateFilter) {
             if (includeFuture === 'true') {
-              // Upcoming tab: show cancelled bookings with future dates
+              // Upcoming tab: show only bookings with future dates
               statusCondition.date = { gte: now };
             } else if (includeExpired === 'true') {
-              // Previous tab: show cancelled bookings with past dates
+              // Previous tab: show only bookings with past dates
               statusCondition.date = { lt: now };
             }
           }
@@ -515,18 +517,21 @@ class BookingController {
           statusConditions.push(statusCondition);
         }
 
-        // For non-cancelled statuses, don't apply date filter
-        const nonCancelledStatuses = statuses.filter(s => s !== 'CANCELLED');
-        if (nonCancelledStatuses.length > 0) {
-          whereClause.OR = [
-            { status: { in: nonCancelledStatuses } },
-            ...statusConditions.filter(sc => sc.status === 'CANCELLED')
-          ];
-        } else {
-          whereClause.OR = statusConditions;
-        }
+        whereClause.OR = statusConditions;
       } else {
-        whereClause.status = status as string;
+        // Single status
+        const statusCondition: any = { status: status as string };
+
+        // Apply date filtering for single status too
+        if (!hasCustomDateFilter) {
+          if (includeFuture === 'true') {
+            statusCondition.date = { gte: now };
+          } else if (includeExpired === 'true') {
+            statusCondition.date = { lt: now };
+          }
+        }
+
+        whereClause = { ...whereClause, ...statusCondition };
       }
     }
 
@@ -563,9 +568,21 @@ class BookingController {
 
     // Automatically mark past CONFIRMED bookings as COMPLETED
     const now = new Date();
+    console.log('=== getMyBookings Debug ===');
+    console.log('Total bookings fetched:', bookings.length);
+    console.log('Current time:', now.toISOString());
+    console.log('Status filter:', status);
+    console.log('includeFuture:', includeFuture);
+    console.log('includeExpired:', includeExpired);
+
     const processedBookings = bookings.map((booking) => {
-      // Check if booking is past and still CONFIRMED
-      if (booking.status === 'CONFIRMED' && new Date(booking.date) < now) {
+      console.log(`\nBooking ${booking.id}:`);
+      console.log('- Date:', booking.date);
+      console.log('- Time:', booking.startTime, '-', booking.endTime);
+      console.log('- Status:', booking.status);
+
+      // Check if booking is CONFIRMED and needs status check
+      if (booking.status === 'CONFIRMED') {
         // Parse the booking end time to check if the session has ended
         const bookingDate = new Date(booking.date);
         const [endHourStr, endPeriod] = booking.endTime.split(/(?=[AP]M)/);
@@ -576,13 +593,21 @@ class BookingController {
 
         bookingDate.setHours(endHour, endMinute, 0, 0);
 
+        console.log('- End time as Date:', bookingDate.toISOString());
+        console.log('- Is past?', bookingDate < now);
+
         // If the booking end time has passed, treat it as completed
         if (bookingDate < now) {
+          console.log('- Marking as COMPLETED');
           return { ...booking, status: 'COMPLETED' };
         }
       }
+      console.log('- Keeping status:', booking.status);
       return booking;
     });
+
+    console.log('\nProcessed bookings count:', processedBookings.length);
+    console.log('=== End Debug ===\n');
 
     // Transform bookings to remove redundant data and optimize response
     // Use Promise.all to handle async amenity transformation

@@ -197,7 +197,7 @@ export class RefundService {
           data: {
             stripeAccountId: stripeAccount?.id || '',
             amount: netPayoutAmount,
-            currency: 'eur',
+            currency: 'gbp',
             status: 'pending',
             description: `Payout for cancelled booking ${booking.id}`,
             bookingIds: [booking.id]
@@ -222,7 +222,7 @@ export class RefundService {
       try {
         const transfer = await stripe.transfers.create({
           amount: Math.round(netPayoutAmount * 100), // Convert to cents
-          currency: 'eur',
+          currency: 'gbp',
           destination: stripeAccount.stripeAccountId,
           description: `Payout for booking ${booking.id}`,
           metadata: {
@@ -239,7 +239,7 @@ export class RefundService {
             stripeAccountId: stripeAccount.id,
             stripePayoutId: transfer.id,
             amount: netPayoutAmount,
-            currency: 'eur',
+            currency: 'gbp',
             status: 'paid',
             description: `Payout for booking ${booking.id}`,
             bookingIds: [booking.id],
@@ -277,7 +277,7 @@ export class RefundService {
           data: {
             stripeAccountId: stripeAccount.id,
             amount: netPayoutAmount,
-            currency: 'eur',
+            currency: 'gbp',
             status: 'failed',
             description: `Failed payout for booking ${booking.id}`,
             bookingIds: [booking.id],

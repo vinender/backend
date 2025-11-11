@@ -97,7 +97,7 @@ export class SubscriptionService {
     const priceData: Stripe.PriceCreateParams = {
       product: product.id,
       unit_amount: Math.round(amount * 100), // Convert to cents
-      currency: 'eur',
+      currency: 'gbp',
       recurring: {
         interval: repeatBooking === 'weekly' ? 'week' : 'month',
         interval_count: 1

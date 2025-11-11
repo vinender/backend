@@ -255,11 +255,23 @@ router.get('/revenue/total', authenticateAdmin, async (req, res) => {
 // Get all bookings for admin
 router.get('/bookings', authenticateAdmin, async (req, res) => {
   try {
-    const { page = '1', limit = '10' } = req.query;
+    const { page = '1', limit = '10', searchName } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    // Build where clause for name search
+    const whereClause: any = {};
+    if (searchName && typeof searchName === 'string' && searchName.trim()) {
+      whereClause.user = {
+        name: {
+          contains: searchName.trim(),
+          mode: 'insensitive' // Case-insensitive search
+        }
+      };
+    }
 
     const [bookings, total] = await Promise.all([
       prisma.booking.findMany({
+        where: whereClause,
         skip,
         take: parseInt(limit as string),
         orderBy: { createdAt: 'desc' },
@@ -273,7 +285,7 @@ router.get('/bookings', authenticateAdmin, async (req, res) => {
           payment: true
         }
       }),
-      prisma.booking.count()
+      prisma.booking.count({ where: whereClause })
     ]);
 
     res.json({
@@ -1135,6 +1147,95 @@ router.patch('/claims/:claimId/status', authenticateAdmin, async (req, res) => {
 
   } catch (error) {
     console.error('Update claim status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update admin profile
+router.patch('/profile', authenticateAdmin, async (req, res) => {
+  try {
+    const adminId = (req as any).userId;
+    const { name, phone, bio } = req.body;
+
+    const updates: any = {};
+    if (name !== undefined) updates.name = name;
+    if (phone !== undefined) updates.phone = phone;
+    if (bio !== undefined) updates.bio = bio;
+
+    const updatedAdmin = await prisma.user.update({
+      where: { id: adminId },
+      data: updates
+    });
+
+    const { password: _, ...adminData } = updatedAdmin;
+
+    res.json({
+      success: true,
+      admin: adminData
+    });
+
+  } catch (error) {
+    console.error('Update admin profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Upload admin profile image
+router.post('/profile/upload-image', authenticateAdmin, async (req, res) => {
+  try {
+    const adminId = (req as any).userId;
+    const upload = await import('../middleware/upload.middleware');
+    const uploadSingle = upload.uploadSingle('image');
+
+    uploadSingle(req, res, async (err: any) => {
+      if (err) {
+        return res.status(400).json({ error: err.message });
+      }
+
+      const file = (req as any).file;
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const updatedAdmin = await prisma.user.update({
+        where: { id: adminId },
+        data: { image: file.location }
+      });
+
+      const { password: _, ...adminData } = updatedAdmin;
+
+      res.json({
+        success: true,
+        admin: adminData,
+        imageUrl: file.location
+      });
+    });
+
+  } catch (error) {
+    console.error('Upload admin profile image error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete admin profile image
+router.delete('/profile/delete-image', authenticateAdmin, async (req, res) => {
+  try {
+    const adminId = (req as any).userId;
+
+    const updatedAdmin = await prisma.user.update({
+      where: { id: adminId },
+      data: { image: null }
+    });
+
+    const { password: _, ...adminData } = updatedAdmin;
+
+    res.json({
+      success: true,
+      admin: adminData
+    });
+
+  } catch (error) {
+    console.error('Delete admin profile image error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
