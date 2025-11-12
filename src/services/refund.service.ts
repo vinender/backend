@@ -123,6 +123,28 @@ export class RefundService {
             }
           });
 
+          // Update booking/payment payout metadata
+          await prisma.booking.update({
+            where: { id: booking.id },
+            data: {
+              paymentStatus: 'REFUNDED',
+              payoutStatus: 'REFUNDED'
+            }
+          });
+
+          // Flag related payouts as canceled
+          await prisma.payout.updateMany({
+            where: {
+              bookingIds: {
+                has: booking.id
+              }
+            },
+            data: {
+              status: 'canceled',
+              description: `Payout canceled due to refund for booking ${booking.id}`
+            }
+          });
+
           // Send refund notification to user
           await createNotification({
             userId: booking.userId,
@@ -156,7 +178,7 @@ export class RefundService {
       } else {
         // No refund but transfer full amount to field owner
         await this.processFieldOwnerPayout(booking, 0);
-        
+
         return {
           success: true,
           refundAmount: 0,

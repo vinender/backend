@@ -604,11 +604,24 @@ export class PaymentController {
 
         // Send notification to field owner about new booking (also notifies admins)
         if (field?.ownerId && field.ownerId !== booking.userId) {
+          const bookingDateLabel = new Date(booking.date).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+          });
+          const bookingTimeLabel = `${booking.startTime} - ${booking.endTime}`;
+          const customerName = booking.user.name || booking.user.email || 'A dog owner';
+          const amountDisplay = typeof booking.totalPrice === 'number'
+            ? booking.totalPrice.toFixed(2)
+            : booking.totalPrice;
+
           await NotificationService.createNotification({
             userId: field.ownerId,
             type: 'booking_received',
             title: 'New Booking Received!',
             message: `You have a new booking for ${field.name} on ${new Date(booking.date).toLocaleDateString()} at ${booking.startTime}`,
+            adminTitle: 'New booking scheduled',
+            adminMessage: `${customerName} booked "${field.name}" for ${bookingDateLabel} at ${bookingTimeLabel}. Total £${amountDisplay}.`,
             data: {
               bookingId: booking.id,
               fieldId: booking.fieldId,

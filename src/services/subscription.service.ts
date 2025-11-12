@@ -343,6 +343,182 @@ export class SubscriptionService {
   }
 
   /**
+   * Refund a single recurring booking occurrence without cancelling the subscription
+   */
+  async refundSubscriptionBookingOccurrence(bookingId: string, reason: string = 'requested_by_customer') {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        subscription: true,
+        field: {
+          include: {
+            owner: true
+          }
+        },
+        user: true,
+        payment: true
+      }
+    });
+
+    if (!booking || !booking.subscription || !booking.subscription.stripeSubscriptionId) {
+      throw new Error('Recurring booking payment information not found');
+    }
+
+    let paymentIntentId = booking.paymentIntentId || booking.payment?.stripePaymentId || null;
+
+    if (!paymentIntentId) {
+      paymentIntentId = await this.findPaymentIntentForBooking(booking);
+    }
+
+    let stripeRefund = null;
+    const bookingPrice = booking.totalPrice || booking.subscription.totalPrice || 0;
+    const refundAmount = Math.round(bookingPrice * 100);
+
+    if (paymentIntentId && refundAmount > 0) {
+      stripeRefund = await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        amount: refundAmount,
+        reason: reason as any,
+        metadata: {
+          bookingId: booking.id,
+          subscriptionId: booking.subscriptionId || '',
+          userId: booking.userId
+        }
+      });
+    }
+
+    // Upsert payment record if we have a payment intent reference
+    if (paymentIntentId) {
+      if (booking.payment) {
+        await prisma.payment.update({
+          where: { id: booking.payment.id },
+          data: {
+            status: stripeRefund ? 'refunded' : 'completed',
+            stripePaymentId: paymentIntentId,
+            stripeRefundId: stripeRefund?.id || booking.payment.stripeRefundId,
+            refundAmount: stripeRefund ? refundAmount / 100 : booking.payment.refundAmount,
+            refundReason: stripeRefund ? reason : booking.payment.refundReason,
+            processedAt: new Date()
+          }
+        });
+      } else {
+        await prisma.payment.create({
+          data: {
+            bookingId: booking.id,
+            userId: booking.userId,
+            amount: booking.totalPrice || booking.subscription.totalPrice,
+            currency: 'gbp',
+            status: stripeRefund ? 'refunded' : 'completed',
+            paymentMethod: 'card',
+            stripePaymentId: paymentIntentId,
+            stripeRefundId: stripeRefund?.id,
+            refundAmount: stripeRefund ? refundAmount / 100 : undefined,
+            refundReason: stripeRefund ? reason : undefined,
+            processedAt: new Date()
+          }
+        });
+      }
+    }
+
+    // Update booking payout/payment state
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        paymentStatus: stripeRefund ? 'REFUNDED' : 'CANCELLED',
+        paymentIntentId: paymentIntentId || booking.paymentIntentId,
+        payoutStatus: stripeRefund ? 'REFUNDED' : 'CANCELLED',
+        cancellationReason: reason,
+        cancelledAt: new Date()
+      }
+    });
+
+    // Ensure related payouts are marked canceled
+    await prisma.payout.updateMany({
+      where: {
+        bookingIds: {
+          has: booking.id
+        }
+      },
+      data: {
+        status: 'canceled',
+        description: `Payout canceled due to refund for recurring booking ${booking.id}`
+      }
+    });
+
+    // Record refund transaction
+    if (stripeRefund) {
+      await prisma.transaction.create({
+        data: {
+          bookingId: booking.id,
+          userId: booking.userId,
+          amount: -(refundAmount / 100),
+          netAmount: booking.fieldOwnerAmount ? -booking.fieldOwnerAmount : undefined,
+          platformFee: booking.platformCommission,
+          commissionRate:
+            booking.platformCommission && booking.totalPrice
+              ? (booking.platformCommission / booking.totalPrice) * 100
+              : undefined,
+          type: 'REFUND',
+          status: 'COMPLETED',
+          stripeRefundId: stripeRefund.id,
+          description: 'Recurring booking refund'
+        }
+      });
+    }
+
+    return {
+      success: true,
+      refundAmount: stripeRefund ? refundAmount / 100 : 0,
+      stripeRefundId: stripeRefund?.id || null,
+      paymentIntentId
+    };
+  }
+
+  private async findPaymentIntentForBooking(booking: any): Promise<string | null> {
+    if (!booking.subscription?.stripeSubscriptionId) {
+      return null;
+    }
+
+    const invoices = await stripe.invoices.list({
+      subscription: booking.subscription.stripeSubscriptionId,
+      limit: 50
+    });
+
+    if (!invoices?.data?.length) {
+      return null;
+    }
+
+    const bookingDate = new Date(booking.date);
+    bookingDate.setHours(0, 0, 0, 0);
+
+    for (const invoice of invoices.data) {
+      const lines = invoice.lines?.data || [];
+
+      const matchingLine = lines.find((line) => {
+        if (!line.period?.start) return false;
+        const periodDate = new Date(line.period.start * 1000);
+        periodDate.setHours(0, 0, 0, 0);
+        return Math.abs(periodDate.getTime() - bookingDate.getTime()) <= 24 * 60 * 60 * 1000;
+      });
+
+      if (matchingLine && invoice.payment_intent) {
+        return typeof invoice.payment_intent === 'string'
+          ? invoice.payment_intent
+          : invoice.payment_intent?.id || null;
+      }
+    }
+
+    const fallbackInvoice = invoices.data.find((invoice) => invoice.payment_intent);
+    if (!fallbackInvoice) {
+      return null;
+    }
+
+    return typeof fallbackInvoice.payment_intent === 'string'
+      ? fallbackInvoice.payment_intent
+      : fallbackInvoice.payment_intent?.id || null;
+  }
+
+  /**
    * Handle subscription webhook events from Stripe
    */
   async handleSubscriptionWebhook(event: Stripe.Event) {

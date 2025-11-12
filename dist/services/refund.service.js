@@ -117,6 +117,26 @@ class RefundService {
                             description: `Refund for booking cancellation (${refundPercentage}%)`
                         }
                     });
+                    // Update booking/payment payout metadata
+                    await database_1.default.booking.update({
+                        where: { id: booking.id },
+                        data: {
+                            paymentStatus: 'REFUNDED',
+                            payoutStatus: 'REFUNDED'
+                        }
+                    });
+                    // Flag related payouts as canceled
+                    await database_1.default.payout.updateMany({
+                        where: {
+                            bookingIds: {
+                                has: booking.id
+                            }
+                        },
+                        data: {
+                            status: 'canceled',
+                            description: `Payout canceled due to refund for booking ${booking.id}`
+                        }
+                    });
                     // Send refund notification to user
                     await (0, notification_controller_1.createNotification)({
                         userId: booking.userId,

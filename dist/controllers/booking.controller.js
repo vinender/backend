@@ -986,7 +986,13 @@ class BookingController {
         let refundResult = null;
         if (isRefundEligible && isDogOwner) {
             try {
-                refundResult = await refund_service_1.default.processRefund(id, reason);
+                if (booking.subscriptionId) {
+                    const { subscriptionService } = await Promise.resolve().then(() => __importStar(require('../services/subscription.service')));
+                    refundResult = await subscriptionService.refundSubscriptionBookingOccurrence(id, reason || 'requested_by_customer');
+                }
+                else {
+                    refundResult = await refund_service_1.default.processRefund(id, reason);
+                }
             }
             catch (refundError) {
                 console.error('Refund processing error:', refundError);

@@ -1077,7 +1077,12 @@ class BookingController {
     let refundResult = null;
     if (isRefundEligible && isDogOwner) {
       try {
-        refundResult = await refundService.processRefund(id, reason);
+        if (booking.subscriptionId) {
+          const { subscriptionService } = await import('../services/subscription.service');
+          refundResult = await subscriptionService.refundSubscriptionBookingOccurrence(id, reason || 'requested_by_customer');
+        } else {
+          refundResult = await refundService.processRefund(id, reason);
+        }
       } catch (refundError: any) {
         console.error('Refund processing error:', refundError);
         // Continue with cancellation even if refund fails

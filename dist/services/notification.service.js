@@ -37,12 +37,14 @@ class NotificationService {
                 console.log(`[NotificationService] Creating admin notifications for ${adminUsers.length} admin(s)`);
                 // Create notification for each admin and emit socket event
                 for (const admin of adminUsers) {
+                    const adminTitle = notificationData.adminTitle || `[Admin Alert] ${notificationData.title}`;
+                    const adminMessage = notificationData.adminMessage || this.sanitizeAdminMessage(notificationData.message);
                     const adminNotification = await prisma.notification.create({
                         data: {
                             userId: admin.id,
                             type: notificationData.type,
-                            title: `[Admin Alert] ${notificationData.title}`,
-                            message: notificationData.message,
+                            title: adminTitle,
+                            message: adminMessage,
                             data: {
                                 ...notificationData.data,
                                 originalUserId: notificationData.userId,
@@ -146,6 +148,23 @@ class NotificationService {
             console.error('Error getting unread count:', error);
             return 0;
         }
+    }
+    static sanitizeAdminMessage(message) {
+        if (!message)
+            return '';
+        let formatted = message;
+        const replacements = [
+            [/\bYou have\b/gi, 'A user has'],
+            [/\bYou were\b/gi, 'A user was'],
+            [/\bYour booking\b/gi, 'The booking'],
+            [/\bYour\b/gi, 'The'],
+            [/\byour\b/g, 'the'],
+            [/\bYou\b/gi, 'A user']
+        ];
+        for (const [pattern, replacement] of replacements) {
+            formatted = formatted.replace(pattern, replacement);
+        }
+        return formatted;
     }
 }
 exports.NotificationService = NotificationService;
