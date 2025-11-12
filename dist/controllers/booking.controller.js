@@ -1860,5 +1860,29 @@ class BookingController {
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     }
+    // Check if user has completed bookings for a specific field
+    hasCompletedBookingsForField = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const userId = req.user.id;
+        const { fieldId } = req.params;
+        if (!fieldId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Field ID is required'
+            });
+        }
+        // Check if user has at least one completed booking for this field
+        const completedBooking = await Booking.findOne({
+            userId: userId,
+            fieldId: fieldId,
+            status: 'COMPLETED'
+        });
+        return res.status(200).json({
+            success: true,
+            hasCompletedBooking: !!completedBooking,
+            data: {
+                canReview: !!completedBooking
+            }
+        });
+    });
 }
 exports.default = new BookingController();

@@ -1072,7 +1072,7 @@ class FieldController {
                     userId: fieldOwner.id,
                     type: 'field_submitted',
                     title: 'Field Submitted Successfully',
-                    message: `Your field "${submittedField.name}" has been successfully submitted and is now live on Fieldsy!`,
+                    message: `Your field "${submittedField.name}" has been successfully submitted.`,
                     data: {
                         fieldId: submittedField.id,
                         fieldName: submittedField.name,

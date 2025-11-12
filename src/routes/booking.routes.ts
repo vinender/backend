@@ -17,6 +17,7 @@ router.get('/my-bookings', bookingController.getMyBookings);
 router.get('/my-recurring', bookingController.getMyRecurringBookings);
 router.get('/cancelled', restrictTo('FIELD_OWNER'), bookingController.getCancelledBookings);
 router.get('/stats', bookingController.getBookingStats);
+router.get('/fields/:fieldId/has-completed', bookingController.hasCompletedBookingsForField);
 router.post('/', bookingController.createBooking);
 router.post('/:id/cancel-recurring', bookingController.cancelRecurringBooking);
 

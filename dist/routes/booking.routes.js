@@ -18,6 +18,7 @@ router.get('/my-bookings', booking_controller_1.default.getMyBookings);
 router.get('/my-recurring', booking_controller_1.default.getMyRecurringBookings);
 router.get('/cancelled', (0, auth_middleware_1.restrictTo)('FIELD_OWNER'), booking_controller_1.default.getCancelledBookings);
 router.get('/stats', booking_controller_1.default.getBookingStats);
+router.get('/fields/:fieldId/has-completed', booking_controller_1.default.hasCompletedBookingsForField);
 router.post('/', booking_controller_1.default.createBooking);
 router.post('/:id/cancel-recurring', booking_controller_1.default.cancelRecurringBooking);
 // Admin routes
