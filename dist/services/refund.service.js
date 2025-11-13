@@ -8,6 +8,7 @@ exports.RefundService = void 0;
 const stripe_config_1 = require("../config/stripe.config");
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("../controllers/notification.controller");
+const stripe_payout_helper_1 = require("../utils/stripe-payout.helper");
 class RefundService {
     /**
      * Get cancellation window hours from system settings
@@ -238,24 +239,45 @@ class RefundService {
                         refundedAmount: refundedAmount.toString()
                     }
                 });
+                let stripePayout = null;
+                try {
+                    stripePayout = await (0, stripe_payout_helper_1.createConnectedAccountPayout)({
+                        stripeAccountId: stripeAccount.stripeAccountId,
+                        amountInMinorUnits: Math.round(netPayoutAmount * 100),
+                        description: `Payout for booking ${booking.id}`,
+                        metadata: {
+                            bookingId: booking.id,
+                            bookingIds: JSON.stringify([booking.id]),
+                            fieldId: booking.fieldId,
+                            fieldOwnerId: booking.field.ownerId,
+                            transferId: transfer.id,
+                            source: 'refund_payout'
+                        }
+                    });
+                }
+                catch (payoutError) {
+                    console.error('Stripe payout creation failed:', payoutError);
+                }
                 // Create payout record
                 const payout = await database_1.default.payout.create({
                     data: {
                         stripeAccountId: stripeAccount.id,
-                        stripePayoutId: transfer.id,
+                        stripePayoutId: stripePayout?.id || transfer.id,
                         amount: netPayoutAmount,
                         currency: 'gbp',
-                        status: 'paid',
+                        status: stripePayout?.status || 'processing',
                         description: `Payout for booking ${booking.id}`,
                         bookingIds: [booking.id],
-                        arrivalDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 days from now
+                        arrivalDate: stripePayout?.arrival_date ? new Date(stripePayout.arrival_date * 1000) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+                        failureCode: stripePayout?.failure_code || null,
+                        failureMessage: stripePayout?.failure_message || null
                     }
                 });
                 // Update booking with payout reference
                 await database_1.default.booking.update({
                     where: { id: booking.id },
                     data: {
-                        payoutStatus: 'COMPLETED',
+                        payoutStatus: stripePayout?.status === 'paid' ? 'COMPLETED' : 'PROCESSING',
                         payoutId: payout.id
                     }
                 });

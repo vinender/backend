@@ -44,6 +44,8 @@ const refund_service_1 = __importDefault(require("../services/refund.service"));
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("../controllers/notification.controller");
 const auto_payout_service_1 = require("../services/auto-payout.service");
+const stripe_config_1 = require("../config/stripe.config");
+const stripe_payout_helper_1 = require("../utils/stripe-payout.helper");
 /**
  * Scheduled job to process payouts for completed bookings
  * Runs every hour to check for bookings that have passed their cancellation period
@@ -175,8 +177,7 @@ async function retryFailedPayouts() {
             }
             try {
                 // Attempt to retry the payout
-                const { stripe } = require('../config/stripe.config');
-                const transfer = await stripe.transfers.create({
+                const transfer = await stripe_config_1.stripe.transfers.create({
                     amount: Math.round(payout.amount * 100),
                     currency: payout.currency,
                     destination: payout.stripeAccount.stripeAccountId,
@@ -186,13 +187,34 @@ async function retryFailedPayouts() {
                         retryAttempt: 'true'
                     }
                 });
+                let stripePayout = null;
+                try {
+                    stripePayout = await (0, stripe_payout_helper_1.createConnectedAccountPayout)({
+                        stripeAccountId: payout.stripeAccount.stripeAccountId,
+                        amountInMinorUnits: Math.round(payout.amount * 100),
+                        description: payout.description || `Retry payout ${payout.id}`,
+                        metadata: {
+                            payoutId: payout.id,
+                            retryAttempt: 'true',
+                            transferId: transfer.id,
+                            source: 'retry_failed_payout'
+                        }
+                    });
+                }
+                catch (payoutError) {
+                    console.error('Stripe payout creation failed during retry:', payoutError);
+                }
                 // Update payout status
                 await database_1.default.payout.update({
                     where: { id: payout.id },
                     data: {
-                        status: 'paid',
-                        stripePayoutId: transfer.id,
-                        arrivalDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+                        status: stripePayout?.status || 'processing',
+                        stripePayoutId: stripePayout?.id || transfer.id,
+                        arrivalDate: stripePayout?.arrival_date
+                            ? new Date(stripePayout.arrival_date * 1000)
+                            : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+                        failureCode: stripePayout?.failure_code || null,
+                        failureMessage: stripePayout?.failure_message || null
                     }
                 });
                 // Send success notification
@@ -294,6 +316,14 @@ async function calculateFieldOwnerEarnings() {
                 }
             });
             const totalPayouts = payouts.reduce((sum, payout) => sum + payout.amount, 0);
+            // Skip notification if there is nothing meaningful to report
+            const hasEarningsActivity = totalEarnings > 0 ||
+                availableEarnings > 0 ||
+                pendingEarnings > 0 ||
+                totalPayouts > 0;
+            if (!hasEarningsActivity) {
+                continue;
+            }
             // Update user's earning statistics (you may need to add these fields to User model)
             // For now, we'll store this in a notification
             await (0, notification_controller_1.createNotification)({

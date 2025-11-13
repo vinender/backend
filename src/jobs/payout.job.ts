@@ -4,6 +4,8 @@ import refundService from '../services/refund.service';
 import prisma from '../config/database';
 import { createNotification } from '../controllers/notification.controller';
 import { automaticPayoutService } from '../services/auto-payout.service';
+import { stripe } from '../config/stripe.config';
+import { createConnectedAccountPayout } from '../utils/stripe-payout.helper';
 
 /**
  * Scheduled job to process payouts for completed bookings
@@ -150,8 +152,6 @@ async function retryFailedPayouts() {
 
       try {
         // Attempt to retry the payout
-        const { stripe } = require('../config/stripe.config');
-        
         const transfer = await stripe.transfers.create({
           amount: Math.round(payout.amount * 100),
           currency: payout.currency,
@@ -163,13 +163,34 @@ async function retryFailedPayouts() {
           }
         });
 
+        let stripePayout = null;
+        try {
+          stripePayout = await createConnectedAccountPayout({
+            stripeAccountId: payout.stripeAccount.stripeAccountId,
+            amountInMinorUnits: Math.round(payout.amount * 100),
+            description: payout.description || `Retry payout ${payout.id}`,
+            metadata: {
+              payoutId: payout.id,
+              retryAttempt: 'true',
+              transferId: transfer.id,
+              source: 'retry_failed_payout'
+            }
+          });
+        } catch (payoutError) {
+          console.error('Stripe payout creation failed during retry:', payoutError);
+        }
+
         // Update payout status
         await prisma.payout.update({
           where: { id: payout.id },
           data: {
-            status: 'paid',
-            stripePayoutId: transfer.id,
-            arrivalDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+            status: stripePayout?.status || 'processing',
+            stripePayoutId: stripePayout?.id || transfer.id,
+            arrivalDate: stripePayout?.arrival_date
+              ? new Date(stripePayout.arrival_date * 1000)
+              : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+            failureCode: stripePayout?.failure_code || null,
+            failureMessage: stripePayout?.failure_message || null
           }
         });
 
@@ -278,6 +299,17 @@ async function calculateFieldOwnerEarnings() {
 
       const totalPayouts = payouts.reduce((sum, payout) => sum + payout.amount, 0);
       
+      // Skip notification if there is nothing meaningful to report
+      const hasEarningsActivity =
+        totalEarnings > 0 ||
+        availableEarnings > 0 ||
+        pendingEarnings > 0 ||
+        totalPayouts > 0;
+
+      if (!hasEarningsActivity) {
+        continue;
+      }
+
       // Update user's earning statistics (you may need to add these fields to User model)
       // For now, we'll store this in a notification
       await createNotification({

@@ -1,18 +1,13 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.payoutService = exports.PayoutService = void 0;
 //@ts-nocheck
 const client_1 = require("@prisma/client");
-const stripe_1 = __importDefault(require("stripe"));
 const notification_controller_1 = require("../controllers/notification.controller");
 const commission_utils_1 = require("../utils/commission.utils");
+const stripe_config_1 = require("../config/stripe.config");
+const stripe_payout_helper_1 = require("../utils/stripe-payout.helper");
 const prisma = new client_1.PrismaClient();
-const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-07-30.basil'
-});
 class PayoutService {
     /**
      * Process automatic payout when booking is completed
@@ -123,7 +118,7 @@ class PayoutService {
             });
             try {
                 // Create a transfer to the connected account
-                const transfer = await stripe.transfers.create({
+                const transfer = await stripe_config_1.stripe.transfers.create({
                     amount: payoutAmountInCents,
                     currency: 'gbp',
                     destination: stripeAccount.stripeAccountId,
@@ -136,25 +131,46 @@ class PayoutService {
                     },
                     description: `Payout for booking ${bookingId} - ${field.name}`
                 });
+                let stripePayout = null;
+                try {
+                    stripePayout = await (0, stripe_payout_helper_1.createConnectedAccountPayout)({
+                        stripeAccountId: stripeAccount.stripeAccountId,
+                        amountInMinorUnits: payoutAmountInCents,
+                        description: `Payout for booking ${bookingId} - ${field.name}`,
+                        metadata: {
+                            bookingId,
+                            bookingIds: JSON.stringify([bookingId]),
+                            fieldId: field.id,
+                            fieldOwnerId: fieldOwner.id,
+                            transferId: transfer.id,
+                            source: 'booking_completion'
+                        }
+                    });
+                }
+                catch (payoutError) {
+                    console.error('Stripe payout creation failed:', payoutError);
+                }
                 // Create payout record in database
                 const payout = await prisma.payout.create({
                     data: {
                         stripeAccountId: stripeAccount.id,
-                        stripePayoutId: transfer.id,
+                        stripePayoutId: stripePayout?.id || transfer.id,
                         amount: payoutAmount,
                         currency: 'gbp',
-                        status: 'paid',
-                        method: 'standard',
+                        status: stripePayout?.status || 'processing',
+                        method: stripePayout?.method || 'standard',
                         description: `Payout for booking ${bookingId}`,
                         bookingIds: [bookingId],
-                        arrivalDate: new Date() // Transfers are typically instant to connected accounts
+                        arrivalDate: stripePayout?.arrival_date ? new Date(stripePayout.arrival_date * 1000) : new Date(),
+                        failureCode: stripePayout?.failure_code || null,
+                        failureMessage: stripePayout?.failure_message || null
                     }
                 });
                 // Update booking with payout details and commission amounts
                 await prisma.booking.update({
                     where: { id: bookingId },
                     data: {
-                        payoutStatus: 'COMPLETED',
+                        payoutStatus: stripePayout?.status === 'paid' ? 'COMPLETED' : 'PROCESSING',
                         payoutId: payout.id,
                         fieldOwnerAmount: payoutAmount,
                         platformCommission: platformCommission

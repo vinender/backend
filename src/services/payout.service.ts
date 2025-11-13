@@ -1,14 +1,11 @@
 //@ts-nocheck
 import { PrismaClient } from '@prisma/client';
-import Stripe from 'stripe';
 import { createNotification } from '../controllers/notification.controller';
 import { calculatePayoutAmounts } from '../utils/commission.utils';
+import { stripe } from '../config/stripe.config';
+import { createConnectedAccountPayout } from '../utils/stripe-payout.helper';
 
 const prisma = new PrismaClient();
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-07-30.basil'
-});
 
 export class PayoutService {
   /**
@@ -162,18 +159,39 @@ export class PayoutService {
           description: `Payout for booking ${bookingId} - ${field.name}`
         });
 
+        let stripePayout = null;
+        try {
+          stripePayout = await createConnectedAccountPayout({
+            stripeAccountId: stripeAccount.stripeAccountId,
+            amountInMinorUnits: payoutAmountInCents,
+            description: `Payout for booking ${bookingId} - ${field.name}`,
+            metadata: {
+              bookingId,
+              bookingIds: JSON.stringify([bookingId]),
+              fieldId: field.id,
+              fieldOwnerId: fieldOwner.id,
+              transferId: transfer.id,
+              source: 'booking_completion'
+            }
+          });
+        } catch (payoutError) {
+          console.error('Stripe payout creation failed:', payoutError);
+        }
+
         // Create payout record in database
         const payout = await prisma.payout.create({
           data: {
             stripeAccountId: stripeAccount.id,
-            stripePayoutId: transfer.id,
+            stripePayoutId: stripePayout?.id || transfer.id,
             amount: payoutAmount,
             currency: 'gbp',
-            status: 'paid',
-            method: 'standard',
+            status: stripePayout?.status || 'processing',
+            method: stripePayout?.method || 'standard',
             description: `Payout for booking ${bookingId}`,
             bookingIds: [bookingId],
-            arrivalDate: new Date() // Transfers are typically instant to connected accounts
+            arrivalDate: stripePayout?.arrival_date ? new Date(stripePayout.arrival_date * 1000) : new Date(),
+            failureCode: stripePayout?.failure_code || null,
+            failureMessage: stripePayout?.failure_message || null
           }
         });
 
@@ -181,7 +199,7 @@ export class PayoutService {
         await prisma.booking.update({
           where: { id: bookingId },
           data: {
-            payoutStatus: 'COMPLETED',
+            payoutStatus: stripePayout?.status === 'paid' ? 'COMPLETED' : 'PROCESSING',
             payoutId: payout.id,
             fieldOwnerAmount: payoutAmount,
             platformCommission: platformCommission

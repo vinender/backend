@@ -772,6 +772,13 @@ class PaymentController {
                         });
                     }
                     break;
+                case 'payout.created':
+                case 'payout.updated':
+                case 'payout.paid':
+                case 'payout.failed':
+                case 'payout.canceled':
+                    await syncStripePayoutEvent(event);
+                    break;
                 default:
                     console.log(`Unhandled event type ${event.type}`);
             }
@@ -799,3 +806,89 @@ class PaymentController {
     }
 }
 exports.PaymentController = PaymentController;
+function extractBookingIdsFromMetadata(metadata) {
+    if (!metadata)
+        return [];
+    if (metadata.bookingId) {
+        return [metadata.bookingId];
+    }
+    if (metadata.bookingIds) {
+        try {
+            const parsed = JSON.parse(metadata.bookingIds);
+            if (Array.isArray(parsed)) {
+                return parsed.filter(Boolean);
+            }
+        }
+        catch (error) {
+            // bookingIds might be a comma separated list
+            return metadata.bookingIds.split(',').map(id => id.trim()).filter(Boolean);
+        }
+    }
+    return [];
+}
+async function syncStripePayoutEvent(event) {
+    const payoutObject = event.data.object;
+    const connectedAccountId = event.account;
+    if (!payoutObject || !connectedAccountId) {
+        console.warn('[StripeWebhook] Payout event missing required data');
+        return;
+    }
+    const stripeAccount = await database_1.default.stripeAccount.findFirst({
+        where: { stripeAccountId: connectedAccountId }
+    });
+    if (!stripeAccount) {
+        console.warn('[StripeWebhook] Received payout event for unknown account', connectedAccountId);
+        return;
+    }
+    const bookingIds = extractBookingIdsFromMetadata(payoutObject.metadata);
+    const payoutData = {
+        amount: (payoutObject.amount || 0) / 100,
+        currency: payoutObject.currency || 'gbp',
+        status: payoutObject.status,
+        method: payoutObject.method || 'standard',
+        description: payoutObject.description || null,
+        arrivalDate: payoutObject.arrival_date ? new Date(payoutObject.arrival_date * 1000) : null,
+        failureCode: payoutObject.failure_code || null,
+        failureMessage: payoutObject.failure_message || null
+    };
+    const existingPayout = payoutObject.id
+        ? await database_1.default.payout.findUnique({
+            where: { stripePayoutId: payoutObject.id }
+        })
+        : null;
+    if (existingPayout) {
+        await database_1.default.payout.update({
+            where: { id: existingPayout.id },
+            data: {
+                ...payoutData,
+                ...(bookingIds.length && !existingPayout.bookingIds.length ? { bookingIds } : {})
+            }
+        });
+    }
+    else {
+        await database_1.default.payout.create({
+            data: {
+                stripeAccountId: stripeAccount.id,
+                stripePayoutId: payoutObject.id,
+                bookingIds,
+                ...payoutData
+            }
+        });
+    }
+    if (bookingIds.length) {
+        let payoutStatus = 'PROCESSING';
+        if (payoutObject.status === 'paid') {
+            payoutStatus = 'COMPLETED';
+        }
+        else if (payoutObject.status === 'failed' || payoutObject.status === 'canceled') {
+            payoutStatus = 'FAILED';
+        }
+        await database_1.default.booking.updateMany({
+            where: { id: { in: bookingIds } },
+            data: {
+                payoutStatus,
+                ...(payoutStatus === 'COMPLETED' ? { payoutReleasedAt: new Date() } : {})
+            }
+        });
+    }
+}

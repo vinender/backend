@@ -2,6 +2,7 @@
 import { stripe } from '../config/stripe.config';
 import prisma from '../config/database';
 import { createNotification } from '../controllers/notification.controller';
+import { createConnectedAccountPayout } from '../utils/stripe-payout.helper';
 
 export class RefundService {
   /**
@@ -255,17 +256,38 @@ export class RefundService {
           }
         });
 
+        let stripePayout = null;
+        try {
+          stripePayout = await createConnectedAccountPayout({
+            stripeAccountId: stripeAccount.stripeAccountId,
+            amountInMinorUnits: Math.round(netPayoutAmount * 100),
+            description: `Payout for booking ${booking.id}`,
+            metadata: {
+              bookingId: booking.id,
+              bookingIds: JSON.stringify([booking.id]),
+              fieldId: booking.fieldId,
+              fieldOwnerId: booking.field.ownerId,
+              transferId: transfer.id,
+              source: 'refund_payout'
+            }
+          });
+        } catch (payoutError) {
+          console.error('Stripe payout creation failed:', payoutError);
+        }
+
         // Create payout record
         const payout = await prisma.payout.create({
           data: {
             stripeAccountId: stripeAccount.id,
-            stripePayoutId: transfer.id,
+            stripePayoutId: stripePayout?.id || transfer.id,
             amount: netPayoutAmount,
             currency: 'gbp',
-            status: 'paid',
+            status: stripePayout?.status || 'processing',
             description: `Payout for booking ${booking.id}`,
             bookingIds: [booking.id],
-            arrivalDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 days from now
+            arrivalDate: stripePayout?.arrival_date ? new Date(stripePayout.arrival_date * 1000) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+            failureCode: stripePayout?.failure_code || null,
+            failureMessage: stripePayout?.failure_message || null
           }
         });
 
@@ -273,7 +295,7 @@ export class RefundService {
         await prisma.booking.update({
           where: { id: booking.id },
           data: {
-            payoutStatus: 'COMPLETED',
+            payoutStatus: stripePayout?.status === 'paid' ? 'COMPLETED' : 'PROCESSING',
             payoutId: payout.id
           }
         });

@@ -867,6 +867,13 @@ export class PaymentController {
           }
           break;
 
+        case 'payout.created':
+        case 'payout.updated':
+        case 'payout.paid':
+        case 'payout.failed':
+        case 'payout.canceled':
+          await syncStripePayoutEvent(event);
+          break;
         default:
           console.log(`Unhandled event type ${event.type}`);
       }
@@ -892,5 +899,100 @@ export class PaymentController {
       console.error('Error fetching payment methods:', error);
       res.status(500).json({ error: 'Failed to fetch payment methods' });
     }
+  }
+}
+
+function extractBookingIdsFromMetadata(metadata?: Stripe.Metadata | null): string[] {
+  if (!metadata) return [];
+
+  if (metadata.bookingId) {
+    return [metadata.bookingId];
+  }
+
+  if (metadata.bookingIds) {
+    try {
+      const parsed = JSON.parse(metadata.bookingIds);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(Boolean);
+      }
+    } catch (error) {
+      // bookingIds might be a comma separated list
+      return metadata.bookingIds.split(',').map(id => id.trim()).filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+async function syncStripePayoutEvent(event: Stripe.Event) {
+  const payoutObject = event.data.object as Stripe.Payout;
+  const connectedAccountId = (event as any).account;
+
+  if (!payoutObject || !connectedAccountId) {
+    console.warn('[StripeWebhook] Payout event missing required data');
+    return;
+  }
+
+  const stripeAccount = await prisma.stripeAccount.findFirst({
+    where: { stripeAccountId: connectedAccountId }
+  });
+
+  if (!stripeAccount) {
+    console.warn('[StripeWebhook] Received payout event for unknown account', connectedAccountId);
+    return;
+  }
+
+  const bookingIds = extractBookingIdsFromMetadata(payoutObject.metadata);
+  const payoutData = {
+    amount: (payoutObject.amount || 0) / 100,
+    currency: payoutObject.currency || 'gbp',
+    status: payoutObject.status,
+    method: payoutObject.method || 'standard',
+    description: payoutObject.description || null,
+    arrivalDate: payoutObject.arrival_date ? new Date(payoutObject.arrival_date * 1000) : null,
+    failureCode: payoutObject.failure_code || null,
+    failureMessage: payoutObject.failure_message || null
+  };
+
+  const existingPayout = payoutObject.id
+    ? await prisma.payout.findUnique({
+        where: { stripePayoutId: payoutObject.id }
+      })
+    : null;
+
+  if (existingPayout) {
+    await prisma.payout.update({
+      where: { id: existingPayout.id },
+      data: {
+        ...payoutData,
+        ...(bookingIds.length && !existingPayout.bookingIds.length ? { bookingIds } : {})
+      }
+    });
+  } else {
+    await prisma.payout.create({
+      data: {
+        stripeAccountId: stripeAccount.id,
+        stripePayoutId: payoutObject.id,
+        bookingIds,
+        ...payoutData
+      }
+    });
+  }
+
+  if (bookingIds.length) {
+    let payoutStatus: 'COMPLETED' | 'PROCESSING' | 'FAILED' = 'PROCESSING';
+    if (payoutObject.status === 'paid') {
+      payoutStatus = 'COMPLETED';
+    } else if (payoutObject.status === 'failed' || payoutObject.status === 'canceled') {
+      payoutStatus = 'FAILED';
+    }
+
+    await prisma.booking.updateMany({
+      where: { id: { in: bookingIds } },
+      data: {
+        payoutStatus,
+        ...(payoutStatus === 'COMPLETED' ? { payoutReleasedAt: new Date() } : {})
+      }
+    });
   }
 }
