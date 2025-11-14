@@ -51,6 +51,25 @@ const s3Client = new client_s3_1.S3Client({
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     },
 });
+const formatRecurringFrequency = (repeatBooking) => {
+    if (!repeatBooking)
+        return 'NA';
+    const normalized = repeatBooking.trim().toLowerCase();
+    if (!normalized || normalized === 'none' || normalized === 'na' || normalized === 'no') {
+        return 'NA';
+    }
+    const labelMap = {
+        everyday: 'Everyday',
+        daily: 'Everyday',
+        weekly: 'Weekly',
+        monthly: 'Monthly',
+        weekdays: 'Weekdays',
+        weekday: 'Weekdays',
+        weekend: 'Weekends',
+        weekends: 'Weekends',
+    };
+    return labelMap[normalized] || repeatBooking.charAt(0).toUpperCase() + repeatBooking.slice(1);
+};
 class FieldController {
     // Create new field
     createField = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
@@ -1195,7 +1214,7 @@ class FieldController {
                 time: `${booking.startTime} - ${booking.endTime}`,
                 orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
                 status: booking.status.toLowerCase(),
-                frequency: 'NA', // Add recurring logic if needed
+                frequency: formatRecurringFrequency(booking.repeatBooking),
                 dogs: booking.numberOfDogs,
                 amount: booking.totalPrice,
                 date: booking.date
@@ -1308,7 +1327,7 @@ class FieldController {
                 time: `${booking.startTime} - ${booking.endTime}`,
                 orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
                 status: booking.status.toLowerCase(),
-                frequency: booking.recurring || 'NA',
+                frequency: formatRecurringFrequency(booking.repeatBooking),
                 dogs: booking.numberOfDogs || 1,
                 amount: booking.totalPrice,
                 date: booking.date.toISOString(),
@@ -1433,7 +1452,7 @@ class FieldController {
                 time: `${booking.startTime} - ${booking.endTime}`,
                 orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
                 status: booking.status.toLowerCase(),
-                frequency: booking.recurring || 'NA',
+                frequency: formatRecurringFrequency(booking.repeatBooking),
                 dogs: booking.numberOfDogs || 1,
                 amount: booking.totalPrice,
                 date: booking.date.toISOString(),
@@ -1558,7 +1577,7 @@ class FieldController {
                 time: `${booking.startTime} - ${booking.endTime}`,
                 orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
                 status: booking.status.toLowerCase(),
-                frequency: booking.recurring || 'NA',
+                frequency: formatRecurringFrequency(booking.repeatBooking),
                 dogs: booking.numberOfDogs || 1,
                 amount: booking.totalPrice,
                 date: booking.date.toISOString(),

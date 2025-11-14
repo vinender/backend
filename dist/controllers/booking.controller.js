@@ -262,6 +262,13 @@ class BookingController {
                 rescheduleCount: true,
                 createdAt: true,
                 updatedAt: true,
+                fieldReview: {
+                    select: {
+                        id: true,
+                        rating: true,
+                        createdAt: true,
+                    },
+                },
                 field: {
                     select: {
                         id: true,
@@ -332,6 +339,13 @@ class BookingController {
             rescheduleCount: booking.rescheduleCount,
             createdAt: booking.createdAt,
             updatedAt: booking.updatedAt,
+            // Review data - to check if booking has been reviewed
+            hasReview: !!booking.fieldReview,
+            fieldReview: booking.fieldReview ? {
+                id: booking.fieldReview.id,
+                rating: booking.fieldReview.rating,
+                createdAt: booking.fieldReview.createdAt,
+            } : null,
             field: {
                 id: booking.field?.id,
                 name: booking.field?.name,
@@ -479,8 +493,11 @@ class BookingController {
                             statusCondition.date = { gte: now };
                         }
                         else if (includeExpired === 'true') {
-                            // Previous tab: show only bookings with past dates
-                            statusCondition.date = { lt: now };
+                            // Previous tab: show bookings with past dates OR same-day bookings that are COMPLETED
+                            // Don't filter by date for COMPLETED status - they will be filtered by end time in post-processing
+                            if (s !== 'COMPLETED') {
+                                statusCondition.date = { lt: now };
+                            }
                         }
                     }
                     statusConditions.push(statusCondition);
@@ -496,7 +513,11 @@ class BookingController {
                         statusCondition.date = { gte: now };
                     }
                     else if (includeExpired === 'true') {
-                        statusCondition.date = { lt: now };
+                        // Previous tab: show bookings with past dates OR same-day bookings that are COMPLETED
+                        // Don't filter by date for COMPLETED status - they will be filtered by end time in post-processing
+                        if (status !== 'COMPLETED') {
+                            statusCondition.date = { lt: now };
+                        }
                     }
                 }
                 whereClause = { ...whereClause, ...statusCondition };
@@ -519,6 +540,13 @@ class BookingController {
                             id: true,
                             name: true,
                             email: true,
+                        },
+                    },
+                    fieldReview: {
+                        select: {
+                            id: true,
+                            rating: true,
+                            createdAt: true,
                         },
                     },
                 },
@@ -569,9 +597,33 @@ class BookingController {
         });
         console.log('\nProcessed bookings count:', processedBookings.length);
         console.log('=== End Debug ===\n');
+        // Filter out COMPLETED bookings that haven't ended yet when showing previous bookings
+        const filteredBookings = processedBookings.filter((booking) => {
+            // Only filter for previous tab (includeExpired='true')
+            if (includeExpired === 'true' && booking.status === 'COMPLETED') {
+                // Check if booking has actually ended
+                const bookingDate = new Date(booking.date);
+                const endTimeParts = booking.endTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+                if (!endTimeParts)
+                    return true; // If can't parse, include it
+                let hours = parseInt(endTimeParts[1]);
+                const minutes = parseInt(endTimeParts[2]);
+                const period = endTimeParts[3]?.toUpperCase();
+                // Convert to 24-hour format
+                if (period === 'PM' && hours !== 12)
+                    hours += 12;
+                else if (period === 'AM' && hours === 12)
+                    hours = 0;
+                bookingDate.setHours(hours, minutes, 0, 0);
+                // Only include if booking has actually ended
+                return bookingDate < new Date();
+            }
+            return true; // Include all other bookings
+        });
+        console.log('Filtered bookings count (after end-time check):', filteredBookings.length);
         // Transform bookings to remove redundant data and optimize response
         // Use Promise.all to handle async amenity transformation
-        const optimizedBookings = await Promise.all(processedBookings.map(async (booking) => {
+        const optimizedBookings = await Promise.all(filteredBookings.map(async (booking) => {
             const field = booking.field;
             const owner = field?.owner;
             const user = booking.user;
@@ -595,6 +647,13 @@ class BookingController {
                 rescheduleCount: booking.rescheduleCount,
                 createdAt: booking.createdAt,
                 updatedAt: booking.updatedAt,
+                // Review data - to check if booking has been reviewed
+                hasReview: !!booking.fieldReview,
+                fieldReview: booking.fieldReview ? {
+                    id: booking.fieldReview.id,
+                    rating: booking.fieldReview.rating,
+                    createdAt: booking.fieldReview.createdAt,
+                } : null,
                 // Field data - only what's needed for display
                 field: {
                     id: field?.id,
@@ -1458,22 +1517,20 @@ class BookingController {
             const startTime = formatTime(startHour, startMinute);
             const endTime = formatTime(endHour, endMinute);
             const slotTime = `${startTime} - ${endTime}`;
-            // Check if this slot is in the past
-            const slotDateTime = new Date(selectedDate);
-            slotDateTime.setHours(startHour, startMinute, 0, 0);
-            const isPast = slotDateTime < now;
             // Check if slot is booked (private booking system)
             const isBookedByBooking = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
             // Check if slot is reserved by recurring booking
             const isBookedByRecurring = recurringTimeSlots.has(slotTime);
             const isBooked = isBookedByBooking || isBookedByRecurring;
+            // Note: isPast check removed from backend because server timezone may differ from client timezone
+            // Frontend will calculate isPast using client's local timezone
             slots.push({
                 time: slotTime,
                 startHour: startHour,
-                isPast,
+                startMinute: startMinute, // Add startMinute so frontend can calculate isPast
                 isBooked,
                 isBookedByRecurring, // Add flag to indicate it's a recurring booking
-                isAvailable: !isPast && !isBooked
+                isAvailable: !isBooked // Only check if booked, not isPast (frontend handles that)
             });
             // Move to next slot
             currentMinutes += slotDurationMinutes;

@@ -56,22 +56,54 @@ const initPayoutJobs = () => {
         console.log('📋 Marking past bookings as completed...');
         try {
             const now = new Date();
-            // Find all bookings that are past their date/time and not already completed or cancelled
-            const completedBookings = await database_1.default.booking.updateMany({
+            // First, get all CONFIRMED bookings that might need to be marked as completed
+            const potentialBookings = await database_1.default.booking.findMany({
                 where: {
                     status: 'CONFIRMED',
                     paymentStatus: 'PAID',
-                    date: {
-                        lt: now,
-                    },
                 },
-                data: {
-                    status: 'COMPLETED',
-                },
+                select: {
+                    id: true,
+                    date: true,
+                    endTime: true,
+                }
             });
-            console.log(`✅ Marked ${completedBookings.count} bookings as completed`);
+            // Filter bookings where the end time has passed
+            const bookingsToComplete = potentialBookings.filter(booking => {
+                if (!booking.endTime)
+                    return false;
+                // Parse end time (format: "11:30AM" or "23:30")
+                const endTimeParts = booking.endTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+                if (!endTimeParts)
+                    return false;
+                let hours = parseInt(endTimeParts[1]);
+                const minutes = parseInt(endTimeParts[2]);
+                const period = endTimeParts[3]?.toUpperCase();
+                // Convert to 24-hour format if needed
+                if (period === 'PM' && hours !== 12) {
+                    hours += 12;
+                }
+                else if (period === 'AM' && hours === 12) {
+                    hours = 0;
+                }
+                // Create a Date object for the booking end time
+                const bookingEndDateTime = new Date(booking.date);
+                bookingEndDateTime.setHours(hours, minutes, 0, 0);
+                // Check if booking end time has passed
+                return bookingEndDateTime < now;
+            });
+            // Update bookings to COMPLETED
+            let completedCount = 0;
+            for (const booking of bookingsToComplete) {
+                await database_1.default.booking.update({
+                    where: { id: booking.id },
+                    data: { status: 'COMPLETED' }
+                });
+                completedCount++;
+            }
+            console.log(`✅ Marked ${completedCount} bookings as completed`);
             // Now trigger payouts for newly completed bookings
-            if (completedBookings.count > 0) {
+            if (completedCount > 0) {
                 // Get the bookings that were just marked as completed
                 const newlyCompletedBookings = await database_1.default.booking.findMany({
                     where: {
