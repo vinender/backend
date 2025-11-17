@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { authenticateAdmin } from '../middleware/admin.middleware';
+import fieldController from '../controllers/field.controller';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -321,9 +322,16 @@ router.get('/bookings/:id', authenticateAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
+    // Map the commission fields for frontend display
+    const enrichedBooking = {
+      ...booking,
+      adminCommission: booking.platformCommission || 0,
+      fieldOwnerCommission: booking.fieldOwnerAmount || 0,
+    };
+
     res.json({
       success: true,
-      booking
+      booking: enrichedBooking
     });
 
   } catch (error) {
@@ -473,6 +481,9 @@ router.get('/fields', authenticateAdmin, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Get field details for admin (with owner and booking data)
+router.get('/fields/:id', authenticateAdmin, fieldController.getFieldDetailsForAdmin);
 
 // Get all notifications for admin (including both dog owner and field owner notifications)
 router.get('/notifications', authenticateAdmin, async (req, res) => {

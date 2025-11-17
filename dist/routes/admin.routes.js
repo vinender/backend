@@ -42,6 +42,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
 const admin_middleware_1 = require("../middleware/admin.middleware");
+const field_controller_1 = __importDefault(require("../controllers/field.controller"));
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
 // Admin login endpoint
@@ -314,9 +315,15 @@ router.get('/bookings/:id', admin_middleware_1.authenticateAdmin, async (req, re
         if (!booking) {
             return res.status(404).json({ error: 'Booking not found' });
         }
+        // Map the commission fields for frontend display
+        const enrichedBooking = {
+            ...booking,
+            adminCommission: booking.platformCommission || 0,
+            fieldOwnerCommission: booking.fieldOwnerAmount || 0,
+        };
         res.json({
             success: true,
-            booking
+            booking: enrichedBooking
         });
     }
     catch (error) {
@@ -456,6 +463,8 @@ router.get('/fields', admin_middleware_1.authenticateAdmin, async (req, res) => 
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+// Get field details for admin (with owner and booking data)
+router.get('/fields/:id', admin_middleware_1.authenticateAdmin, field_controller_1.default.getFieldDetailsForAdmin);
 // Get all notifications for admin (including both dog owner and field owner notifications)
 router.get('/notifications', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {

@@ -2014,5 +2014,126 @@ class FieldController {
             }
         });
     });
+    // Get field details for admin with all necessary data
+    getFieldDetailsForAdmin = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const { id } = req.params;
+        // Get field with owner and booking details
+        const field = await database_1.default.field.findUnique({
+            where: { id },
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        phone: true,
+                        image: true,
+                        isBlocked: true,
+                        createdAt: true,
+                    }
+                },
+                bookings: {
+                    where: {
+                        status: {
+                            in: ['CONFIRMED', 'COMPLETED']
+                        }
+                    },
+                    orderBy: {
+                        createdAt: 'desc'
+                    },
+                    take: 10,
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        if (!field) {
+            throw new AppError_1.AppError('Field not found', 404);
+        }
+        // Transform amenities to objects with icons
+        const amenityObjects = await (0, amenity_utils_1.transformAmenitiesToObjects)(field.amenities || []);
+        const amenitiesWithIcons = amenityObjects.map((amenity) => ({
+            id: amenity.id,
+            label: amenity.label,
+            value: amenity.value,
+            iconUrl: amenity.iconUrl ?? null,
+        }));
+        // Parse and format booking policies from cancellationPolicy field or use defaults
+        let bookingPolicies = [];
+        if (field.cancellationPolicy) {
+            // If cancellationPolicy is a string, try to parse it
+            if (typeof field.cancellationPolicy === 'string') {
+                try {
+                    // Try parsing as JSON first
+                    const parsed = JSON.parse(field.cancellationPolicy);
+                    if (Array.isArray(parsed)) {
+                        bookingPolicies = parsed.filter(p => p && p.trim().length > 0);
+                    }
+                    else if (typeof parsed === 'string') {
+                        // Split by newlines or periods
+                        bookingPolicies = parsed.split(/[\n.]/).map(p => p.trim()).filter(p => p.length > 0);
+                    }
+                }
+                catch {
+                    // If not JSON, split by newlines or periods
+                    bookingPolicies = field.cancellationPolicy.split(/[\n.]/).map(p => p.trim()).filter(p => p.length > 0);
+                }
+            }
+            else if (Array.isArray(field.cancellationPolicy)) {
+                bookingPolicies = field.cancellationPolicy.filter(p => p && p.trim && p.trim().length > 0);
+            }
+        }
+        // Use defaults if no policies found
+        if (bookingPolicies.length === 0) {
+            bookingPolicies = [
+                'All bookings must be made at least 24 hours in advance',
+                'The minimum booking slot is 1 hour',
+                'Free cancellation up to 12 hours before the scheduled start time',
+                'Users arriving late will not receive a time extension',
+                'If the client does not arrive within 15 minutes of the booking start time, the booking will be marked as non-show and charged in full',
+                'Bookings may be subject to blackout list booking nights'
+            ];
+        }
+        // Parse and format safety rules from rules field
+        let safetyRules = [];
+        if (field.rules && Array.isArray(field.rules) && field.rules.length > 0) {
+            if (field.rules.length === 1 && typeof field.rules[0] === 'string') {
+                // Single string with multiple rules - split by periods or newlines
+                const rulesString = field.rules[0];
+                safetyRules = rulesString
+                    .split(/[.\n]/)
+                    .map((rule) => rule.trim())
+                    .filter((rule) => rule.length > 0);
+            }
+            else {
+                // Already an array of rules
+                safetyRules = field.rules.filter((rule) => rule && typeof rule === 'string' && rule.trim().length > 0);
+            }
+        }
+        // Enrich response with formatted data
+        const enrichedField = {
+            ...field,
+            amenities: amenitiesWithIcons,
+            policies: bookingPolicies,
+            safetyRules: safetyRules,
+            recentBookings: field.bookings || [],
+            joinedOn: field.owner?.createdAt ? new Date(field.owner.createdAt).toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+            }) : 'N/A',
+        };
+        res.json({
+            success: true,
+            data: enrichedField,
+        });
+    });
 }
 exports.default = new FieldController();
