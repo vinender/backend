@@ -371,6 +371,12 @@ class FieldController {
         const { id } = req.params;
         const userId = req.user.id;
         const userRole = req.user.role;
+        const formatAddress = (address, city, state, zipCode) => {
+            return [address, city, state, zipCode]
+                .map(part => (part && typeof part === 'string' ? part.trim() : part))
+                .filter(Boolean)
+                .join(', ') || 'Not provided';
+        };
         // Check ownership
         const field = await field_model_1.default.findById(id);
         if (!field) {
@@ -382,6 +388,14 @@ class FieldController {
         // Prevent updating certain fields
         delete req.body.id;
         delete req.body.ownerId;
+        const addressUpdated = (req.body.address !== undefined && req.body.address !== field.address) ||
+            (req.body.city !== undefined && req.body.city !== field.city) ||
+            (req.body.state !== undefined && req.body.state !== field.state) ||
+            (req.body.zipCode !== undefined && req.body.zipCode !== field.zipCode);
+        const shouldNotifyAdmin = userRole === 'FIELD_OWNER' && addressUpdated;
+        const previousAddressSnapshot = shouldNotifyAdmin
+            ? formatAddress(field.address, field.city, field.state, field.zipCode)
+            : null;
         // Convert amenity IDs to names if amenities are being updated
         if (req.body.amenities && req.body.amenities.length > 0) {
             req.body.amenities = await (0, amenity_converter_1.convertAmenityIdsToNames)(req.body.amenities);
@@ -412,6 +426,37 @@ class FieldController {
         const updatedField = await field_model_1.default.update(id, req.body);
         // Enrich field with full amenity objects
         const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(updatedField);
+        if (shouldNotifyAdmin) {
+            try {
+                const { emailService } = await Promise.resolve().then(() => __importStar(require('../services/email.service')));
+                const settings = await database_1.default.systemSettings.findFirst({
+                    select: { supportEmail: true },
+                });
+                const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ||
+                    process.env.ADMIN_EMAIL ||
+                    settings?.supportEmail ||
+                    process.env.SUPPORT_EMAIL ||
+                    'support@fieldsy.com';
+                if (adminEmail) {
+                    await emailService.sendFieldAddressChangeNotification({
+                        adminEmail,
+                        fieldName: updatedField.name || 'Field',
+                        fieldId: updatedField.id,
+                        ownerName: updatedField.owner?.name || field.owner?.name || null,
+                        ownerEmail: updatedField.owner?.email || field.owner?.email || null,
+                        previousAddress: previousAddressSnapshot || 'Not provided',
+                        newAddress: formatAddress(updatedField.address, updatedField.city, updatedField.state, updatedField.zipCode),
+                        changeDate: new Date(),
+                    });
+                }
+                else {
+                    console.warn('Admin email not configured; skipping field address change notification.');
+                }
+            }
+            catch (notificationError) {
+                console.error('Failed to send field address change notification:', notificationError);
+            }
+        }
         res.json({
             success: true,
             message: 'Field updated successfully',

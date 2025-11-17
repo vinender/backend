@@ -450,6 +450,12 @@ class FieldController {
     const { id } = req.params;
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
+    const formatAddress = (address?: string | null, city?: string | null, state?: string | null, zipCode?: string | null) => {
+      return [address, city, state, zipCode]
+        .map(part => (part && typeof part === 'string' ? part.trim() : part))
+        .filter(Boolean)
+        .join(', ') || 'Not provided';
+    };
 
     // Check ownership
     const field = await FieldModel.findById(id);
@@ -464,6 +470,16 @@ class FieldController {
     // Prevent updating certain fields
     delete req.body.id;
     delete req.body.ownerId;
+
+    const addressUpdated =
+      (req.body.address !== undefined && req.body.address !== field.address) ||
+      (req.body.city !== undefined && req.body.city !== field.city) ||
+      (req.body.state !== undefined && req.body.state !== field.state) ||
+      (req.body.zipCode !== undefined && req.body.zipCode !== field.zipCode);
+    const shouldNotifyAdmin = userRole === 'FIELD_OWNER' && addressUpdated;
+    const previousAddressSnapshot = shouldNotifyAdmin
+      ? formatAddress(field.address, field.city, field.state, field.zipCode)
+      : null;
 
     // Convert amenity IDs to names if amenities are being updated
     if (req.body.amenities && req.body.amenities.length > 0) {
@@ -503,6 +519,38 @@ class FieldController {
 
     // Enrich field with full amenity objects
     const enrichedField = await enrichFieldWithAmenities(updatedField);
+
+    if (shouldNotifyAdmin) {
+      try {
+        const { emailService } = await import('../services/email.service');
+        const settings = await prisma.systemSettings.findFirst({
+          select: { supportEmail: true },
+        });
+        const adminEmail =
+          process.env.ADMIN_NOTIFICATION_EMAIL ||
+          process.env.ADMIN_EMAIL ||
+          settings?.supportEmail ||
+          process.env.SUPPORT_EMAIL ||
+          'support@fieldsy.com';
+
+        if (adminEmail) {
+          await emailService.sendFieldAddressChangeNotification({
+            adminEmail,
+            fieldName: updatedField.name || 'Field',
+            fieldId: updatedField.id,
+            ownerName: updatedField.owner?.name || field.owner?.name || null,
+            ownerEmail: updatedField.owner?.email || field.owner?.email || null,
+            previousAddress: previousAddressSnapshot || 'Not provided',
+            newAddress: formatAddress(updatedField.address, updatedField.city, updatedField.state, updatedField.zipCode),
+            changeDate: new Date(),
+          });
+        } else {
+          console.warn('Admin email not configured; skipping field address change notification.');
+        }
+      } catch (notificationError) {
+        console.error('Failed to send field address change notification:', notificationError);
+      }
+    }
 
     res.json({
       success: true,

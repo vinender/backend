@@ -1832,6 +1832,27 @@ class EmailService {
             return false;
         }
     }
+    async sendFieldAddressChangeNotification(data) {
+        const subject = `Field Address Updated: ${data.fieldName}`;
+        const html = getFieldAddressChangeNotificationTemplate({
+            fieldName: data.fieldName,
+            fieldId: data.fieldId,
+            ownerName: data.ownerName,
+            ownerEmail: data.ownerEmail,
+            previousAddress: data.previousAddress,
+            newAddress: data.newAddress,
+            changeDate: data.changeDate,
+        });
+        try {
+            const result = await this.sendMail(data.adminEmail, subject, html);
+            console.log(`✅ Field address change email sent to admin ${data.adminEmail}`);
+            return result;
+        }
+        catch (error) {
+            console.error(`❌ Failed to send field address change email to ${data.adminEmail}:`, error);
+            return false;
+        }
+    }
     async sendBookingReminderEmail(data) {
         const subject = `Reminder: Your booking at ${data.fieldName} is coming up! - Fieldsy`;
         const html = getBookingReminderTemplate(data);
@@ -2022,6 +2043,106 @@ const getBookingReminderTemplate = (data) => {
           <div class="footer">
             <p>Need to reschedule or cancel? Log in to your account to manage your bookings.</p>
             <p>&copy; ${new Date().getFullYear()} Fieldsy. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+const getFieldAddressChangeNotificationTemplate = (data) => {
+    const formattedDate = new Intl.DateTimeFormat('en-GB', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(new Date(data.changeDate));
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Field Address Updated</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f7f7f7;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+          }
+          .container {
+            max-width: 640px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+          }
+          .header {
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 22px;
+            color: #222222;
+          }
+          .details {
+            background-color: #f8faf8;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+          }
+          .details p {
+            margin: 8px 0;
+          }
+          .addresses {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+          }
+          .address-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+          }
+          .address-card h3 {
+            margin: 0 0 8px;
+            font-size: 16px;
+            color: #4CAF50;
+          }
+          .footer {
+            margin-top: 20px;
+            font-size: 13px;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Field Address Updated</h1>
+            <p style="margin: 8px 0 0; font-size: 14px; color: #666;">${formattedDate}</p>
+          </div>
+
+          <div class="details">
+            <p><strong>Field:</strong> ${data.fieldName} (${data.fieldId})</p>
+            <p><strong>Field Owner:</strong> ${data.ownerName || 'Field Owner'}${data.ownerEmail ? ` (${data.ownerEmail})` : ''}</p>
+          </div>
+
+          <div class="addresses">
+            <div class="address-card">
+              <h3>Previous Address</h3>
+              <p>${data.previousAddress || 'Not provided'}</p>
+            </div>
+            <div class="address-card">
+              <h3>New Address</h3>
+              <p>${data.newAddress || 'Not provided'}</p>
+            </div>
+          </div>
+
+          <div class="footer">
+            <p>This email was sent automatically to let you know that a field owner changed their address details.</p>
           </div>
         </div>
       </body>
