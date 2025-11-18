@@ -408,6 +408,9 @@ router.get('/users', admin_middleware_1.authenticateAdmin, async (req, res) => {
                     phone: true,
                     emailVerified: true,
                     createdAt: true,
+                    isBlocked: true,
+                    blockedAt: true,
+                    blockReason: true,
                     _count: {
                         select: {
                             bookings: true,
@@ -1161,6 +1164,75 @@ router.delete('/profile/delete-image', admin_middleware_1.authenticateAdmin, asy
     }
     catch (error) {
         console.error('Delete admin profile image error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+// Block user (admin only)
+router.patch('/users/:userId/block', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { reason } = req.body;
+        // Check if user exists
+        const user = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        // Prevent blocking other admins
+        if (user.role === 'ADMIN') {
+            return res.status(403).json({ error: 'Cannot block admin users' });
+        }
+        // Block the user
+        const blockedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                isBlocked: true,
+                blockedAt: new Date(),
+                blockReason: reason || 'Blocked by admin'
+            }
+        });
+        const { password: _, ...userData } = blockedUser;
+        res.json({
+            success: true,
+            message: 'User blocked successfully',
+            user: userData
+        });
+    }
+    catch (error) {
+        console.error('Block user error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+// Unblock user (admin only)
+router.patch('/users/:userId/unblock', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        // Check if user exists
+        const user = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        // Unblock the user
+        const unblockedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                isBlocked: false,
+                blockedAt: null,
+                blockReason: null
+            }
+        });
+        const { password: _, ...userData } = unblockedUser;
+        res.json({
+            success: true,
+            message: 'User unblocked successfully',
+            user: userData
+        });
+    }
+    catch (error) {
+        console.error('Unblock user error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

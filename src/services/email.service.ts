@@ -139,6 +139,10 @@ const getFieldClaimStatusTemplate = (statusData: {
   status: 'APPROVED' | 'REJECTED';
   reviewNotes?: string;
   documents?: string[];
+  credentials?: {
+    email: string;
+    password: string;
+  };
 }) => {
   const isApproved = statusData.status === 'APPROVED';
   const statusColor = isApproved ? '#4CAF50' : '#f44336';
@@ -242,7 +246,21 @@ const getFieldClaimStatusTemplate = (statusData: {
             `}
             
             <div class="status-badge">Status: ${statusText}</div>
-            
+
+            ${isApproved && statusData.credentials ? `
+              <div class="info-box" style="background-color: #fff7e6; border-left-color: #ff8c00;">
+                <h3 style="color: #ff8c00; margin-top: 0;">🔐 Your Field Owner Account Credentials</h3>
+                <p style="margin-bottom: 15px;">We've created your field owner account. Please use these credentials to log in:</p>
+                <div style="background-color: white; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                  <p style="margin: 5px 0;"><strong>Email:</strong> <code style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${statusData.credentials.email}</code></p>
+                  <p style="margin: 5px 0;"><strong>Password:</strong> <code style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${statusData.credentials.password}</code></p>
+                </div>
+                <p style="color: #d63031; font-size: 14px; margin-top: 10px;">
+                  ⚠️ <strong>Important:</strong> Please save these credentials in a secure location. We recommend changing your password after your first login.
+                </p>
+              </div>
+            ` : ''}
+
             <div class="info-box">
               <h3>Field Details:</h3>
               <p><strong>Field Name:</strong> ${statusData.fieldName}</p>
@@ -1841,6 +1859,10 @@ class EmailService {
     status: 'APPROVED' | 'REJECTED';
     reviewNotes?: string;
     documents?: string[];
+    credentials?: {
+      email: string;
+      password: string;
+    };
   }): Promise<boolean> {
     const statusText = statusData.status === 'APPROVED' ? 'Approved' : 'Rejected';
     const subject = `Field Claim ${statusText} - Fieldsy`;
@@ -1850,7 +1872,8 @@ class EmailService {
       fieldAddress: statusData.fieldAddress,
       status: statusData.status,
       reviewNotes: statusData.reviewNotes,
-      documents: statusData.documents
+      documents: statusData.documents,
+      credentials: statusData.credentials
     });
 
     try {

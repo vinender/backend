@@ -4,6 +4,9 @@ import { PrismaClient } from '@prisma/client';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
 import { emailService } from '../services/email.service';
+import bcrypt from 'bcryptjs';
+import { BCRYPT_ROUNDS } from '../config/constants';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -223,6 +226,10 @@ export const updateClaimStatus = asyncHandler(async (req: Request, res: Response
     throw new AppError('Claim not found', 404);
   }
 
+  // Variables for credentials (used if approved)
+  let generatedPassword: string | undefined;
+  let fieldOwner: any = null;
+
   // Update the claim
   const updatedClaim = await prisma.fieldClaim.update({
     where: { id: claimId },
@@ -234,22 +241,73 @@ export const updateClaimStatus = asyncHandler(async (req: Request, res: Response
     }
   });
 
-  // If approved, update the field's claim status
+  // If approved, create field owner account and update field
   if (status === 'APPROVED') {
-    await prisma.field.update({
-      where: { id: claim.fieldId },
-      data: {
-        isClaimed: true
+    try {
+      // Check if user already exists with FIELD_OWNER role
+      const existingFieldOwner = await prisma.user.findUnique({
+        where: {
+          email_role: {
+            email: claim.email,
+            role: 'FIELD_OWNER'
+          }
+        }
+      });
+
+      if (!existingFieldOwner) {
+        // Generate a random password
+        generatedPassword = crypto.randomBytes(8).toString('hex');
+        const hashedPassword = await bcrypt.hash(generatedPassword, BCRYPT_ROUNDS);
+
+        // Create the field owner account
+        fieldOwner = await prisma.user.create({
+          data: {
+            email: claim.email,
+            name: claim.fullName,
+            password: hashedPassword,
+            role: 'FIELD_OWNER',
+            phone: claim.phoneCode && claim.phoneNumber ? `${claim.phoneCode}${claim.phoneNumber}` : null,
+            provider: 'general',
+            hasField: true
+          }
+        });
+
+        // Update the field with the new owner
+        await prisma.field.update({
+          where: { id: claim.fieldId },
+          data: {
+            isClaimed: true,
+            ownerId: fieldOwner.id
+          }
+        });
+
+        console.log(`✅ Created field owner account for ${claim.email}`);
+      } else {
+        // User already exists, just update the field
+        fieldOwner = existingFieldOwner;
+
+        await prisma.field.update({
+          where: { id: claim.fieldId },
+          data: {
+            isClaimed: true,
+            ownerId: existingFieldOwner.id
+          }
+        });
+
+        console.log(`ℹ️ Field owner account already exists for ${claim.email}, assigned field to existing account`);
       }
-    });
+    } catch (accountError) {
+      console.error('Failed to create field owner account:', accountError);
+      throw new AppError('Failed to create field owner account', 500);
+    }
   }
 
   // Send email notification about status update
   try {
-    const fieldAddress = claim.field.address ? 
-      `${claim.field.address}${claim.field.city ? ', ' + claim.field.city : ''}${claim.field.state ? ', ' + claim.field.state : ''}` : 
+    const fieldAddress = claim.field.address ?
+      `${claim.field.address}${claim.field.city ? ', ' + claim.field.city : ''}${claim.field.state ? ', ' + claim.field.state : ''}` :
       'Address not specified';
-    
+
     await emailService.sendFieldClaimStatusEmail({
       email: claim.email,
       fullName: claim.fullName,
@@ -257,7 +315,11 @@ export const updateClaimStatus = asyncHandler(async (req: Request, res: Response
       fieldAddress: fieldAddress,
       status: status as 'APPROVED' | 'REJECTED',
       reviewNotes: reviewNotes,
-      documents: claim.documents // Include the documents array
+      documents: claim.documents, // Include the documents array
+      credentials: status === 'APPROVED' && generatedPassword ? {
+        email: claim.email,
+        password: generatedPassword
+      } : undefined
     });
   } catch (emailError) {
     // Log error but don't fail the status update

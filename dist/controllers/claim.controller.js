@@ -1,10 +1,16 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getFieldClaims = exports.checkClaimEligibility = exports.updateClaimStatus = exports.getClaimById = exports.getAllClaims = exports.submitFieldClaim = void 0;
 const client_1 = require("@prisma/client");
 const asyncHandler_1 = require("../utils/asyncHandler");
 const AppError_1 = require("../utils/AppError");
 const email_service_1 = require("../services/email.service");
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const constants_1 = require("../config/constants");
+const crypto_1 = __importDefault(require("crypto"));
 const prisma = new client_1.PrismaClient();
 // Submit a field claim
 exports.submitFieldClaim = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
@@ -189,6 +195,9 @@ exports.updateClaimStatus = (0, asyncHandler_1.asyncHandler)(async (req, res) =>
     if (!claim) {
         throw new AppError_1.AppError('Claim not found', 404);
     }
+    // Variables for credentials (used if approved)
+    let generatedPassword;
+    let fieldOwner = null;
     // Update the claim
     const updatedClaim = await prisma.fieldClaim.update({
         where: { id: claimId },
@@ -199,14 +208,61 @@ exports.updateClaimStatus = (0, asyncHandler_1.asyncHandler)(async (req, res) =>
             reviewedBy: reviewerId
         }
     });
-    // If approved, update the field's claim status
+    // If approved, create field owner account and update field
     if (status === 'APPROVED') {
-        await prisma.field.update({
-            where: { id: claim.fieldId },
-            data: {
-                isClaimed: true
+        try {
+            // Check if user already exists with FIELD_OWNER role
+            const existingFieldOwner = await prisma.user.findUnique({
+                where: {
+                    email_role: {
+                        email: claim.email,
+                        role: 'FIELD_OWNER'
+                    }
+                }
+            });
+            if (!existingFieldOwner) {
+                // Generate a random password
+                generatedPassword = crypto_1.default.randomBytes(8).toString('hex');
+                const hashedPassword = await bcryptjs_1.default.hash(generatedPassword, constants_1.BCRYPT_ROUNDS);
+                // Create the field owner account
+                fieldOwner = await prisma.user.create({
+                    data: {
+                        email: claim.email,
+                        name: claim.fullName,
+                        password: hashedPassword,
+                        role: 'FIELD_OWNER',
+                        phone: claim.phoneCode && claim.phoneNumber ? `${claim.phoneCode}${claim.phoneNumber}` : null,
+                        provider: 'general',
+                        hasField: true
+                    }
+                });
+                // Update the field with the new owner
+                await prisma.field.update({
+                    where: { id: claim.fieldId },
+                    data: {
+                        isClaimed: true,
+                        ownerId: fieldOwner.id
+                    }
+                });
+                console.log(`✅ Created field owner account for ${claim.email}`);
             }
-        });
+            else {
+                // User already exists, just update the field
+                fieldOwner = existingFieldOwner;
+                await prisma.field.update({
+                    where: { id: claim.fieldId },
+                    data: {
+                        isClaimed: true,
+                        ownerId: existingFieldOwner.id
+                    }
+                });
+                console.log(`ℹ️ Field owner account already exists for ${claim.email}, assigned field to existing account`);
+            }
+        }
+        catch (accountError) {
+            console.error('Failed to create field owner account:', accountError);
+            throw new AppError_1.AppError('Failed to create field owner account', 500);
+        }
     }
     // Send email notification about status update
     try {
@@ -220,7 +276,11 @@ exports.updateClaimStatus = (0, asyncHandler_1.asyncHandler)(async (req, res) =>
             fieldAddress: fieldAddress,
             status: status,
             reviewNotes: reviewNotes,
-            documents: claim.documents // Include the documents array
+            documents: claim.documents, // Include the documents array
+            credentials: status === 'APPROVED' && generatedPassword ? {
+                email: claim.email,
+                password: generatedPassword
+            } : undefined
         });
     }
     catch (emailError) {
