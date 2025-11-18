@@ -94,30 +94,17 @@ class Server {
     this.app.set('trust proxy', 1);
 
     // CORS configuration - MUST come before other middleware
-    // TEMPORARILY ALLOW ALL ORIGINS FOR MOBILE APP TESTING
-    console.log('[REST API] CORS: Allowing all origins (*)');
-
-    // COMMENTED OUT: Specific origin validation (restore for production)
-    const allowedOrigins = [
-      '*', // Allow all origins
-      // 'http://localhost:3000',
-      // 'http://localhost:3001',
-      // 'http://localhost:5000',
-      // 'http://localhost:3002',
-      // "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
-      // "exp://*",
-      // 'http://localhost:3003', // Admin dashboard
-      // 'http://localhost:8081', // Expo web
-      // 'https://fieldsy.indiitserver.in', // Production frontend
-      // 'https://fieldsy-admin.indiitserver.in', // Production admin
-      // 'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
-      // 'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
-      // FRONTEND_URL
-    ];
+    // ALLOW ALL ORIGINS WITH CREDENTIALS SUPPORT
+    console.log('[REST API] CORS: Allowing all origins with credentials support');
 
     this.app.use(cors({
-      // origin: '*', // Allow all origins
-      origin: '*',
+      // CRITICAL: Cannot use origin: '*' with credentials: true
+      // Solution: Dynamically reflect the requesting origin
+      origin: (origin, callback) => {
+        // Always allow requests (reflect the origin back)
+        // This allows credentials while accepting all origins
+        callback(null, origin || true);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

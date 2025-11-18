@@ -22,30 +22,18 @@ const socketError = (...args: any[]) => {
 };
 
 export function setupWebSocket(server: HTTPServer) {
-  // TEMPORARILY ALLOW ALL ORIGINS FOR MOBILE APP TESTING
-  console.log('[WebSocket] CORS: Allowing all origins (*) - SAME AS REST API');
-
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-    'http://localhost:3003',
-    'http://localhost:3004',
-    'http://localhost:3005',
-    'http://localhost:8081',
-    'http://localhost:19006',
-    'https://fieldsy.indiitserver.in',
-    'https://fieldsy-admin.indiitserver.in',
-    'http://fieldsy.indiitserver.in',
-    'http://fieldsy-admin.indiitserver.in',
-    process.env.FRONTEND_URL,
-    process.env.ADMIN_URL,
-  ].filter(Boolean); // Remove undefined values
+  // ALLOW ALL ORIGINS WITH DYNAMIC REFLECTION FOR CREDENTIALS
+  console.log('[WebSocket] CORS: Allowing all origins with credentials support');
 
   const io = new Server(server, {
     cors: {
-      // ALLOW ALL ORIGINS - matches REST API configuration
-      origin: '*',
+      // CRITICAL: Cannot use origin: '*' with credentials: true
+      // Solution: Dynamically reflect the requesting origin
+      origin: (origin, callback) => {
+        // Always allow requests (reflect the origin back)
+        // This allows credentials while accepting all origins
+        callback(null, origin || '*');
+      },
       credentials: true,
       methods: ['GET', 'POST', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
