@@ -100,24 +100,24 @@ class Server {
     // COMMENTED OUT: Specific origin validation (restore for production)
     const allowedOrigins = [
       '*', // Allow all origins
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:5000',
-      'http://localhost:3002',
-      "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
-      "exp://*",
-      'http://localhost:3003', // Admin dashboard
-      'http://localhost:8081', // Expo web
-      'https://fieldsy.indiitserver.in', // Production frontend
-      'https://fieldsy-admin.indiitserver.in', // Production admin
-      'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
-      'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
-      FRONTEND_URL
+      // 'http://localhost:3000',
+      // 'http://localhost:3001',
+      // 'http://localhost:5000',
+      // 'http://localhost:3002',
+      // "exp+fieldsy://*",              // ✅ your Expo app scheme (for dev client)
+      // "exp://*",
+      // 'http://localhost:3003', // Admin dashboard
+      // 'http://localhost:8081', // Expo web
+      // 'https://fieldsy.indiitserver.in', // Production frontend
+      // 'https://fieldsy-admin.indiitserver.in', // Production admin
+      // 'http://fieldsy.indiitserver.in', // Allow HTTP as fallback
+      // 'http://fieldsy-admin.indiitserver.in', // Allow HTTP as fallback
+      // FRONTEND_URL
     ];
 
     this.app.use(cors({
       // origin: '*', // Allow all origins
-      origin: allowedOrigins,
+      origin: '*',
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
