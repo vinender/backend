@@ -14,7 +14,8 @@ interface AuthSocket extends Socket {
 export const initializeSocket = (server: HTTPServer) => {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+      // origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+      origin: '*',
       credentials: true,
     },
   });
