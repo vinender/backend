@@ -99,6 +99,7 @@ class Server {
 
     // COMMENTED OUT: Specific origin validation (restore for production)
     const allowedOrigins = [
+      '*', // Allow all origins
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:5000',

@@ -79,6 +79,7 @@ class Server {
         console.log('[REST API] CORS: Allowing all origins (*)');
         // COMMENTED OUT: Specific origin validation (restore for production)
         const allowedOrigins = [
+            '*', // Allow all origins
             'http://localhost:3000',
             'http://localhost:3001',
             'http://localhost:5000',
