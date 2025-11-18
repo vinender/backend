@@ -36,6 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const mongodb_1 = require("mongodb");
 const field_model_1 = __importDefault(require("../models/field.model"));
 const asyncHandler_1 = require("../utils/asyncHandler");
 const AppError_1 = require("../utils/AppError");
@@ -2057,6 +2058,31 @@ class FieldController {
         if (!field) {
             throw new AppError_1.AppError('Field not found', 404);
         }
+        const normalizePriceValue = (value) => {
+            if (value === null || value === undefined)
+                return null;
+            const numericValue = typeof value === 'number' ? value : Number(value);
+            return Number.isFinite(numericValue) ? numericValue : null;
+        };
+        let legacyHourlyPrice = null;
+        if ((field.price === null || field.price === undefined) && mongodb_1.ObjectId.isValid(id)) {
+            try {
+                const rawResult = await database_1.default.$runCommandRaw({
+                    find: 'fields',
+                    filter: { _id: new mongodb_1.ObjectId(id) },
+                    projection: { pricePerHour: 1 },
+                });
+                const rawField = rawResult?.cursor?.firstBatch?.[0];
+                if (rawField && rawField.pricePerHour !== undefined && rawField.pricePerHour !== null) {
+                    legacyHourlyPrice = normalizePriceValue(rawField.pricePerHour);
+                }
+            }
+            catch (legacyPriceError) {
+                console.warn(`Failed to fetch legacy pricePerHour for field ${id}:`, legacyPriceError?.message || legacyPriceError);
+            }
+        }
+        const normalizedHourlyPrice = normalizePriceValue(field.price ?? legacyHourlyPrice);
+        const normalizedDailyPrice = normalizePriceValue(field.pricePerDay);
         // Transform amenities to objects with icons
         const amenityObjects = await (0, amenity_utils_1.transformAmenitiesToObjects)(field.amenities || []);
         const amenitiesWithIcons = amenityObjects.map((amenity) => ({
@@ -2120,6 +2146,8 @@ class FieldController {
         // Enrich response with formatted data
         const enrichedField = {
             ...field,
+            price: normalizedHourlyPrice,
+            pricePerDay: normalizedDailyPrice,
             amenities: amenitiesWithIcons,
             policies: bookingPolicies,
             safetyRules: safetyRules,

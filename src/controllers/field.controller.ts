@@ -1,5 +1,6 @@
 //@ts-nocheck
 import { Request, Response, NextFunction } from 'express';
+import { ObjectId } from 'mongodb';
 import FieldModel from '../models/field.model';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/AppError';
@@ -2343,6 +2344,33 @@ class FieldController {
       throw new AppError('Field not found', 404);
     }
 
+    const normalizePriceValue = (value: any): number | null => {
+      if (value === null || value === undefined) return null;
+      const numericValue = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(numericValue) ? numericValue : null;
+    };
+
+    let legacyHourlyPrice: number | null = null;
+    if ((field.price === null || field.price === undefined) && ObjectId.isValid(id)) {
+      try {
+        const rawResult: any = await prisma.$runCommandRaw({
+          find: 'fields',
+          filter: { _id: new ObjectId(id) },
+          projection: { pricePerHour: 1 },
+        });
+
+        const rawField = rawResult?.cursor?.firstBatch?.[0];
+        if (rawField && rawField.pricePerHour !== undefined && rawField.pricePerHour !== null) {
+          legacyHourlyPrice = normalizePriceValue(rawField.pricePerHour);
+        }
+      } catch (legacyPriceError) {
+        console.warn(`Failed to fetch legacy pricePerHour for field ${id}:`, legacyPriceError?.message || legacyPriceError);
+      }
+    }
+
+    const normalizedHourlyPrice = normalizePriceValue(field.price ?? legacyHourlyPrice);
+    const normalizedDailyPrice = normalizePriceValue(field.pricePerDay);
+
     // Transform amenities to objects with icons
     const amenityObjects = await transformAmenitiesToObjects(field.amenities || []);
     const amenitiesWithIcons = amenityObjects.map((amenity) => ({
@@ -2406,6 +2434,8 @@ class FieldController {
     // Enrich response with formatted data
     const enrichedField = {
       ...field,
+      price: normalizedHourlyPrice,
+      pricePerDay: normalizedDailyPrice,
       amenities: amenitiesWithIcons,
       policies: bookingPolicies,
       safetyRules: safetyRules,

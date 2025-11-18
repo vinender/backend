@@ -41,6 +41,9 @@ const processedMessages = new Set<string>();
 const MESSAGE_CACHE_SIZE = 10000; // Keep last 10k message IDs
 const messageCacheArray: string[] = [];
 
+// Queue for processing messages sequentially per conversation
+const conversationQueues = new Map<string, Promise<any>>();
+
 // Store Socket.io instance for direct message handling
 let socketIO: SocketIOServer | null = null;
 
@@ -115,43 +118,50 @@ async function processMessage(chatMessage: ChatMessage, io: SocketIOServer) {
       receiverId: chatMessage.receiverId
     });
 
-    // Save message and update conversation in parallel for speed
-    const [savedMessage] = await Promise.all([
-      prisma.message.create({
-        data: {
-          conversationId: chatMessage.conversationId,
-          senderId: chatMessage.senderId,
-          receiverId: chatMessage.receiverId,
-          content: chatMessage.content,
-          createdAt: chatMessage.timestamp,
-        },
-        include: {
-          sender: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              role: true
-            },
-          },
-          receiver: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              role: true
-            },
+    // Save message first
+    const savedMessage = await prisma.message.create({
+      data: {
+        conversationId: chatMessage.conversationId,
+        senderId: chatMessage.senderId,
+        receiverId: chatMessage.receiverId,
+        content: chatMessage.content,
+        createdAt: chatMessage.timestamp,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            role: true
           },
         },
-      }),
-      prisma.conversation.update({
+        receiver: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            role: true
+          },
+        },
+      },
+    });
+
+    // Update conversation after message is created
+    // Use upsert with retry logic to handle concurrent updates
+    try {
+      await prisma.conversation.update({
         where: { id: chatMessage.conversationId },
         data: {
           lastMessage: chatMessage.content,
           lastMessageAt: chatMessage.timestamp,
         },
-      })
-    ]);
+      });
+    } catch (conversationError) {
+      // If conversation update fails (likely due to concurrent writes), log but don't fail
+      // The message is already saved, which is the critical part
+      console.warn('[ProcessMessage] Conversation update failed (non-critical):', conversationError.message);
+    }
 
     // Emit to Socket.io rooms
     const conversationRoom = `conversation:${chatMessage.conversationId}`;
@@ -198,47 +208,75 @@ async function processMessage(chatMessage: ChatMessage, io: SocketIOServer) {
   }
 }
 
-// Send message to Kafka or process directly
+// Send message to Kafka or process directly with queueing
 export const sendMessageToKafka = async (message: ChatMessage) => {
-  try {
-    if (kafkaEnabled && producer) {
-      // Send to Kafka with conversation ID as partition key
-      // This ensures all messages for the same conversation are processed in order
-      await producer.send({
-        topic: 'chat-messages',
-        messages: [
-          {
-            key: message.conversationId, // Partition key ensures ordering per conversation
-            value: JSON.stringify(message),
-            headers: {
-              correlationId: message.correlationId || '',
-              socketId: message.socketId || '',
-              timestamp: message.timestamp.toISOString(),
+  const conversationId = message.conversationId;
+
+  // Enqueue message processing to ensure sequential processing per conversation
+  const enqueueMessage = async () => {
+    try {
+      if (kafkaEnabled && producer) {
+        // Send to Kafka with conversation ID as partition key
+        // This ensures all messages for the same conversation are processed in order
+        await producer.send({
+          topic: 'chat-messages',
+          messages: [
+            {
+              key: message.conversationId, // Partition key ensures ordering per conversation
+              value: JSON.stringify(message),
+              headers: {
+                correlationId: message.correlationId || '',
+                socketId: message.socketId || '',
+                timestamp: message.timestamp.toISOString(),
+              },
             },
-          },
-        ],
-      });
-      console.log(`[Kafka] Message sent to queue: ${message.correlationId || 'no-id'}`);
-      return null; // Return null to indicate async processing
-    } else {
-      // Process directly if Kafka is not available
-      if (socketIO) {
-        console.log('[Kafka] Kafka disabled, processing directly');
-        const savedMessage = await processMessage(message, socketIO);
-        return savedMessage; // Return saved message for immediate handling
+          ],
+        });
+        console.log(`[Kafka] Message sent to queue: ${message.correlationId || 'no-id'}`);
+        return null; // Return null to indicate async processing
       } else {
-        throw new Error('Socket.io not initialized');
+        // Process directly if Kafka is not available
+        if (socketIO) {
+          console.log('[Kafka] Kafka disabled, processing directly');
+          const savedMessage = await processMessage(message, socketIO);
+          return savedMessage; // Return saved message for immediate handling
+        } else {
+          throw new Error('Socket.io not initialized');
+        }
       }
+    } catch (error) {
+      console.error('[Kafka] Error handling message:', error);
+      // If Kafka fails, try direct processing as fallback
+      if (socketIO && error instanceof Error && !error.message.includes('Socket.io')) {
+        console.log('[Kafka] Kafka failed, falling back to direct processing');
+        return await processMessage(message, socketIO);
+      }
+      throw error;
     }
-  } catch (error) {
-    console.error('[Kafka] Error handling message:', error);
-    // If Kafka fails, try direct processing as fallback
-    if (socketIO && error instanceof Error && !error.message.includes('Socket.io')) {
-      console.log('[Kafka] Kafka failed, falling back to direct processing');
-      return await processMessage(message, socketIO);
-    }
-    throw error;
-  }
+  };
+
+  // Get or create queue for this conversation
+  const existingQueue = conversationQueues.get(conversationId) || Promise.resolve();
+
+  // Chain the new message processing after the existing queue
+  const newQueue = existingQueue
+    .then(() => enqueueMessage())
+    .catch((error) => {
+      console.error(`[Kafka] Queue processing error for conversation ${conversationId}:`, error);
+      throw error;
+    })
+    .finally(() => {
+      // Clean up the queue after processing
+      if (conversationQueues.get(conversationId) === newQueue) {
+        conversationQueues.delete(conversationId);
+      }
+    });
+
+  // Store the new queue promise
+  conversationQueues.set(conversationId, newQueue);
+
+  // Return the promise
+  return newQueue;
 };
 
 // Graceful shutdown

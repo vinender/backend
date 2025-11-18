@@ -431,9 +431,15 @@ function setupWebSocket(server) {
                 }
                 catch (kafkaError) {
                     socketError('[Socket] Kafka/processing error:', kafkaError);
-                    // Notify client of the error
+                    socketError('[Socket] Error details:', {
+                        name: kafkaError?.name,
+                        message: kafkaError?.message,
+                        stack: kafkaError?.stack?.split('\n').slice(0, 3).join('\n')
+                    });
+                    // Notify client of the error with more details
                     socket.emit('message-error', {
                         error: 'Failed to process message',
+                        errorDetails: kafkaError?.message || 'Unknown error',
                         correlationId: data.correlationId,
                         tempId: tempMessageId
                     });
