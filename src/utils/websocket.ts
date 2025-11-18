@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import { sendMessageToKafka } from '../config/kafka';
 
 const prisma = new PrismaClient();
 
@@ -402,68 +403,87 @@ export function setupWebSocket(server: HTTPServer) {
           return;
         }
 
-        // Save message and update conversation in parallel
-        const [savedMessage] = await Promise.all([
-          prisma.message.create({
-            data: {
-              conversationId,
-              senderId: userId,
-              receiverId,
-              content,
-              createdAt: new Date()
-            },
-            include: {
-              sender: {
-                select: {
-                  id: true,
-                  name: true,
-                  image: true,
-                  role: true
-                }
-              },
-              receiver: {
-                select: {
-                  id: true,
-                  name: true,
-                  image: true,
-                  role: true
-                }
-              }
-            }
-          }),
-          prisma.conversation.update({
-            where: { id: conversationId },
-            data: {
-              lastMessage: content,
-              lastMessageAt: new Date()
-            }
-          })
-        ]);
+        // Generate a temporary message ID for immediate ACK
+        const tempMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp = new Date();
 
-        socketLog(`[Socket] Message saved to database with ID: ${savedMessage.id}`);
-        socketLog(`[Socket] Message content: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`);
-
-        // Broadcast to conversation room immediately (no need to fetch sockets first)
-        io.to(convRoom).emit('new-message', savedMessage);
-        socketLog(`[Socket] ✅ Broadcasted 'new-message' to conversation room: ${convRoom}`);
-
-        // Send notification to receiver's user room (they might not be in conversation)
-        // This is fast because we just emit, we don't need to check if anyone is listening
-        const receiverRoom = `user-${receiverId}`;
-        io.to(receiverRoom).emit('new-message-notification', {
+        // Create optimistic message for immediate ACK
+        const optimisticMessage = {
+          id: tempMessageId,
           conversationId,
-          message: savedMessage
-        });
-        
-        socketLog(`[Socket] ✅ Sent 'new-message-notification' to receiver room: ${receiverRoom}`);
+          senderId: userId,
+          receiverId,
+          content,
+          createdAt: timestamp.toISOString(),
+          isRead: false,
+          sender: {
+            id: userId,
+            name: (socket as any).user?.name || 'User',
+            image: (socket as any).user?.image || null,
+            role: (socket as any).userRole || 'DOG_OWNER'
+          }
+        };
 
-        // Send acknowledgment to sender immediately
+        // Send immediate ACK to client with optimistic message
         if (callback) {
-          socketLog(`[Socket] Sending ACK to sender for message ${savedMessage.id}`);
+          socketLog(`[Socket] Sending immediate ACK with temp ID: ${tempMessageId}`);
           callback({
             success: true,
-            message: savedMessage,
-            correlationId: data.correlationId
+            message: optimisticMessage,
+            correlationId: data.correlationId,
+            pending: true // Indicates message is being processed
+          });
+        }
+
+        // Send message to Kafka for async processing (or process directly if Kafka disabled)
+        socketLog(`[Socket] Sending message to Kafka for processing`);
+
+        try {
+          const savedMessage = await sendMessageToKafka({
+            conversationId,
+            senderId: userId,
+            receiverId,
+            content,
+            timestamp,
+            correlationId: correlationId || tempMessageId,
+            socketId: socket.id // Track which socket sent this
+          });
+
+          // If Kafka is disabled, sendMessageToKafka returns the saved message
+          // In that case, emit it immediately
+          if (savedMessage) {
+            socketLog(`[Socket] Direct processing complete, message ID: ${savedMessage.id}`);
+
+            // Broadcast to conversation room
+            io.to(convRoom).emit('new-message', savedMessage);
+            socketLog(`[Socket] ✅ Broadcasted 'new-message' to conversation room: ${convRoom}`);
+
+            // Send notification to receiver's user room
+            const receiverRoom = `user-${receiverId}`;
+            io.to(receiverRoom).emit('new-message-notification', {
+              conversationId,
+              message: savedMessage
+            });
+
+            socketLog(`[Socket] ✅ Sent 'new-message-notification' to receiver room: ${receiverRoom}`);
+
+            // Send final confirmation to sender with real message ID
+            socket.emit('message-confirmed', {
+              tempId: tempMessageId,
+              realId: savedMessage.id,
+              message: savedMessage,
+              correlationId: data.correlationId
+            });
+          } else {
+            socketLog(`[Socket] Message sent to Kafka queue, will be processed asynchronously`);
+          }
+        } catch (kafkaError) {
+          socketError('[Socket] Kafka/processing error:', kafkaError);
+          // Notify client of the error
+          socket.emit('message-error', {
+            error: 'Failed to process message',
+            correlationId: data.correlationId,
+            tempId: tempMessageId
           });
         }
 

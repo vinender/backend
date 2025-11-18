@@ -21,7 +21,7 @@ import {
 import mongoSanitize from 'express-mongo-sanitize';
 import { createServer } from 'http';
 import { setupWebSocket } from './utils/websocket';
-import { initializeKafka } from './config/kafka';
+import { initializeKafka, shutdownKafka } from './config/kafka';
 
 // Load environment variables
 dotenv.config();
@@ -518,16 +518,18 @@ class Server {
     const server = this.httpServer;
 
     // Graceful shutdown
-    process.on('SIGTERM', () => {
+    process.on('SIGTERM', async () => {
       console.log('SIGTERM signal received: closing HTTP server');
+      await shutdownKafka();
       server.close(() => {
         console.log('HTTP server closed');
         process.exit(0);
       });
     });
 
-    process.on('SIGINT', () => {
+    process.on('SIGINT', async () => {
       console.log('SIGINT signal received: closing HTTP server');
+      await shutdownKafka();
       server.close(() => {
         console.log('HTTP server closed');
         process.exit(0);

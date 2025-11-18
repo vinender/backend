@@ -450,15 +450,17 @@ class Server {
         });
         const server = this.httpServer;
         // Graceful shutdown
-        process.on('SIGTERM', () => {
+        process.on('SIGTERM', async () => {
             console.log('SIGTERM signal received: closing HTTP server');
+            await (0, kafka_1.shutdownKafka)();
             server.close(() => {
                 console.log('HTTP server closed');
                 process.exit(0);
             });
         });
-        process.on('SIGINT', () => {
+        process.on('SIGINT', async () => {
             console.log('SIGINT signal received: closing HTTP server');
+            await (0, kafka_1.shutdownKafka)();
             server.close(() => {
                 console.log('HTTP server closed');
                 process.exit(0);
