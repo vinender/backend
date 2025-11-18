@@ -22,7 +22,8 @@ const socketError = (...args: any[]) => {
 };
 
 export function setupWebSocket(server: HTTPServer) {
-  console.log('[WebSocket] CORS: Using specific allowed origins with credentials');
+  // TEMPORARILY ALLOW ALL ORIGINS FOR MOBILE APP TESTING
+  console.log('[WebSocket] CORS: Allowing all origins (*) - SAME AS REST API');
 
   const allowedOrigins = [
     'http://localhost:3000',
@@ -43,30 +44,8 @@ export function setupWebSocket(server: HTTPServer) {
 
   const io = new Server(server, {
     cors: {
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, Postman, React Native)
-        if (!origin) {
-          return callback(null, true);
-        }
-
-        // In development, be more permissive with localhost
-        if (process.env.NODE_ENV === 'development' && (
-          origin.includes('localhost') ||
-          origin.includes('127.0.0.1') ||
-          origin.includes('192.168.') ||
-          origin.includes('10.0.')
-        )) {
-          return callback(null, true);
-        }
-
-        // Check if the origin is in the allowed list
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          console.log('[WebSocket] Rejected origin:', origin);
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
+      // ALLOW ALL ORIGINS - matches REST API configuration
+      origin: '*',
       credentials: true,
       methods: ['GET', 'POST', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
