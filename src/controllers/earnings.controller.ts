@@ -615,6 +615,94 @@ class EarningsController {
     res.setHeader('Content-Disposition', `attachment; filename="payouts_${new Date().toISOString().split('T')[0]}.csv"`);
     res.send(csvContent);
   });
+
+  /**
+   * Sync payouts from Stripe to database
+   * Admin or Field Owner can trigger this to fetch missing payouts
+   */
+  syncPayoutsFromStripe = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    // Get Stripe account
+    const stripeAccount = await prisma.stripeAccount.findUnique({
+      where: { userId }
+    });
+
+    if (!stripeAccount) {
+      throw new AppError('No Stripe account found. Please connect your Stripe account first.', 404);
+    }
+
+    try {
+      const stripe = require('../config/stripe.config').stripe;
+
+      // Fetch payouts from Stripe for this connected account
+      const stripePayouts = await stripe.payouts.list(
+        {
+          limit: 100 // Fetch up to 100 recent payouts
+        },
+        {
+          stripeAccount: stripeAccount.stripeAccountId
+        }
+      );
+
+      let syncedCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      for (const stripePayout of stripePayouts.data) {
+        // Check if payout already exists
+        const existingPayout = await prisma.payout.findUnique({
+          where: { stripePayoutId: stripePayout.id }
+        });
+
+        const payoutData = {
+          amount: (stripePayout.amount || 0) / 100, // Convert from cents to dollars
+          currency: stripePayout.currency || 'gbp',
+          status: stripePayout.status,
+          method: stripePayout.method || 'standard',
+          description: stripePayout.description || null,
+          arrivalDate: stripePayout.arrival_date ? new Date(stripePayout.arrival_date * 1000) : null,
+          failureCode: stripePayout.failure_code || null,
+          failureMessage: stripePayout.failure_message || null,
+          bookingIds: [] // Will be empty for manual sync, webhooks populate this
+        };
+
+        if (existingPayout) {
+          // Update existing payout
+          await prisma.payout.update({
+            where: { id: existingPayout.id },
+            data: payoutData
+          });
+          updatedCount++;
+        } else {
+          // Create new payout record
+          await prisma.payout.create({
+            data: {
+              stripeAccountId: stripeAccount.id,
+              stripePayoutId: stripePayout.id,
+              ...payoutData
+            }
+          });
+          syncedCount++;
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `Successfully synced payouts from Stripe`,
+        data: {
+          total: stripePayouts.data.length,
+          synced: syncedCount,
+          updated: updatedCount,
+          skipped: skippedCount
+        }
+      });
+    } catch (error) {
+      console.error('[SyncPayouts] Error syncing payouts from Stripe:', error);
+      throw new AppError('Failed to sync payouts from Stripe. Please try again.', 500);
+    }
+  });
 }
 
 export default new EarningsController();

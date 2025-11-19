@@ -830,16 +830,60 @@ async function syncStripePayoutEvent(event) {
     const payoutObject = event.data.object;
     const connectedAccountId = event.account;
     if (!payoutObject || !connectedAccountId) {
-        console.warn('[StripeWebhook] Payout event missing required data');
+        console.warn('[StripeWebhook] Payout event missing required data', {
+            hasPayoutObject: !!payoutObject,
+            hasConnectedAccountId: !!connectedAccountId
+        });
         return;
     }
-    const stripeAccount = await database_1.default.stripeAccount.findFirst({
+    console.log(`[StripeWebhook] Processing payout event for account: ${connectedAccountId}`);
+    let stripeAccount = await database_1.default.stripeAccount.findFirst({
         where: { stripeAccountId: connectedAccountId }
     });
     if (!stripeAccount) {
-        console.warn('[StripeWebhook] Received payout event for unknown account', connectedAccountId);
+        console.warn(`[StripeWebhook] Account ${connectedAccountId} not found in DB. Attempting self-healing...`);
+        try {
+            // Fetch account from Stripe to check metadata
+            const account = await stripe_config_1.stripe.accounts.retrieve(connectedAccountId);
+            const userId = account.metadata?.userId;
+            if (userId) {
+                // Verify user exists
+                const user = await database_1.default.user.findUnique({ where: { id: userId } });
+                if (user) {
+                    console.log(`[StripeWebhook] Found user ${userId} for orphaned account ${connectedAccountId}. Re-linking...`);
+                    // Create missing StripeAccount record
+                    stripeAccount = await database_1.default.stripeAccount.create({
+                        data: {
+                            userId,
+                            stripeAccountId: connectedAccountId,
+                            accountType: account.type || 'express',
+                            chargesEnabled: account.charges_enabled,
+                            payoutsEnabled: account.payouts_enabled,
+                            detailsSubmitted: account.details_submitted,
+                            defaultCurrency: account.default_currency || 'gbp',
+                            country: account.country || 'GB',
+                            email: account.email || user.email
+                        }
+                    });
+                    console.log(`[StripeWebhook] Successfully re-linked account ${connectedAccountId} to user ${userId}`);
+                }
+                else {
+                    console.error(`[StripeWebhook] User ${userId} from Stripe metadata not found in DB.`);
+                }
+            }
+            else {
+                console.warn(`[StripeWebhook] No userId in metadata for account ${connectedAccountId}. Cannot self-heal.`);
+            }
+        }
+        catch (error) {
+            console.error(`[StripeWebhook] Failed to fetch account ${connectedAccountId} from Stripe:`, error);
+        }
+    }
+    if (!stripeAccount) {
+        console.warn(`[StripeWebhook] Received payout event for unknown account: ${connectedAccountId}. Available accounts count: ${await database_1.default.stripeAccount.count()}`);
         return;
     }
+    console.log(`[StripeWebhook] Found matching internal account: ${stripeAccount.id} for Stripe account: ${connectedAccountId}`);
     const bookingIds = extractBookingIdsFromMetadata(payoutObject.metadata);
     const payoutData = {
         amount: (payoutObject.amount || 0) / 100,

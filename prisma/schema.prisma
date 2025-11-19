@@ -30,54 +30,53 @@ enum FieldType {
 }
 
 model User {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  email         String
-  emailVerified DateTime?
-  name          String?
-  password      String?
-  image         String?   // User's uploaded profile image
-  googleImage   String?   // Google profile image URL (kept separate)
-  role          UserRole  @default(DOG_OWNER)
-  phone         String?
-  bio           String?
-  provider      String    @default("general") // google, apple, or general
-  stripeCustomerId String?  // Stripe customer ID for payment methods
-  isReported    Boolean   @default(false)
-  isBlocked     Boolean   @default(false) // Admin can block users
-  blockedAt     DateTime? // When the user was blocked
-  blockReason   String?   // Reason for blocking
-  commissionRate Float?    // Custom commission rate for field owners (0-100)
-  hasField      Boolean   @default(false) // True if field owner has at least one submitted field
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  email            String
+  emailVerified    DateTime?
+  name             String?
+  password         String?
+  image            String? // User's uploaded profile image
+  googleImage      String? // Google profile image URL (kept separate)
+  role             UserRole  @default(DOG_OWNER)
+  phone            String?
+  bio              String?
+  provider         String    @default("general") // google, apple, or general
+  stripeCustomerId String? // Stripe customer ID for payment methods
+  isReported       Boolean   @default(false)
+  isBlocked        Boolean   @default(false) // Admin can block users
+  blockedAt        DateTime? // When the user was blocked
+  blockReason      String? // Reason for blocking
+  commissionRate   Float? // Custom commission rate for field owners (0-100)
+  hasField         Boolean   @default(false) // True if field owner has at least one submitted field
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Relations
-  accounts      Account[]
-  sessions      Session[]
-  ownedFields   Field[]      @relation("FieldOwner")
-  bookings      Booking[]
-  
+  accounts         Account[]
+  sessions         Session[]
+  ownedFields      Field[]         @relation("FieldOwner")
+  bookings         Booking[]
+  reviews          Review[]
+  favorites        Favorite[]
+  payments         Payment[]
+  paymentMethods   PaymentMethod[]
+  stripeAccount    StripeAccount?
+  fieldReviews     FieldReview[]
+  notifications    Notification[]
+  transactions     Transaction[]
+  sentMessages     Message[]       @relation("SentMessages")
+  receivedMessages Message[]       @relation("ReceivedMessages")
+  reportsMade      UserReport[]    @relation("ReporterRelation")
+  reportsReceived  UserReport[]    @relation("ReportedRelation")
+  blocksMade       UserBlock[]     @relation("BlockerRelation")
+  blocksReceived   UserBlock[]     @relation("BlockedRelation")
+  subscriptions    Subscription[]
+
   // Compound unique constraint: same email can exist with different roles
   @@unique([email, role])
   // Phone should still be unique across all users if provided
   @@index([phone])
   @@index([email])
-  reviews       Review[]
-  favorites     Favorite[]
-  payments      Payment[]
-  paymentMethods PaymentMethod[]
-  stripeAccount StripeAccount?
-  fieldReviews  FieldReview[]
-  notifications Notification[]
-  transactions  Transaction[]
-  sentMessages      Message[]      @relation("SentMessages")
-  receivedMessages  Message[]      @relation("ReceivedMessages")
-  reportsMade       UserReport[]   @relation("ReporterRelation")
-  reportsReceived   UserReport[]   @relation("ReportedRelation")
-  blocksMade        UserBlock[]    @relation("BlockerRelation")
-  blocksReceived    UserBlock[]    @relation("BlockedRelation")
-  subscriptions     Subscription[]
-  
   @@map("users")
 }
 
@@ -112,85 +111,85 @@ model Session {
 }
 
 model Field {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  name            String?
-  description     String?
-  
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  name        String?
+  description String?
+
   // Location object containing all address details
-  location        Json?     // { streetAddress, city, county, postalCode, country, lat, lng, formatted_address }
-  
+  location Json? // { streetAddress, city, county, postalCode, country, lat, lng, formatted_address }
+
   // Keep legacy fields for backward compatibility (can be deprecated later)
-  address         String?   // Street address (legacy)
-  city            String?   // City (legacy)
-  state           String?   // State/County (legacy)
-  zipCode         String?   // Postal code (legacy)
-  latitude        Float?    // Latitude (legacy)
-  longitude       Float?    // Longitude (legacy)
-  ownerId         String    @db.ObjectId
-  type            FieldType @default(PRIVATE)
-  size            String?   // e.g., "Small", "Medium", "Large", "Extra Large"
-  terrainType     String?   // e.g., "Grass", "Dirt", "Sand", "Mixed"
-  fenceType       String?   // e.g., "Wooden", "Metal", "Mesh", "Electric"
-  fenceSize       String?   // e.g., "3ft", "4ft", "5ft", "6ft", "6ft+"
-  surfaceType     String?   // e.g., "Soft Sand", "Grass", "Artificial Grass", "Concrete"
-  price           Float?    // Price for the duration specified in bookingDuration
-  pricePerDay     Float?
-  bookingDuration String?   // e.g., "30min" or "1hour" - defines what the price is for
-  amenities       String[]  // e.g., ["Water bowls", "Agility equipment", "Shade areas"]
-  rules           String[]  // e.g., ["Dogs must be leashed", "Clean up after your dog"]
-  images          String[]
-  isActive        Boolean   @default(false) // Field is active only when all steps are completed
-  maxDogs         Int       @default(10)
-  openingTime     String?   // e.g., "08:00"
-  closingTime     String?   // e.g., "20:00"
-  operatingDays   String[]  // e.g., ["Monday", "Tuesday", "Wednesday"]
-  instantBooking  Boolean   @default(false)
+  address            String? // Street address (legacy)
+  city               String? // City (legacy)
+  state              String? // State/County (legacy)
+  zipCode            String? // Postal code (legacy)
+  latitude           Float? // Latitude (legacy)
+  longitude          Float? // Longitude (legacy)
+  ownerId            String    @db.ObjectId
+  type               FieldType @default(PRIVATE)
+  size               String? // e.g., "Small", "Medium", "Large", "Extra Large"
+  terrainType        String? // e.g., "Grass", "Dirt", "Sand", "Mixed"
+  fenceType          String? // e.g., "Wooden", "Metal", "Mesh", "Electric"
+  fenceSize          String? // e.g., "3ft", "4ft", "5ft", "6ft", "6ft+"
+  surfaceType        String? // e.g., "Soft Sand", "Grass", "Artificial Grass", "Concrete"
+  price              Float? // Price for the duration specified in bookingDuration
+  pricePerDay        Float?
+  bookingDuration    String? // e.g., "30min" or "1hour" - defines what the price is for
+  amenities          String[] // e.g., ["Water bowls", "Agility equipment", "Shade areas"]
+  rules              String[] // e.g., ["Dogs must be leashed", "Clean up after your dog"]
+  images             String[]
+  isActive           Boolean   @default(false) // Field is active only when all steps are completed
+  maxDogs            Int       @default(10)
+  openingTime        String? // e.g., "08:00"
+  closingTime        String? // e.g., "20:00"
+  operatingDays      String[] // e.g., ["Monday", "Tuesday", "Wednesday"]
+  instantBooking     Boolean   @default(false)
   cancellationPolicy String?
-  
+
   // Additional field details
-  fieldFeatures   Json?     // Store complex field features as JSON
-  numberOfDogs    Int?      // Number of dogs allowed at once
-  
+  fieldFeatures Json? // Store complex field features as JSON
+  numberOfDogs  Int? // Number of dogs allowed at once
+
   // Step completion tracking
-  fieldDetailsCompleted Boolean @default(false)
-  uploadImagesCompleted Boolean @default(false)
+  fieldDetailsCompleted        Boolean @default(false)
+  uploadImagesCompleted        Boolean @default(false)
   pricingAvailabilityCompleted Boolean @default(false)
-  bookingRulesCompleted Boolean @default(false)
-  
+  bookingRulesCompleted        Boolean @default(false)
+
   // Submission status
-  isSubmitted Boolean @default(false) // True when field owner submits the field for review
+  isSubmitted Boolean   @default(false) // True when field owner submits the field for review
   submittedAt DateTime?
 
   // Approval status
-  isApproved Boolean @default(false) // True when admin approves the field
-  approvalStatus String @default("PENDING") // PENDING, APPROVED, REJECTED
-  approvedAt DateTime? // When the field was approved
-  approvedBy String? @db.ObjectId // Admin who approved the field
+  isApproved      Boolean   @default(false) // True when admin approves the field
+  approvalStatus  String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedAt      DateTime? // When the field was approved
+  approvedBy      String?   @db.ObjectId // Admin who approved the field
   rejectionReason String? // Reason for rejection if applicable
 
   // Field claim status
   isClaimed Boolean @default(false) // True when field is claimed by the owner
-  
+
   // Owner information (denormalized for performance)
-  ownerName       String?   // Owner's name (denormalized)
-  joinedOn        String?   // Owner's join date in "Month Year" format (e.g., "March 2025")
-  
+  ownerName String? // Owner's name (denormalized)
+  joinedOn  String? // Owner's join date in "Month Year" format (e.g., "March 2025")
+
   // Review statistics (denormalized for performance)
-  averageRating   Float     @default(0)    // Average rating from all reviews
-  totalReviews    Int       @default(0)    // Total number of reviews
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  averageRating Float @default(0) // Average rating from all reviews
+  totalReviews  Int   @default(0) // Total number of reviews
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  owner           User      @relation("FieldOwner", fields: [ownerId], references: [id])
-  bookings        Booking[]
-  reviews         Review[]
-  fieldReviews    FieldReview[]
-  favorites       Favorite[]
-  conversations   Conversation[]
-  claims          FieldClaim[]
-  subscriptions   Subscription[]
+  owner         User           @relation("FieldOwner", fields: [ownerId], references: [id])
+  bookings      Booking[]
+  reviews       Review[]
+  fieldReviews  FieldReview[]
+  favorites     Favorite[]
+  conversations Conversation[]
+  claims        FieldClaim[]
+  subscriptions Subscription[]
 
   @@index([city, state])
   @@index([ownerId])
@@ -198,57 +197,57 @@ model Field {
 }
 
 model Booking {
-  id            String        @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String        @db.ObjectId
-  fieldId       String        @db.ObjectId
-  date          DateTime
-  startTime     String        // e.g., "14:00"
-  endTime       String        // e.g., "16:00"
-  timeSlot      String?       // e.g., "8:00AM - 9:00AM"
-  numberOfDogs  Int           @default(1)
-  totalPrice    Float
-  platformCommission Float?    // Platform commission amount (20%)
-  fieldOwnerAmount Float?      // Amount to be paid to field owner (80%)
-  status        BookingStatus @default(PENDING)
-  paymentStatus String?       // e.g., "PENDING", "PAID", "FAILED"
-  paymentIntentId String?     // Stripe payment intent ID
-  payoutStatus  String?       // e.g., "PENDING", "PROCESSING", "COMPLETED", "FAILED", "HELD"
-  payoutId      String?       @db.ObjectId // Reference to Payout record
-  payoutHeldReason String?    // Reason why payout is held (e.g., "NO_STRIPE_ACCOUNT")
-  payoutReleasedAt DateTime?  // When the held payout was released
-  repeatBooking String?       // e.g., "none", "weekly", "monthly"
-  notes         String?
+  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String        @db.ObjectId
+  fieldId            String        @db.ObjectId
+  date               DateTime
+  startTime          String // e.g., "14:00"
+  endTime            String // e.g., "16:00"
+  timeSlot           String? // e.g., "8:00AM - 9:00AM"
+  numberOfDogs       Int           @default(1)
+  totalPrice         Float
+  platformCommission Float? // Platform commission amount (20%)
+  fieldOwnerAmount   Float? // Amount to be paid to field owner (80%)
+  status             BookingStatus @default(PENDING)
+  paymentStatus      String? // e.g., "PENDING", "PAID", "FAILED"
+  paymentIntentId    String? // Stripe payment intent ID
+  payoutStatus       String? // e.g., "PENDING", "PROCESSING", "COMPLETED", "FAILED", "HELD"
+  payoutId           String?       @db.ObjectId // Reference to Payout record
+  payoutHeldReason   String? // Reason why payout is held (e.g., "NO_STRIPE_ACCOUNT")
+  payoutReleasedAt   DateTime? // When the held payout was released
+  repeatBooking      String? // e.g., "none", "weekly", "monthly"
+  notes              String?
   cancellationReason String?
-  cancelledAt   DateTime?     // Track when booking was cancelled for refund eligibility
-  subscriptionId String?      @db.ObjectId // Reference to subscription if from recurring booking
-  rescheduleCount Int         @default(0)  // Number of times this booking has been rescheduled (max 3)
-  reminderSent   Boolean      @default(false) // Track if booking reminder has been sent
+  cancelledAt        DateTime? // Track when booking was cancelled for refund eligibility
+  subscriptionId     String?       @db.ObjectId // Reference to subscription if from recurring booking
+  rescheduleCount    Int           @default(0) // Number of times this booking has been rescheduled (max 3)
+  reminderSent       Boolean       @default(false) // Track if booking reminder has been sent
 
   // Field snapshot data (stored at time of booking for historical accuracy)
-  fieldName     String?       // Field name at time of booking
-  fieldAddress  String?       // Field address at time of booking
-  fieldLocation Json?         // Complete location object at time of booking
-  fieldImages   String[]      @default([]) // Field images at time of booking
-  fieldPrice    Float?        // Price per slot at time of booking
-  fieldAmenities String[]     @default([]) // Amenities at time of booking
-  fieldSize     String?       // Field size at time of booking
-  fieldType     String?       // Field type at time of booking (PRIVATE, PUBLIC, TRAINING)
-  fieldOwnerName String?      // Field owner name at time of booking
-  fieldOwnerEmail String?     // Field owner email at time of booking
-  fieldRules    String[]      @default([]) // Field rules at time of booking
-  bookingDuration String?     // Booking duration (e.g., "30min", "1hour") at time of booking
+  fieldName       String? // Field name at time of booking
+  fieldAddress    String? // Field address at time of booking
+  fieldLocation   Json? // Complete location object at time of booking
+  fieldImages     String[] @default([]) // Field images at time of booking
+  fieldPrice      Float? // Price per slot at time of booking
+  fieldAmenities  String[] @default([]) // Amenities at time of booking
+  fieldSize       String? // Field size at time of booking
+  fieldType       String? // Field type at time of booking (PRIVATE, PUBLIC, TRAINING)
+  fieldOwnerName  String? // Field owner name at time of booking
+  fieldOwnerEmail String? // Field owner email at time of booking
+  fieldRules      String[] @default([]) // Field rules at time of booking
+  bookingDuration String? // Booking duration (e.g., "30min", "1hour") at time of booking
 
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user          User          @relation(fields: [userId], references: [id])
-  field         Field         @relation(fields: [fieldId], references: [id])
-  payment       Payment?
-  review        Review?
-  fieldReview   FieldReview?
-  transactions  Transaction[]
-  subscription  Subscription? @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  field        Field         @relation(fields: [fieldId], references: [id])
+  payment      Payment?
+  review       Review?
+  fieldReview  FieldReview?
+  transactions Transaction[]
+  subscription Subscription? @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
 
   @@index([userId])
   @@index([fieldId])
@@ -264,11 +263,11 @@ model Conversation {
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
+
   // Relations
-  messages      Message[]
-  field         Field?    @relation(fields: [fieldId], references: [id])
-  
+  messages Message[]
+  field    Field?    @relation(fields: [fieldId], references: [id])
+
   @@index([participants])
   @@index([fieldId])
   @@index([lastMessageAt])
@@ -276,21 +275,21 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  conversationId String       @db.ObjectId
-  senderId       String       @db.ObjectId
-  receiverId     String       @db.ObjectId
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String    @db.ObjectId
+  senderId       String    @db.ObjectId
+  receiverId     String    @db.ObjectId
   content        String
-  isRead         Boolean      @default(false)
+  isRead         Boolean   @default(false)
   readAt         DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   // Relations
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
-  receiver       User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver     User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
   @@index([conversationId])
   @@index([senderId])
   @@index([receiverId])
@@ -300,24 +299,24 @@ model Message {
 }
 
 model Payment {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId         String   @unique @db.ObjectId
-  userId            String   @db.ObjectId
-  amount            Float
-  currency          String   @default("USD")
-  status            String   // e.g., "pending", "completed", "failed", "refunded"
-  paymentMethod     String   // e.g., "card", "paypal"
-  stripePaymentId   String?
-  stripeRefundId    String?
-  refundAmount      Float?
-  refundReason      String?
-  processedAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId       String    @unique @db.ObjectId
+  userId          String    @db.ObjectId
+  amount          Float
+  currency        String    @default("USD")
+  status          String // e.g., "pending", "completed", "failed", "refunded"
+  paymentMethod   String // e.g., "card", "paypal"
+  stripePaymentId String?
+  stripeRefundId  String?
+  refundAmount    Float?
+  refundReason    String?
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // Relations
-  booking           Booking  @relation(fields: [bookingId], references: [id])
-  user              User     @relation(fields: [userId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
@@ -325,20 +324,20 @@ model Payment {
 }
 
 model Review {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId   String   @unique @db.ObjectId
-  userId      String   @db.ObjectId
-  fieldId     String   @db.ObjectId
-  rating      Int      // 1-5
-  comment     String
-  images      String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId String   @unique @db.ObjectId
+  userId    String   @db.ObjectId
+  fieldId   String   @db.ObjectId
+  rating    Int // 1-5
+  comment   String
+  images    String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  booking     Booking  @relation(fields: [bookingId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
-  field       Field    @relation(fields: [fieldId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  field   Field   @relation(fields: [fieldId], references: [id])
 
   @@index([fieldId])
   @@index([userId])
@@ -346,27 +345,27 @@ model Review {
 }
 
 model FieldReview {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  fieldId     String   @db.ObjectId
-  userId      String   @db.ObjectId
-  bookingId   String?  @db.ObjectId // Link to specific booking - allows multiple reviews per user per field
-  userName    String?  // Denormalized for performance
-  userImage   String?  // Denormalized for performance
-  rating      Int      // 1-5
-  title       String?
-  comment     String
-  images      String[]
-  helpfulCount Int     @default(0)
-  verified    Boolean  @default(false) // If user has actually booked this field
-  response    String?  // Field owner's response
-  respondedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  fieldId      String    @db.ObjectId
+  userId       String    @db.ObjectId
+  bookingId    String?   @db.ObjectId // Link to specific booking - allows multiple reviews per user per field
+  userName     String? // Denormalized for performance
+  userImage    String? // Denormalized for performance
+  rating       Int // 1-5
+  title        String?
+  comment      String
+  images       String[]
+  helpfulCount Int       @default(0)
+  verified     Boolean   @default(false) // If user has actually booked this field
+  response     String? // Field owner's response
+  respondedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Relations
-  field       Field    @relation(fields: [fieldId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
-  booking     Booking? @relation(fields: [bookingId], references: [id])
+  field   Field    @relation(fields: [fieldId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
 
   @@unique([bookingId]) // Each booking can only have one review
   @@index([fieldId, createdAt])
@@ -382,27 +381,27 @@ model Favorite {
   createdAt DateTime @default(now())
 
   // Relations
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
   @@unique([userId, fieldId])
   @@map("favorites")
 }
 
 model Notification {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String   @db.ObjectId
-  type        String   // booking_received, booking_confirmed, field_approved, payment_received, review_posted, etc.
-  title       String
-  message     String
-  data        Json?    // Additional data like bookingId, fieldId, etc.
-  read        Boolean  @default(false)
-  readAt      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  type      String // booking_received, booking_confirmed, field_approved, payment_received, review_posted, etc.
+  title     String
+  message   String
+  data      Json? // Additional data like bookingId, fieldId, etc.
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   // Relations
-  user        User     @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId, read])
   @@index([createdAt])
@@ -414,11 +413,11 @@ model Transaction {
   bookingId             String   @db.ObjectId
   userId                String   @db.ObjectId
   amount                Float
-  netAmount             Float?   // Amount after platform fee (for field owner)
-  platformFee           Float?   // Platform commission amount
-  commissionRate        Float?   // Commission rate used for this transaction
-  type                  String   // e.g., "PAYMENT", "REFUND"
-  status                String   // e.g., "PENDING", "COMPLETED", "FAILED"
+  netAmount             Float? // Amount after platform fee (for field owner)
+  platformFee           Float? // Platform commission amount
+  commissionRate        Float? // Commission rate used for this transaction
+  type                  String // e.g., "PAYMENT", "REFUND"
+  status                String // e.g., "PENDING", "COMPLETED", "FAILED"
   stripePaymentIntentId String?
   stripeRefundId        String?
   description           String?
@@ -426,8 +425,8 @@ model Transaction {
   updatedAt             DateTime @updatedAt
 
   // Relations
-  booking               Booking  @relation(fields: [bookingId], references: [id])
-  user                  User     @relation(fields: [userId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([bookingId])
@@ -436,23 +435,23 @@ model Transaction {
 }
 
 model FieldClaim {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  fieldId       String   @db.ObjectId
-  fullName      String
-  email         String
-  phoneCode     String
-  phoneNumber   String
-  isLegalOwner  Boolean
-  documents     String[] // Array of S3 URLs
-  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  reviewNotes   String?
-  reviewedAt    DateTime?
-  reviewedBy    String?  @db.ObjectId
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  fieldId      String    @db.ObjectId
+  fullName     String
+  email        String
+  phoneCode    String
+  phoneNumber  String
+  isLegalOwner Boolean
+  documents    String[] // Array of S3 URLs
+  status       String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewNotes  String?
+  reviewedAt   DateTime?
+  reviewedBy   String?   @db.ObjectId
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Relations
-  field         Field    @relation(fields: [fieldId], references: [id])
+  field Field @relation(fields: [fieldId], references: [id])
 
   @@index([fieldId])
   @@index([email])
@@ -461,14 +460,14 @@ model FieldClaim {
 }
 
 model OtpVerification {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  email      String
-  otp        String
-  type       String   // SIGNUP, RESET_PASSWORD, EMAIL_VERIFICATION
-  verified   Boolean  @default(false)
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  otp       String
+  type      String // SIGNUP, RESET_PASSWORD, EMAIL_VERIFICATION
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email, otp])
   @@index([expiresAt])
@@ -477,58 +476,58 @@ model OtpVerification {
 
 // Stripe Connect Account for field owners
 model StripeAccount {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId                String    @unique @db.ObjectId
-  stripeAccountId       String    @unique // Stripe Connect account ID
-  accountType           String    @default("express") // express or standard
-  chargesEnabled        Boolean   @default(false)
-  payoutsEnabled        Boolean   @default(false)
-  detailsSubmitted      Boolean   @default(false)
-  defaultCurrency       String?
-  country               String?
-  email                 String?
+  id                        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                    String   @unique @db.ObjectId
+  stripeAccountId           String   @unique // Stripe Connect account ID
+  accountType               String   @default("express") // express or standard
+  chargesEnabled            Boolean  @default(false)
+  payoutsEnabled            Boolean  @default(false)
+  detailsSubmitted          Boolean  @default(false)
+  defaultCurrency           String?
+  country                   String?
+  email                     String?
   // Bank account details (encrypted or tokenized)
-  bankAccountLast4      String?
-  bankAccountBrand      String?
-  bankAccountCountry    String?
-  bankAccountCurrency   String?
+  bankAccountLast4          String?
+  bankAccountBrand          String?
+  bankAccountCountry        String?
+  bankAccountCurrency       String?
   // Verification status
-  requirementsCurrentlyDue   String[] // Array of required fields
-  requirementsPastDue        String[] // Array of overdue requirements
-  requirementsEventuallyDue  String[] // Array of future requirements
+  requirementsCurrentlyDue  String[] // Array of required fields
+  requirementsPastDue       String[] // Array of overdue requirements
+  requirementsEventuallyDue String[] // Array of future requirements
   // Timestamps
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
   // Relations
-  user                  User      @relation(fields: [userId], references: [id])
-  payouts               Payout[]
-  
+  user    User     @relation(fields: [userId], references: [id])
+  payouts Payout[]
+
   @@map("stripe_accounts")
 }
 
 // Payout records for field owners
 model Payout {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  stripeAccountId       String    @db.ObjectId
-  stripePayoutId        String?   @unique // Stripe payout ID
-  amount                Float     // Amount in the smallest currency unit
-  currency              String    @default("gbp")
-  status                String    // pending, paid, failed, canceled
-  method                String    @default("standard") // standard or instant
-  description           String?
-  arrivalDate           DateTime? // Expected arrival date of funds
-  failureCode           String?
-  failureMessage        String?
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  stripeAccountId String    @db.ObjectId
+  stripePayoutId  String?   @unique // Stripe payout ID
+  amount          Float // Amount in the smallest currency unit
+  currency        String    @default("gbp")
+  status          String // pending, paid, failed, canceled
+  method          String    @default("standard") // standard or instant
+  description     String?
+  arrivalDate     DateTime? // Expected arrival date of funds
+  failureCode     String?
+  failureMessage  String?
   // Related bookings (optional - for tracking which bookings are included)
-  bookingIds            String[]  @db.ObjectId
+  bookingIds      String[]  @db.ObjectId
   // Timestamps
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
   // Relations
-  stripeAccount         StripeAccount @relation(fields: [stripeAccountId], references: [id])
-  
+  stripeAccount StripeAccount @relation(fields: [stripeAccountId], references: [id])
+
   @@index([stripeAccountId])
   @@index([status])
   @@map("payouts")
@@ -536,22 +535,22 @@ model Payout {
 
 // User Report model for tracking reports made by field owners against dog owners
 model UserReport {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  reporterId        String    @db.ObjectId // Field owner who made the report
-  reportedUserId    String    @db.ObjectId // Dog owner being reported
-  reportOption      String    // e.g., "inappropriate_behavior", "property_damage", "no_show", "harassment", "other"
-  reason            String?   // Optional detailed reason
-  status            String    @default("pending") // pending, reviewed, resolved, dismissed
-  reviewNotes       String?   // Admin notes about the report
-  reviewedAt        DateTime?
-  reviewedBy        String?   @db.ObjectId // Admin who reviewed
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  reporterId     String    @db.ObjectId // Field owner who made the report
+  reportedUserId String    @db.ObjectId // Dog owner being reported
+  reportOption   String // e.g., "inappropriate_behavior", "property_damage", "no_show", "harassment", "other"
+  reason         String? // Optional detailed reason
+  status         String    @default("pending") // pending, reviewed, resolved, dismissed
+  reviewNotes    String? // Admin notes about the report
+  reviewedAt     DateTime?
+  reviewedBy     String?   @db.ObjectId // Admin who reviewed
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   // Relations
-  reporter          User      @relation("ReporterRelation", fields: [reporterId], references: [id])
-  reportedUser      User      @relation("ReportedRelation", fields: [reportedUserId], references: [id])
-  
+  reporter     User @relation("ReporterRelation", fields: [reporterId], references: [id])
+  reportedUser User @relation("ReportedRelation", fields: [reportedUserId], references: [id])
+
   @@index([reporterId])
   @@index([reportedUserId])
   @@index([status])
@@ -561,16 +560,16 @@ model UserReport {
 
 // User Block model for tracking blocked users
 model UserBlock {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  blockerId         String    @db.ObjectId // User who blocked
-  blockedUserId     String    @db.ObjectId // User who was blocked
-  reason            String?   // Optional reason for blocking
-  createdAt         DateTime  @default(now())
-  
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  blockerId     String   @db.ObjectId // User who blocked
+  blockedUserId String   @db.ObjectId // User who was blocked
+  reason        String? // Optional reason for blocking
+  createdAt     DateTime @default(now())
+
   // Relations
-  blocker           User      @relation("BlockerRelation", fields: [blockerId], references: [id])
-  blockedUser       User      @relation("BlockedRelation", fields: [blockedUserId], references: [id])
-  
+  blocker     User @relation("BlockerRelation", fields: [blockerId], references: [id])
+  blockedUser User @relation("BlockedRelation", fields: [blockedUserId], references: [id])
+
   @@unique([blockerId, blockedUserId])
   @@index([blockerId])
   @@index([blockedUserId])
@@ -578,166 +577,166 @@ model UserBlock {
 }
 
 model PaymentMethod {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId            String    @db.ObjectId
-  stripePaymentMethodId String @unique // Stripe payment method ID
-  type              String    // card, bank_account, etc.
-  brand             String?   // visa, mastercard, etc.
-  last4             String    // Last 4 digits of the card
-  expiryMonth       Int?      // Card expiry month
-  expiryYear        Int?      // Card expiry year
-  cardholderName    String?   // Name on the card
-  isDefault         Boolean   @default(false)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String   @db.ObjectId
+  stripePaymentMethodId String   @unique // Stripe payment method ID
+  type                  String // card, bank_account, etc.
+  brand                 String? // visa, mastercard, etc.
+  last4                 String // Last 4 digits of the card
+  expiryMonth           Int? // Card expiry month
+  expiryYear            Int? // Card expiry year
+  cardholderName        String? // Name on the card
+  isDefault             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
   // Relations
-  user              User      @relation(fields: [userId], references: [id])
-  
+  user User @relation(fields: [userId], references: [id])
+
   @@index([userId])
   @@map("payment_methods")
 }
 
 model Subscription {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId            String    @db.ObjectId
-  fieldId           String    @db.ObjectId
-  stripeSubscriptionId String @unique // Stripe subscription ID
-  stripeCustomerId  String    // Stripe customer ID
-  status            String    // active, canceled, past_due, paused, etc.
-  interval          String    // weekly, monthly
-  intervalCount     Int       @default(1) // Number of intervals between billings
-  currentPeriodStart DateTime // Start of current billing period
-  currentPeriodEnd  DateTime  // End of current billing period
-  cancelAtPeriodEnd Boolean   @default(false) // If true, subscription will cancel at period end
-  canceledAt        DateTime? // When the subscription was canceled
-  
+  id                   String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String    @db.ObjectId
+  fieldId              String    @db.ObjectId
+  stripeSubscriptionId String    @unique // Stripe subscription ID
+  stripeCustomerId     String // Stripe customer ID
+  status               String // active, canceled, past_due, paused, etc.
+  interval             String // weekly, monthly
+  intervalCount        Int       @default(1) // Number of intervals between billings
+  currentPeriodStart   DateTime // Start of current billing period
+  currentPeriodEnd     DateTime // End of current billing period
+  cancelAtPeriodEnd    Boolean   @default(false) // If true, subscription will cancel at period end
+  canceledAt           DateTime? // When the subscription was canceled
+
   // Booking details
-  timeSlot          String    // e.g., "8:00AM - 9:00AM"
-  dayOfWeek         String?   // For weekly: Monday, Tuesday, etc.
-  dayOfMonth        Int?      // For monthly: 1-31
-  startTime         String    // e.g., "08:00"
-  endTime           String    // e.g., "09:00"
-  numberOfDogs      Int       @default(1)
-  totalPrice        Float     // Price per billing cycle
-  
+  timeSlot     String // e.g., "8:00AM - 9:00AM"
+  dayOfWeek    String? // For weekly: Monday, Tuesday, etc.
+  dayOfMonth   Int? // For monthly: 1-31
+  startTime    String // e.g., "08:00"
+  endTime      String // e.g., "09:00"
+  numberOfDogs Int     @default(1)
+  totalPrice   Float // Price per billing cycle
+
   // Next booking details
-  nextBillingDate   DateTime? // When the next payment will be charged
-  lastBookingDate   DateTime? // Last successful booking created
-  
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  
+  nextBillingDate DateTime? // When the next payment will be charged
+  lastBookingDate DateTime? // Last successful booking created
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  user              User      @relation(fields: [userId], references: [id])
-  field             Field     @relation(fields: [fieldId], references: [id])
-  bookings          Booking[] @relation("SubscriptionBookings")
-  
+  user     User      @relation(fields: [userId], references: [id])
+  field    Field     @relation(fields: [fieldId], references: [id])
+  bookings Booking[] @relation("SubscriptionBookings")
+
   @@index([userId])
   @@index([fieldId])
   @@map("subscriptions")
 }
 
 model SystemSettings {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  defaultCommissionRate Float     @default(20) // Default commission rate (0-100), default 20%
-  cancellationWindowHours Int     @default(24) // Hours before booking when cancellation with refund is allowed
-  maxAdvanceBookingDays Int       @default(30) // Maximum days in advance a booking can be made
-  maxBookingsPerUser    Int?      @default(10) // Maximum number of active bookings per user
-  minimumFieldOperatingHours Int  @default(4) // Minimum hours between field opening and closing time
-  payoutReleaseSchedule String?   @default("after_cancellation_window") // "immediate", "on_weekend", "after_cancellation_window"
-  siteName             String?    @default("Fieldsy")
-  siteUrl              String?    @default("https://fieldsy.com")
-  supportEmail         String?    @default("support@fieldsy.com")
-  maintenanceMode      Boolean   @default(false)
-  enableNotifications  Boolean   @default(true)
-  enableEmailNotifications Boolean @default(true)
-  enableSmsNotifications Boolean @default(false)
-  bannerText           String?    @default("Find Safe, private dog walking fields") // Hero banner main text
-  highlightedText      String?    @default("near you") // Text to highlight in the banner
-  
+  id                         String  @id @default(auto()) @map("_id") @db.ObjectId
+  defaultCommissionRate      Float   @default(20) // Default commission rate (0-100), default 20%
+  cancellationWindowHours    Int     @default(24) // Hours before booking when cancellation with refund is allowed
+  maxAdvanceBookingDays      Int     @default(30) // Maximum days in advance a booking can be made
+  maxBookingsPerUser         Int?    @default(10) // Maximum number of active bookings per user
+  minimumFieldOperatingHours Int     @default(4) // Minimum hours between field opening and closing time
+  payoutReleaseSchedule      String? @default("after_cancellation_window") // "immediate", "on_weekend", "after_cancellation_window"
+  siteName                   String? @default("Fieldsy")
+  siteUrl                    String? @default("https://fieldsy.com")
+  supportEmail               String? @default("support@fieldsy.com")
+  maintenanceMode            Boolean @default(false)
+  enableNotifications        Boolean @default(true)
+  enableEmailNotifications   Boolean @default(true)
+  enableSmsNotifications     Boolean @default(false)
+  bannerText                 String? @default("Find Safe, private dog walking fields") // Hero banner main text
+  highlightedText            String? @default("near you") // Text to highlight in the banner
+
   // About Section Settings
-  aboutTitle           String?    @default("At Fieldsy, we believe every dog deserves the freedom to run, sniff, and play safely.")
-  aboutDogImage        String?    // Main dog image URL
-  aboutFamilyImage     String?    // Family/trusted section image URL
-  aboutDogIcons        String[]   @default([]) // Array of small dog icon URLs
-  
+  aboutTitle       String?  @default("At Fieldsy, we believe every dog deserves the freedom to run, sniff, and play safely.")
+  aboutDogImage    String? // Main dog image URL
+  aboutFamilyImage String? // Family/trusted section image URL
+  aboutDogIcons    String[] @default([]) // Array of small dog icon URLs
+
   // Platform Section Settings
-  platformDogOwnersImage   String?    // Dog owners card image
-  platformFieldOwnersImage String?    // Field owners card image
-  platformTitle            String?    @default("One Platform, Two Tail-Wagging Experiences") // Main platform section title
-  platformDogOwnersSubtitle String?   @default("For Dog Owners:") // Dog owners card subtitle
-  platformDogOwnersTitle   String?    @default("Find & Book Private Dog Walking Fields in Seconds") // Dog owners card title
-  platformDogOwnersBullets String[]   @default(["Stress-free walks for reactive or energetic dogs", "Fully fenced, secure spaces", "GPS-powered search", "Instant hourly bookings"]) // Dog owners card bullet points
-  platformFieldOwnersSubtitle String? @default("For Field Owners:") // Field owners card subtitle
-  platformFieldOwnersTitle String?    @default("Turn Your Land into a Dog's Dream & Earn") // Field owners card title
-  platformFieldOwnersBullets String[] @default(["Earn passive income while helping pets", "Host dog owners with full control", "Set your availability and pricing", "List your field for free"]) // Field owners card bullet points
-  
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  
+  platformDogOwnersImage      String? // Dog owners card image
+  platformFieldOwnersImage    String? // Field owners card image
+  platformTitle               String?  @default("One Platform, Two Tail-Wagging Experiences") // Main platform section title
+  platformDogOwnersSubtitle   String?  @default("For Dog Owners:") // Dog owners card subtitle
+  platformDogOwnersTitle      String?  @default("Find & Book Private Dog Walking Fields in Seconds") // Dog owners card title
+  platformDogOwnersBullets    String[] @default(["Stress-free walks for reactive or energetic dogs", "Fully fenced, secure spaces", "GPS-powered search", "Instant hourly bookings"]) // Dog owners card bullet points
+  platformFieldOwnersSubtitle String?  @default("For Field Owners:") // Field owners card subtitle
+  platformFieldOwnersTitle    String?  @default("Turn Your Land into a Dog's Dream & Earn") // Field owners card title
+  platformFieldOwnersBullets  String[] @default(["Earn passive income while helping pets", "Host dog owners with full control", "Set your availability and pricing", "List your field for free"]) // Field owners card bullet points
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("system_settings")
 }
 
 model FAQ {
-  id         String    @id @default(auto()) @map("_id") @db.ObjectId
-  question   String
-  answer     String
-  category   String?   @default("general") // general, dog-owners, field-owners, booking, payment
-  order      Int       @default(0) // Display order
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  question  String
+  answer    String
+  category  String?  @default("general") // general, dog-owners, field-owners, booking, payment
+  order     Int      @default(0) // Display order
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category, order])
   @@map("faqs")
 }
 
 model AboutPage {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
   // Hero Section
-  heroSectionTitle       String?
-  heroMainTitle          String?
-  heroSubtitle           String?
-  heroDescription        String?
-  heroButtonText         String?
-  heroImage              String?
-  heroStats              Json?     // Array of { value, label, order }
-  
+  heroSectionTitle String?
+  heroMainTitle    String?
+  heroSubtitle     String?
+  heroDescription  String?
+  heroButtonText   String?
+  heroImage        String?
+  heroStats        Json? // Array of { value, label, order }
+
   // Mission Section
-  missionTitle           String?
-  missionDescription     String?
-  missionButtonText      String?
-  missionImage           String?
-  
+  missionTitle       String?
+  missionDescription String?
+  missionButtonText  String?
+  missionImage       String?
+
   // Who We Are Section
-  whoWeAreTitle          String?
-  whoWeAreDescription    String?
-  whoWeAreMainImage      String?
-  whoWeAreRightCardImage String?
-  whoWeAreRightCardTitle String?
+  whoWeAreTitle                String?
+  whoWeAreDescription          String?
+  whoWeAreMainImage            String?
+  whoWeAreRightCardImage       String?
+  whoWeAreRightCardTitle       String?
   whoWeAreRightCardDescription String?
-  whoWeAreFeatures       Json?     // Array of { icon, title, description, order }
-  
+  whoWeAreFeatures             Json? // Array of { icon, title, description, order }
+
   // What We Do Section
-  whatWeDoTitle          String?
-  whatWeDoSubtitle       String?
-  whatWeDoDescription    String?
-  whatWeDoImage          String?
-  whatWeDoFeatures       Json?     // Array of { title, description, order }
-  
+  whatWeDoTitle       String?
+  whatWeDoSubtitle    String?
+  whatWeDoDescription String?
+  whatWeDoImage       String?
+  whatWeDoFeatures    Json? // Array of { title, description, order }
+
   // Why Fieldsy Section
-  whyFieldsyTitle        String?
-  whyFieldsySubtitle     String?
-  whyFieldsyImage        String?
-  whyFieldsyBoxTitle     String?
+  whyFieldsyTitle          String?
+  whyFieldsySubtitle       String?
+  whyFieldsyImage          String?
+  whyFieldsyBoxTitle       String?
   whyFieldsyBoxDescription String?
-  whyFieldsyButtonText   String?
-  whyFieldsyFeatures     Json?     // Array of { icon, title, description, order }
-  
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  whyFieldsyButtonText     String?
+  whyFieldsyFeatures       Json? // Array of { icon, title, description, order }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("about_pages")
 }
@@ -758,27 +757,27 @@ model ContactQuery {
 }
 
 model Amenity {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  name        String    @unique // e.g., "Water bowls", "Agility equipment"
-  icon        String?   // S3 URL for the icon image
-  isActive    Boolean   @default(true)
-  order       Int       @default(0) // Display order
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique // e.g., "Water bowls", "Agility equipment"
+  icon      String? // S3 URL for the icon image
+  isActive  Boolean  @default(true)
+  order     Int      @default(0) // Display order
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive, order])
   @@map("amenities")
 }
 
 model FieldProperty {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  category    String    // e.g., "fieldSize", "terrainType", "fenceType", "fenceSize", "surfaceType", "openingDays"
-  value       String    // Slug value e.g., "small", "soft-grass"
-  label       String    // Display label e.g., "Small (1 acre or less)", "Soft Grass"
-  isActive    Boolean   @default(true)
-  order       Int       @default(0) // Display order within category
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  category  String // e.g., "fieldSize", "terrainType", "fenceType", "fenceSize", "surfaceType", "openingDays"
+  value     String // Slug value e.g., "small", "soft-grass"
+  label     String // Display label e.g., "Small (1 acre or less)", "Soft Grass"
+  isActive  Boolean  @default(true)
+  order     Int      @default(0) // Display order within category
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([category, value])
   @@index([category, isActive, order])

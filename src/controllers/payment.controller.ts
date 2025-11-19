@@ -169,7 +169,7 @@ export class PaymentController {
 
         // Ensure user has a valid Stripe customer ID
         let customerId = user.stripeCustomerId;
-        
+
         // Verify customer exists in Stripe
         if (customerId) {
           try {
@@ -187,7 +187,7 @@ export class PaymentController {
             }
           }
         }
-        
+
         // Create customer if doesn't exist or was invalid
         if (!customerId) {
           const customer = await stripe.customers.create({
@@ -198,7 +198,7 @@ export class PaymentController {
             }
           });
           customerId = customer.id;
-          
+
           // Save customer ID
           await prisma.user.update({
             where: { id: userId },
@@ -222,22 +222,22 @@ export class PaymentController {
           }
         } catch (stripeError: any) {
           console.error('Stripe payment method error:', stripeError);
-          
+
           // Payment method doesn't exist or is invalid
           if (stripeError.code === 'resource_missing' || stripeError.statusCode === 404) {
             // Remove invalid payment method from database
             await prisma.paymentMethod.delete({
               where: { id: paymentMethodId }
             });
-            
-            return res.status(400).json({ 
+
+            return res.status(400).json({
               error: 'Payment method no longer valid. Please add a new payment method.',
               code: 'PAYMENT_METHOD_EXPIRED'
             });
           }
-          
+
           // Other Stripe errors
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: 'Unable to process payment method. Please try again or use a different payment method.',
             code: 'PAYMENT_METHOD_ERROR'
           });
@@ -267,25 +267,25 @@ export class PaymentController {
         });
       } catch (stripeError: any) {
         console.error('Error creating payment intent:', stripeError);
-        
+
         // Handle specific Stripe errors
         if (stripeError.type === 'StripeInvalidRequestError') {
           if (stripeError.message.includes('No such PaymentMethod')) {
-            return res.status(400).json({ 
+            return res.status(400).json({
               error: 'Payment method not found. Please select a different payment method.',
               code: 'PAYMENT_METHOD_NOT_FOUND'
             });
           }
           if (stripeError.message.includes('Payment method not available')) {
-            return res.status(400).json({ 
+            return res.status(400).json({
               error: 'This payment method is not available. Please try a different payment method.',
               code: 'PAYMENT_METHOD_UNAVAILABLE'
             });
           }
         }
-        
+
         // Generic payment error
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Unable to process payment. Please try again.',
           code: 'PAYMENT_PROCESSING_ERROR',
           details: process.env.NODE_ENV === 'development' ? stripeError.message : undefined
@@ -295,24 +295,24 @@ export class PaymentController {
       // Parse the time slot to extract start and end times
       // Expected format: "4:00PM - 5:00PM"
       const [startTimeStr, endTimeStr] = timeSlot.split(' - ').map(t => t.trim());
-      
+
       // Create a booking record with appropriate status
       const bookingStatus = paymentIntent.status === 'succeeded' ? 'CONFIRMED' : 'PENDING';
       const paymentStatus = paymentIntent.status === 'succeeded' ? 'PAID' : 'PENDING';
-      
+
       // Check if field owner has a connected Stripe account
       const fieldOwnerStripeAccount = await prisma.stripeAccount.findUnique({
         where: { userId: field.ownerId }
       });
-      
+
       // Get system settings for payout release schedule
       const systemSettings = await prisma.systemSettings.findFirst();
       const payoutReleaseSchedule = systemSettings?.payoutReleaseSchedule || 'after_cancellation_window';
-      
+
       // Determine payout status based on Stripe account connection and release schedule
       let payoutStatus = 'PENDING';
       let payoutHeldReason = undefined;
-      
+
       if (paymentIntent.status === 'succeeded') {
         if (!fieldOwnerStripeAccount || !fieldOwnerStripeAccount.chargesEnabled || !fieldOwnerStripeAccount.payoutsEnabled) {
           // Hold the payout if field owner doesn't have a connected Stripe account
@@ -332,7 +332,7 @@ export class PaymentController {
           payoutHeldReason = 'WITHIN_CANCELLATION_WINDOW';
         }
       }
-      
+
       // Get field owner details for snapshot
       const fieldOwner = await prisma.user.findUnique({
         where: { id: field.ownerId },
@@ -544,7 +544,7 @@ export class PaymentController {
       });
     } catch (error) {
       console.error('Error creating payment intent:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to create payment intent',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -668,7 +668,7 @@ export class PaymentController {
       }
     } catch (error) {
       console.error('Error confirming payment:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to confirm payment',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -703,7 +703,7 @@ export class PaymentController {
       switch (event.type) {
         case 'payment_intent.succeeded':
           const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          
+
           // Use transaction to prevent duplicate booking updates
           await prisma.$transaction(async (tx) => {
             // Check if booking exists
@@ -749,7 +749,7 @@ export class PaymentController {
                 const [startTimeStr, endTimeStr] = metadata.timeSlot.split(' - ').map((t: string) => t.trim());
                 const platformCommission = parseFloat(metadata.platformCommission || '0');
                 const fieldOwnerAmount = parseFloat(metadata.fieldOwnerAmount || '0');
-                
+
                 const newBooking = await tx.booking.create({
                   data: {
                     fieldId: metadata.fieldId,
@@ -850,7 +850,7 @@ export class PaymentController {
 
         case 'payment_intent.payment_failed':
           const failedPayment = event.data.object as Stripe.PaymentIntent;
-          
+
           // Update booking status to failed
           const failedBooking = await prisma.booking.findFirst({
             where: { paymentIntentId: failedPayment.id }
@@ -889,7 +889,7 @@ export class PaymentController {
   async getPaymentMethods(req: Request, res: Response) {
     try {
       const userId = (req as any).user?.id;
-      
+
       // For now, return mock data
       // In production, integrate with Stripe Customer API
       res.json({
@@ -929,18 +929,67 @@ async function syncStripePayoutEvent(event: Stripe.Event) {
   const connectedAccountId = (event as any).account;
 
   if (!payoutObject || !connectedAccountId) {
-    console.warn('[StripeWebhook] Payout event missing required data');
+    console.warn('[StripeWebhook] Payout event missing required data', {
+      hasPayoutObject: !!payoutObject,
+      hasConnectedAccountId: !!connectedAccountId
+    });
     return;
   }
 
-  const stripeAccount = await prisma.stripeAccount.findFirst({
+  console.log(`[StripeWebhook] Processing payout event for account: ${connectedAccountId}`);
+
+  let stripeAccount = await prisma.stripeAccount.findFirst({
     where: { stripeAccountId: connectedAccountId }
   });
 
   if (!stripeAccount) {
-    console.warn('[StripeWebhook] Received payout event for unknown account', connectedAccountId);
+    console.warn(`[StripeWebhook] Account ${connectedAccountId} not found in DB. Attempting self-healing...`);
+
+    try {
+      // Fetch account from Stripe to check metadata
+      const account = await stripe.accounts.retrieve(connectedAccountId);
+      const userId = account.metadata?.userId;
+
+      if (userId) {
+        // Verify user exists
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+
+        if (user) {
+          console.log(`[StripeWebhook] Found user ${userId} for orphaned account ${connectedAccountId}. Re-linking...`);
+
+          // Create missing StripeAccount record
+          stripeAccount = await prisma.stripeAccount.create({
+            data: {
+              userId,
+              stripeAccountId: connectedAccountId,
+              accountType: account.type || 'express',
+              chargesEnabled: account.charges_enabled,
+              payoutsEnabled: account.payouts_enabled,
+              detailsSubmitted: account.details_submitted,
+              defaultCurrency: account.default_currency || 'gbp',
+              country: account.country || 'GB',
+              email: account.email || user.email
+            }
+          });
+
+          console.log(`[StripeWebhook] Successfully re-linked account ${connectedAccountId} to user ${userId}`);
+        } else {
+          console.error(`[StripeWebhook] User ${userId} from Stripe metadata not found in DB.`);
+        }
+      } else {
+        console.warn(`[StripeWebhook] No userId in metadata for account ${connectedAccountId}. Cannot self-heal.`);
+      }
+    } catch (error) {
+      console.error(`[StripeWebhook] Failed to fetch account ${connectedAccountId} from Stripe:`, error);
+    }
+  }
+
+  if (!stripeAccount) {
+    console.warn(`[StripeWebhook] Received payout event for unknown account: ${connectedAccountId}. Available accounts count: ${await prisma.stripeAccount.count()}`);
     return;
   }
+
+  console.log(`[StripeWebhook] Found matching internal account: ${stripeAccount.id} for Stripe account: ${connectedAccountId}`);
 
   const bookingIds = extractBookingIdsFromMetadata(payoutObject.metadata);
   const payoutData = {
@@ -956,8 +1005,8 @@ async function syncStripePayoutEvent(event: Stripe.Event) {
 
   const existingPayout = payoutObject.id
     ? await prisma.payout.findUnique({
-        where: { stripePayoutId: payoutObject.id }
-      })
+      where: { stripePayoutId: payoutObject.id }
+    })
     : null;
 
   if (existingPayout) {

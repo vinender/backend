@@ -15,4 +15,5 @@ router.get('/dashboard', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN
 router.get('/payout-history', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.getPayoutHistory);
 router.get('/held-payouts', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.getHeldPayouts);
 router.get('/export', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.exportPayoutHistory);
+router.post('/sync-payouts', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), earnings_controller_1.default.syncPayoutsFromStripe);
 exports.default = router;
