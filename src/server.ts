@@ -6,9 +6,9 @@ import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { 
-  generalLimiter, 
-  authLimiter, 
+import {
+  generalLimiter,
+  authLimiter,
   uploadLimiter,
   bookingLimiter,
   paymentLimiter,
@@ -73,6 +73,7 @@ import { initPayoutJobs } from './jobs/payout.job';
 import { startHeldPayoutReleaseJobs } from './jobs/held-payout-release.job';
 import { initRecurringBookingJobs } from './jobs/recurring-booking.job';
 import { initBookingReminderJobs } from './jobs/booking-reminder.job';
+import { initBookingStatusJob } from './jobs/booking-status.job';
 
 
 class Server {
@@ -136,7 +137,7 @@ class Server {
     // Apply general rate limiter to all API routes (60 requests per minute)
     // Bypass in development for localhost
     this.app.use('/api', bypassInDevelopment(generalLimiter));
-    
+
     // Apply dynamic rate limiting based on user role
     this.app.use('/api', dynamicLimiter);
 
@@ -185,7 +186,7 @@ class Server {
     this.app.get('/', (req, res) => {
       // Check if client accepts HTML
       const acceptHeader = req.headers.accept || '';
-      
+
       if (acceptHeader.includes('text/html')) {
         // Serve HTML documentation
         res.setHeader('Content-Type', 'text/html');
@@ -265,12 +266,12 @@ class Server {
       const fs = require('fs');
       const path = require('path');
       const marked = require('marked');
-    
+
       try {
         const mdPath = path.join(__dirname, '../MOBILE_SOCKET_API_GUIDE.md');
         const mdContent = fs.readFileSync(mdPath, 'utf-8');
         const htmlContent = marked.parse(mdContent);
-    
+
         const styledHTML = `
     <!DOCTYPE html>
     <html lang="en">
@@ -340,7 +341,7 @@ class Server {
       </script>
     </body>
     </html>`;
-    
+
         res.setHeader('Content-Type', 'text/html');
         res.send(styledHTML);
       } catch (error) {
@@ -352,62 +353,62 @@ class Server {
         });
       }
     });
-    
+
 
     // Stripe webhook route (must be before other routes due to raw body requirement)
     this.app.use('/api/stripe', stripeRoutes);
-    
+
     // Mount API routes with specific rate limiters
     // Auth routes - 5 requests per minute for login/register
     this.app.use('/api/auth', bypassInDevelopment(authLimiter), authRoutes);
     this.app.use('/api/auth/otp', bypassInDevelopment(authLimiter), authOtpRoutes);
-    
+
     // User routes - general rate limit
     this.app.use('/api/users', userRoutes);
-    
+
     // Fields routes - search endpoints get search limiter (30/min)
     this.app.use('/api/fields/search', bypassInDevelopment(searchLimiter));
     this.app.use('/api/fields', fieldRoutes);
-    
+
     // Booking routes - 5 bookings per minute
     this.app.use('/api/bookings', bypassInDevelopment(bookingLimiter), bookingRoutes);
-    
+
     // Review routes - 3 reviews per minute
     this.app.use('/api/reviews', bypassInDevelopment(reviewLimiter), reviewRoutes);
-    
+
     // General routes with standard limits
     this.app.use('/api/notifications', notificationRoutes);
-    
+
     // Payment routes - 5 payment attempts per minute
     this.app.use('/api/payments', bypassInDevelopment(paymentLimiter), paymentRoutes);
-    
+
     // General routes
     this.app.use('/api/favorites', favoriteRoutes);
-    
+
     // Chat routes - 30 messages per minute
     this.app.use('/api/chat', bypassInDevelopment(messageLimiter), chatRoutes);
-    
+
     // Payout and financial routes
     this.app.use('/api/payouts', payoutRoutes);
     this.app.use('/api/claims', claimRoutes);
     this.app.use('/api/stripe-connect', stripeConnectRoutes);
-    
+
     // User interaction routes
     this.app.use('/api/user-reports', userReportRoutes);
     this.app.use('/api/user-blocks', userBlockRoutes);
     this.app.use('/api/payment-methods', paymentMethodRoutes);
-    
+
     // Admin routes - handled by dynamic limiter (200/min for admins)
     this.app.use('/api/admin', adminRoutes);
     this.app.use('/api/admin/payouts', adminPayoutRoutes);
     this.app.use('/api/auto-payouts', autoPayoutRoutes);
-    
+
     // Other routes
     this.app.use('/api/earnings', earningsRoutes);
     this.app.use('/api/commission', commissionRoutes);
     this.app.use('/api/settings', settingsRoutes);
     this.app.use('/api/faqs', faqRoutes);
-    
+
     // Upload routes - 20 uploads per minute
     this.app.use('/api/upload', bypassInDevelopment(uploadLimiter), uploadRoutes);
 
@@ -466,22 +467,25 @@ class Server {
     // Setup WebSocket and get io instance
     const io = setupWebSocket(this.httpServer);
     this.io = io;
-    
+
     // Make io globally available for notifications and Kafka
     (global as any).io = io;
-    
+
     // Initialize Kafka with the io instance
     initializeKafka(io).catch(error => {
       console.log('Kafka initialization skipped - messages will be handled directly through Socket.io');
     });
-    
+
+
+
     // Initialize scheduled jobs
     initPayoutJobs();
     startHeldPayoutReleaseJobs();
     initRecurringBookingJobs();
     initBookingReminderJobs();
+    initBookingStatusJob();
     console.log('✅ Scheduled jobs initialized');
-    
+
     // Enhanced error handling for port conflicts
     this.httpServer.on('error', (error: any) => {
       if (error.code === 'EADDRINUSE') {
@@ -496,7 +500,7 @@ class Server {
         process.exit(1);
       }
     });
-    
+
     this.httpServer.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════════════════╗
@@ -514,7 +518,7 @@ class Server {
 ╚════════════════════════════════════════════════════╝
       `);
     });
-    
+
     const server = this.httpServer;
 
     // Graceful shutdown

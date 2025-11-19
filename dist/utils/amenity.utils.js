@@ -108,6 +108,34 @@ async function enrichFieldsWithAmenities(fields) {
         return fields;
     // Normalize function for case-insensitive matching
     const normalizeKey = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Cache amenities in memory to avoid repeated DB calls
+    // Simple singleton cache pattern
+    let amenityCache = null;
+    const CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
+    // Check if cache is valid
+    if (amenityCache && (Date.now() - amenityCache.timestamp < CACHE_TTL)) {
+        // Use cached data
+        const amenityMap = amenityCache.data;
+        // Transform all fields using cache
+        return fields.map((field) => {
+            if (!field.amenities || !Array.isArray(field.amenities)) {
+                return {
+                    ...field,
+                    amenities: [],
+                };
+            }
+            const amenityLabels = field.amenities
+                .map((name) => {
+                const normalizedName = normalizeKey(name);
+                return amenityMap.get(normalizedName);
+            })
+                .filter((label) => label !== undefined);
+            return {
+                ...field,
+                amenities: amenityLabels,
+            };
+        });
+    }
     // Fetch ALL amenities at once for better performance
     const amenities = await database_1.default.amenity.findMany({
         select: {
@@ -121,6 +149,11 @@ async function enrichFieldsWithAmenities(fields) {
         normalizeKey(amenity.name),
         amenity.name, // Just the label/name as string
     ]));
+    // Update cache
+    amenityCache = {
+        data: amenityMap,
+        timestamp: Date.now()
+    };
     // Transform all fields
     return fields.map((field) => {
         if (!field.amenities || !Array.isArray(field.amenities)) {

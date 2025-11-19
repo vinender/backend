@@ -559,71 +559,9 @@ class BookingController {
             }),
         ]);
         const totalPages = Math.ceil(total / limitNum);
-        // Automatically mark past CONFIRMED bookings as COMPLETED
-        const now = new Date();
-        console.log('=== getMyBookings Debug ===');
-        console.log('Total bookings fetched:', bookings.length);
-        console.log('Current time:', now.toISOString());
-        console.log('Status filter:', status);
-        console.log('includeFuture:', includeFuture);
-        console.log('includeExpired:', includeExpired);
-        const processedBookings = bookings.map((booking) => {
-            console.log(`\nBooking ${booking.id}:`);
-            console.log('- Date:', booking.date);
-            console.log('- Time:', booking.startTime, '-', booking.endTime);
-            console.log('- Status:', booking.status);
-            // Check if booking is CONFIRMED and needs status check
-            if (booking.status === 'CONFIRMED') {
-                // Parse the booking end time to check if the session has ended
-                const bookingDate = new Date(booking.date);
-                const [endHourStr, endPeriod] = booking.endTime.split(/(?=[AP]M)/);
-                let endHour = parseInt(endHourStr.split(':')[0]);
-                const endMinute = parseInt(endHourStr.split(':')[1] || '0');
-                if (endPeriod === 'PM' && endHour !== 12)
-                    endHour += 12;
-                if (endPeriod === 'AM' && endHour === 12)
-                    endHour = 0;
-                bookingDate.setHours(endHour, endMinute, 0, 0);
-                console.log('- End time as Date:', bookingDate.toISOString());
-                console.log('- Is past?', bookingDate < now);
-                // If the booking end time has passed, treat it as completed
-                if (bookingDate < now) {
-                    console.log('- Marking as COMPLETED');
-                    return { ...booking, status: 'COMPLETED' };
-                }
-            }
-            console.log('- Keeping status:', booking.status);
-            return booking;
-        });
-        console.log('\nProcessed bookings count:', processedBookings.length);
-        console.log('=== End Debug ===\n');
-        // Filter out COMPLETED bookings that haven't ended yet when showing previous bookings
-        const filteredBookings = processedBookings.filter((booking) => {
-            // Only filter for previous tab (includeExpired='true')
-            if (includeExpired === 'true' && booking.status === 'COMPLETED') {
-                // Check if booking has actually ended
-                const bookingDate = new Date(booking.date);
-                const endTimeParts = booking.endTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-                if (!endTimeParts)
-                    return true; // If can't parse, include it
-                let hours = parseInt(endTimeParts[1]);
-                const minutes = parseInt(endTimeParts[2]);
-                const period = endTimeParts[3]?.toUpperCase();
-                // Convert to 24-hour format
-                if (period === 'PM' && hours !== 12)
-                    hours += 12;
-                else if (period === 'AM' && hours === 12)
-                    hours = 0;
-                bookingDate.setHours(hours, minutes, 0, 0);
-                // Only include if booking has actually ended
-                return bookingDate < new Date();
-            }
-            return true; // Include all other bookings
-        });
-        console.log('Filtered bookings count (after end-time check):', filteredBookings.length);
         // Transform bookings to remove redundant data and optimize response
         // Use Promise.all to handle async amenity transformation
-        const optimizedBookings = await Promise.all(filteredBookings.map(async (booking) => {
+        const optimizedBookings = await Promise.all(bookings.map(async (booking) => {
             const field = booking.field;
             const owner = field?.owner;
             const user = booking.user;

@@ -51,10 +51,10 @@ class BookingController {
     let startHour = parseInt(startHourStr.split(':')[0]);
     if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
     if (startPeriod === 'AM' && startHour === 12) startHour = 0;
-    
+
     const slotDateTime = new Date(bookingDate);
     slotDateTime.setHours(startHour, parseInt(startHourStr.split(':')[1] || '0'), 0, 0);
-    
+
     if (slotDateTime < new Date()) {
       throw new AppError('Cannot book a time slot in the past', 400);
     }
@@ -62,10 +62,10 @@ class BookingController {
     // Check if slot is already booked (private booking system)
     const startOfDayDate = new Date(bookingDate);
     startOfDayDate.setHours(0, 0, 0, 0);
-    
+
     const endOfDayDate = new Date(bookingDate);
     endOfDayDate.setHours(23, 59, 59, 999);
-    
+
     const existingBooking = await prisma.booking.findFirst({
       where: {
         fieldId,
@@ -104,7 +104,7 @@ class BookingController {
     const endMinutes = this.timeToMinutes(endTime);
     const durationHours = (endMinutes - startMinutes) / 60;
     const pricePerUnit = field.price || 0;
-    
+
     let totalPrice = 0;
     if (field.bookingDuration === '30min') {
       // For 30-minute slots, the price is per 30 minutes
@@ -114,7 +114,7 @@ class BookingController {
       // For hourly slots, price is per hour
       totalPrice = pricePerUnit * durationHours * numberOfDogs;
     }
-    
+
     // Log for debugging
     console.log('Create booking price calculation:', {
       fieldId: field.id,
@@ -152,7 +152,7 @@ class BookingController {
     console.log('Field owner ID:', field.ownerId);
     console.log('Dog owner ID:', dogOwnerId);
     console.log('Are they the same?', field.ownerId === dogOwnerId);
-    
+
     if (field.ownerId && field.ownerId !== dogOwnerId) {
       console.log('Sending notification to field owner...');
       try {
@@ -594,82 +594,10 @@ class BookingController {
 
     const totalPages = Math.ceil(total / limitNum);
 
-    // Automatically mark past CONFIRMED bookings as COMPLETED
-    const now = new Date();
-    console.log('=== getMyBookings Debug ===');
-    console.log('Total bookings fetched:', bookings.length);
-    console.log('Current time:', now.toISOString());
-    console.log('Status filter:', status);
-    console.log('includeFuture:', includeFuture);
-    console.log('includeExpired:', includeExpired);
-
-    const processedBookings = bookings.map((booking) => {
-      console.log(`\nBooking ${booking.id}:`);
-      console.log('- Date:', booking.date);
-      console.log('- Time:', booking.startTime, '-', booking.endTime);
-      console.log('- Status:', booking.status);
-
-      // Check if booking is CONFIRMED and needs status check
-      if (booking.status === 'CONFIRMED') {
-        // Parse the booking end time to check if the session has ended
-        const bookingDate = new Date(booking.date);
-        const [endHourStr, endPeriod] = booking.endTime.split(/(?=[AP]M)/);
-        let endHour = parseInt(endHourStr.split(':')[0]);
-        const endMinute = parseInt(endHourStr.split(':')[1] || '0');
-        if (endPeriod === 'PM' && endHour !== 12) endHour += 12;
-        if (endPeriod === 'AM' && endHour === 12) endHour = 0;
-
-        bookingDate.setHours(endHour, endMinute, 0, 0);
-
-        console.log('- End time as Date:', bookingDate.toISOString());
-        console.log('- Is past?', bookingDate < now);
-
-        // If the booking end time has passed, treat it as completed
-        if (bookingDate < now) {
-          console.log('- Marking as COMPLETED');
-          return { ...booking, status: 'COMPLETED' };
-        }
-      }
-      console.log('- Keeping status:', booking.status);
-      return booking;
-    });
-
-    console.log('\nProcessed bookings count:', processedBookings.length);
-    console.log('=== End Debug ===\n');
-
-    // Filter out COMPLETED bookings that haven't ended yet when showing previous bookings
-    const filteredBookings = processedBookings.filter((booking) => {
-      // Only filter for previous tab (includeExpired='true')
-      if (includeExpired === 'true' && booking.status === 'COMPLETED') {
-        // Check if booking has actually ended
-        const bookingDate = new Date(booking.date);
-        const endTimeParts = booking.endTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-
-        if (!endTimeParts) return true; // If can't parse, include it
-
-        let hours = parseInt(endTimeParts[1]);
-        const minutes = parseInt(endTimeParts[2]);
-        const period = endTimeParts[3]?.toUpperCase();
-
-        // Convert to 24-hour format
-        if (period === 'PM' && hours !== 12) hours += 12;
-        else if (period === 'AM' && hours === 12) hours = 0;
-
-        bookingDate.setHours(hours, minutes, 0, 0);
-
-        // Only include if booking has actually ended
-        return bookingDate < new Date();
-      }
-
-      return true; // Include all other bookings
-    });
-
-    console.log('Filtered bookings count (after end-time check):', filteredBookings.length);
-
     // Transform bookings to remove redundant data and optimize response
     // Use Promise.all to handle async amenity transformation
     const optimizedBookings = await Promise.all(
-      filteredBookings.map(async (booking) => {
+      bookings.map(async (booking) => {
         const field = booking.field;
         const owner = field?.owner;
         const user = booking.user;
@@ -984,7 +912,7 @@ class BookingController {
   // Mark past bookings as completed (can be called by a cron job)
   markPastBookingsAsCompleted = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const now = new Date();
-    
+
     // Find all bookings that are past their date/time and not already completed or cancelled
     const completedBookings = await prisma.booking.updateMany({
       where: {
@@ -1032,27 +960,27 @@ class BookingController {
     // Calculate time until booking from current time
     const now = new Date();
     const bookingDate = new Date(booking.date);
-    
+
     // Parse the booking start time to add to the date
     const [startHourStr, startPeriod] = booking.startTime.split(/(?=[AP]M)/);
     let startHour = parseInt(startHourStr.split(':')[0]);
     const startMinute = parseInt(startHourStr.split(':')[1] || '0');
     if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
     if (startPeriod === 'AM' && startHour === 12) startHour = 0;
-    
+
     bookingDate.setHours(startHour, startMinute, 0, 0);
-    
+
     // Debug logging
     console.log('=== Refund Eligibility Check ===');
     console.log('Booking ID:', booking.id);
     console.log('Current time:', now.toISOString());
     console.log('Booking date/time:', bookingDate.toISOString());
     console.log('Start time:', booking.startTime);
-    
+
     // Calculate hours until booking from now
     const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
     const isRefundEligible = hoursUntilBooking >= cancellationWindowHours;
-    
+
     console.log('Hours until booking:', hoursUntilBooking);
     console.log('Is refund eligible:', isRefundEligible);
     console.log('=========================');
@@ -1103,34 +1031,34 @@ class BookingController {
     // Calculate time until booking from current time
     const now = new Date();
     const bookingDate = new Date(booking.date);
-    
+
     // Parse the booking start time to add to the date
     const [startHourStr, startPeriod] = booking.startTime.split(/(?=[AP]M)/);
     let startHour = parseInt(startHourStr.split(':')[0]);
     const startMinute = parseInt(startHourStr.split(':')[1] || '0');
     if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
     if (startPeriod === 'AM' && startHour === 12) startHour = 0;
-    
+
     bookingDate.setHours(startHour, startMinute, 0, 0);
-    
+
     // Debug logging for cancellation
     console.log('=== Cancel Booking Check ===');
     console.log('Booking ID:', booking.id);
     console.log('Current time:', now.toISOString());
     console.log('Booking date/time:', bookingDate.toISOString());
     console.log('Start time:', booking.startTime);
-    
+
     // Calculate hours until booking from now
     const hoursUntilBooking = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    
+
     // Check if cancellation is allowed (at least cancellationWindowHours before booking)
     if (hoursUntilBooking < cancellationWindowHours && !isAdmin) {
       throw new AppError(`Cancellation not allowed. Bookings must be cancelled at least ${cancellationWindowHours} hours in advance.`, 400);
     }
-    
+
     // Refund is eligible if cancelled at least 24 hours before booking
     const isRefundEligible = hoursUntilBooking >= cancellationWindowHours;
-    
+
     console.log('Hours until booking:', hoursUntilBooking);
     console.log('Is refund eligible:', isRefundEligible);
     console.log('===================================');
@@ -1286,7 +1214,7 @@ class BookingController {
         ...cancelledBooking,
         isRefundEligible,
         refundResult,
-        refundMessage: refundResult?.success 
+        refundMessage: refundResult?.success
           ? `Refund of £${refundResult.refundAmount?.toFixed(2) || '0.00'} has been initiated and will be credited to your account within 5-7 business days.`
           : isRefundEligible
             ? 'You are eligible for a refund. The amount will be credited to your account within 5-7 business days.'
@@ -1361,16 +1289,16 @@ class BookingController {
       if (!field) {
         throw new AppError('Field not found', 404);
       }
-      
+
       const startMinutes = this.timeToMinutes(newStartTime);
       const endMinutes = this.timeToMinutes(newEndTime);
       const durationHours = (endMinutes - startMinutes) / 60;
       const dogsCount = booking.numberOfDogs || 1; // Always use the original numberOfDogs from booking
-      
+
       // Calculate price based on field's booking duration setting
       let pricePerUnit = field.price || 0;
       let totalPrice = 0;
-      
+
       if (field.bookingDuration === '30min') {
         // For 30-minute slots, the price is per 30 minutes
         const duration30MinBlocks = durationHours * 2; // Convert hours to 30-min blocks
@@ -1379,7 +1307,7 @@ class BookingController {
         // For hourly slots, price is per hour
         totalPrice = pricePerUnit * durationHours * dogsCount;
       }
-      
+
       // Ensure totalPrice is a valid number
       if (isNaN(totalPrice) || totalPrice < 0) {
         console.error('Invalid totalPrice calculation:', {
@@ -1508,7 +1436,7 @@ class BookingController {
     // Get start and end of day
     const startOfDayDate = new Date(selectedDate);
     startOfDayDate.setHours(0, 0, 0, 0);
-    
+
     const endOfDayDate = new Date(selectedDate);
     endOfDayDate.setHours(23, 59, 59, 999);
 
@@ -1910,7 +1838,7 @@ class BookingController {
     if (subscription.stripeSubscriptionId) {
       try {
         const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-        
+
         if (cancelImmediately) {
           // Cancel immediately and issue prorated refund
           await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
@@ -1963,7 +1891,7 @@ class BookingController {
       userId,
       type: 'booking_cancelled',
       title: 'Recurring Booking Canceled',
-      message: cancelImmediately 
+      message: cancelImmediately
         ? `Your recurring booking for ${subscription.field.name} has been canceled immediately.`
         : `Your recurring booking for ${subscription.field.name} will be canceled at the end of the current period.`,
       metadata: {
@@ -1990,8 +1918,8 @@ class BookingController {
 
     res.json({
       success: true,
-      message: cancelImmediately 
-        ? 'Recurring booking canceled immediately' 
+      message: cancelImmediately
+        ? 'Recurring booking canceled immediately'
         : 'Recurring booking will be canceled at the end of the current period',
       data: updatedSubscription
     });

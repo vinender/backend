@@ -881,10 +881,95 @@ class FieldModel {
     }));
   }
 
-  // Search fields by location
+  // Search fields by location using MongoDB geospatial query
   async searchByLocation(lat: number, lng: number, radius: number = 10) {
+    // Convert radius from miles to meters (MongoDB uses meters for $near)
+    const radiusInMeters = radius * 1609.34;
+
+    try {
+      // Use findRaw to leverage MongoDB's geospatial operators
+      // Note: This requires a 2dsphere index on the 'location' field
+      const rawFields = await prisma.field.findRaw({
+        filter: {
+          isActive: true,
+          isSubmitted: true,
+          location: {
+            $near: {
+              $geometry: {
+                type: "Point",
+                coordinates: [lng, lat]
+              },
+              $maxDistance: radiusInMeters
+            }
+          }
+        }
+      });
+
+      // Map raw results to our application structure
+      // findRaw returns BSON objects, so we need to be careful with ID mapping
+      const fieldsWithDistance = (rawFields as any[]).map((field: any) => {
+        // Calculate distance for display (since $near sorts by distance but doesn't return it)
+        // We still calculate this for the UI display, but we're doing it on a much smaller subset
+        const fieldLat = field.location?.coordinates?.[1] || field.latitude;
+        const fieldLng = field.location?.coordinates?.[0] || field.longitude;
+        
+        let distanceMiles = 0;
+        if (fieldLat && fieldLng) {
+          const R = 3959; // Earth's radius in miles
+          const dLat = (fieldLat - lat) * Math.PI / 180;
+          const dLng = (fieldLng - lng) * Math.PI / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat * Math.PI / 180) * Math.cos(fieldLat * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          distanceMiles = R * c;
+        }
+
+        // Map _id object to string id if needed, or use existing id string
+        const id = field._id?.$oid || field._id || field.id;
+
+        return {
+          id,
+          name: field.name,
+          city: field.city,
+          state: field.state,
+          address: field.address,
+          zipCode: field.zipCode,
+          latitude: fieldLat,
+          longitude: fieldLng,
+          location: field.location,
+          price: field.price,
+          bookingDuration: field.bookingDuration,
+          averageRating: field.averageRating,
+          totalReviews: field.totalReviews,
+          images: field.images,
+          amenities: field.amenities,
+          isClaimed: field.isClaimed,
+          ownerId: field.ownerId?.$oid || field.ownerId, // Handle ObjectId reference
+          ownerName: field.ownerName,
+          distanceMiles: Number(distanceMiles.toFixed(1)),
+          // Add booking/review counts if they were in the original object
+          // Note: findRaw won't include relations or _count unless we aggregate, 
+          // but for search cards we might be okay with just the basic data
+          // or we can do a second fetch for IDs if strictly needed.
+          // For performance, we'll stick to the raw data which contains the critical fields.
+        };
+      });
+
+      return fieldsWithDistance;
+
+    } catch (error) {
+      console.error('Geospatial search error:', error);
+      // Fallback to in-memory search if index is missing or query fails
+      console.warn('Falling back to in-memory geospatial search');
+      return this.searchByLocationInMemory(lat, lng, radius);
+    }
+  }
+
+  // Fallback in-memory search (renamed from original searchByLocation)
+  async searchByLocationInMemory(lat: number, lng: number, radius: number = 10) {
     // Get all active fields
-    // Using select instead of include to avoid owner relation issues
     const allFields = await prisma.field.findMany({
       where: {
         isActive: true,
@@ -908,7 +993,7 @@ class FieldModel {
         amenities: true,
         isClaimed: true,
         ownerId: true,
-        ownerName: true, // Use denormalized field instead of relation
+        ownerName: true,
         _count: {
           select: {
             bookings: true,
@@ -918,13 +1003,10 @@ class FieldModel {
       },
     });
 
-    // Calculate distance for all fields
-    // Fields with coordinates get actual distance, fields without get Infinity (appear last)
     const R = 3959; // Earth's radius in miles
     const fieldsWithDistance = allFields
       .map((field: any) => {
         if (field.latitude && field.longitude) {
-          // Haversine formula for fields with coordinates
           const dLat = (field.latitude - lat) * Math.PI / 180;
           const dLng = (field.longitude - lng) * Math.PI / 180;
           const a =
@@ -939,13 +1021,13 @@ class FieldModel {
             distanceMiles: Number(distanceMiles.toFixed(1))
           };
         }
-        // Fields without coordinates are included with Infinity distance
         return {
           ...field,
           distanceMiles: Infinity
         };
       })
-      .sort((a, b) => a.distanceMiles - b.distanceMiles);
+      .filter((field: any) => field.distanceMiles <= radius)
+      .sort((a: any, b: any) => a.distanceMiles - b.distanceMiles);
 
     return fieldsWithDistance;
   }
