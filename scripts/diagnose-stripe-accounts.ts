@@ -65,6 +65,32 @@ async function diagnoseStripeAccounts() {
         }
     }
 
+    // 4. List ALL accounts from Stripe API (Search for the payout)
+    console.log('\nSearching ALL accounts from Stripe API (limit 100) for the missing payout...');
+    const allAccounts = await stripe.accounts.list({ limit: 100 });
+
+    console.log(`Found ${allAccounts.data.length} accounts in Stripe.`);
+
+    for (const acc of allAccounts.data) {
+        // Check payouts for this account
+        try {
+            const payouts = await stripe.payouts.list({ limit: 5 }, { stripeAccount: acc.id });
+
+            if (payouts.data.length > 0) {
+                console.log(`\nChecking Account: ${acc.id} (${acc.email})`);
+                for (const p of payouts.data) {
+                    console.log(`   💰 Payout: ${p.id} - ${p.amount / 100} ${p.currency} (${p.status}) - ${new Date(p.created * 1000).toISOString()}`);
+
+                    if (Math.abs(p.amount - 7647) < 100) {
+                        console.log('      🎯 POTENTIAL MATCH!');
+                    }
+                }
+            }
+        } catch (e: any) {
+            // console.error(`   Error checking account ${acc.id}: ${e.message}`);
+        }
+    }
+
     // 3. List recent payouts from Stripe for these accounts
     console.log('\nChecking recent payouts from Stripe (limit 20)...');
     for (const localAcc of localAccounts) {
