@@ -21,6 +21,7 @@ import bookingRoutes from "./routes/booking.routes"
 import earningsRoutes from "./routes/earnings.routes"
 import stripeConnectRoutes from "./routes/stripe-connect.routes"
 import payoutRoutes from "./routes/payout.routes"
+import paymentRoutes from "./routes/payment.routes"
 import commissionRoutes from "./routes/commission.routes"
 import adminRoutes from "./routes/admin.routes"
 import chatRoutes from "./routes/chat.routes"
@@ -412,6 +413,7 @@ app.use("/api/bookings", bookingRoutes)
 app.use("/api/earnings", earningsRoutes)
 app.use("/api/stripe-connect", stripeConnectRoutes)
 app.use("/api/payouts", payoutRoutes)
+app.use("/api/payment", paymentRoutes)
 app.use("/api/commission", commissionRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/chat', chatRoutes)
