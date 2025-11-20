@@ -55,20 +55,20 @@ class FieldController {
     if (req.body.openingTime && req.body.closingTime) {
       const settings = await prisma.systemSettings.findFirst();
       const minimumHours = settings?.minimumFieldOperatingHours || 4;
-      
+
       const timeToMinutes = (timeStr: string): number => {
         const [hours, minutes] = timeStr.split(':').map(Number);
         return hours * 60 + (minutes || 0);
       };
-      
+
       const openingMinutes = timeToMinutes(req.body.openingTime);
       const closingMinutes = timeToMinutes(req.body.closingTime);
       const diffHours = (closingMinutes - openingMinutes) / 60;
-      
+
       if (diffHours < 0) {
         throw new AppError('Closing time must be after opening time', 400);
       }
-      
+
       if (diffHours < minimumHours) {
         throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
       }
@@ -333,7 +333,7 @@ class FieldController {
   // Get field suggestions for search
   getFieldSuggestions = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { query } = req.query;
-    
+
     if (!query || (query as string).length < 2) {
       return res.json({
         success: true,
@@ -342,7 +342,7 @@ class FieldController {
     }
 
     const suggestions = await FieldModel.getSuggestions(query as string);
-    
+
     res.json({
       success: true,
       data: suggestions,
@@ -491,25 +491,25 @@ class FieldController {
     if (req.body.openingTime || req.body.closingTime) {
       const settings = await prisma.systemSettings.findFirst();
       const minimumHours = settings?.minimumFieldOperatingHours || 4;
-      
+
       // Get the current field data to merge with updates
       const openingTime = req.body.openingTime || field.openingTime;
       const closingTime = req.body.closingTime || field.closingTime;
-      
+
       if (openingTime && closingTime) {
         const timeToMinutes = (timeStr: string): number => {
           const [hours, minutes] = timeStr.split(':').map(Number);
           return hours * 60 + (minutes || 0);
         };
-        
+
         const openingMinutes = timeToMinutes(openingTime);
         const closingMinutes = timeToMinutes(closingTime);
         const diffHours = (closingMinutes - openingMinutes) / 60;
-        
+
         if (diffHours < 0) {
           throw new AppError('Closing time must be after opening time', 400);
         }
-        
+
         if (diffHours < minimumHours) {
           throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
         }
@@ -527,12 +527,7 @@ class FieldController {
         const settings = await prisma.systemSettings.findFirst({
           select: { supportEmail: true },
         });
-        const adminEmail =
-          process.env.ADMIN_NOTIFICATION_EMAIL ||
-          process.env.ADMIN_EMAIL ||
-          settings?.supportEmail ||
-          process.env.SUPPORT_EMAIL ||
-          'support@fieldsy.com';
+        const adminEmail = 'veninderindiit@gmail.com';
 
         if (adminEmail) {
           await emailService.sendFieldAddressChangeNotification({
@@ -723,8 +718,8 @@ class FieldController {
         distanceDisplay: field.distanceMiles === Infinity
           ? 'Location not available'
           : field.distanceMiles < 1
-          ? `${(field.distanceMiles * 1760).toFixed(0)} yards`
-          : `${field.distanceMiles.toFixed(1)} miles`,
+            ? `${(field.distanceMiles * 1760).toFixed(0)} yards`
+            : `${field.distanceMiles.toFixed(1)} miles`,
       };
     });
 
@@ -930,10 +925,10 @@ class FieldController {
           pricingAvailability: enrichedField.pricingAvailabilityCompleted || false,
           bookingRules: field.bookingRulesCompleted || false
         },
-        allStepsCompleted: field.fieldDetailsCompleted && 
-                          field.uploadImagesCompleted && 
-                          field.pricingAvailabilityCompleted && 
-                          field.bookingRulesCompleted
+        allStepsCompleted: field.fieldDetailsCompleted &&
+          field.uploadImagesCompleted &&
+          field.pricingAvailabilityCompleted &&
+          field.bookingRulesCompleted
       }
     });
   });
@@ -991,70 +986,70 @@ class FieldController {
           pricingAvailabilityCompleted: false,
           bookingRulesCompleted: false,
         };
-      
-      // If the first step is field-details, include that data
-      if (step === 'field-details') {
-        // Validate minimum operating hours
-        if (data.startTime && data.endTime) {
-          const settings = await prisma.systemSettings.findFirst();
-          const minimumHours = settings?.minimumFieldOperatingHours || 4;
-          
-          const timeToMinutes = (timeStr: string): number => {
-            const [hours, minutes] = timeStr.split(':').map(Number);
-            return hours * 60 + (minutes || 0);
-          };
-          
-          const openingMinutes = timeToMinutes(data.startTime);
-          const closingMinutes = timeToMinutes(data.endTime);
-          const diffHours = (closingMinutes - openingMinutes) / 60;
-          
-          if (diffHours < 0) {
-            throw new AppError('Closing time must be after opening time', 400);
-          }
-          
-          if (diffHours < minimumHours) {
-            throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
-          }
-        }
-        
-        // Convert amenity IDs to names
-        const amenityIds = data.amenities && Array.isArray(data.amenities)
-          ? data.amenities
-          : (typeof data.amenities === 'object'
-            ? Object.keys(data.amenities || {}).filter(key => data.amenities[key])
-            : []);
-        const amenityNames = amenityIds.length > 0 ? await convertAmenityIdsToNames(amenityIds) : [];
 
-        initialFieldData = {
-          ...initialFieldData,
-          name: data.fieldName,
-          size: data.fieldSize,
-          terrainType: data.terrainType,
-          fenceType: data.fenceType,
-          fenceSize: data.fenceSize,
-          surfaceType: data.surfaceType,
-          type: 'PRIVATE',
-          description: data.description,
-          maxDogs: parseInt(data.maxDogs) || 10,
-          openingTime: data.startTime,
-          closingTime: data.endTime,
-          operatingDays: data.openingDays ? [data.openingDays] : [],
-          amenities: amenityNames,
-          // Store location object if provided
-          location: data.location || null,
-          // Also store legacy fields for backward compatibility
-          address: data.streetAddress,
-          // apartment field removed - doesn't exist in schema
-          city: data.city,
-          state: data.county,
-          zipCode: data.postalCode,
-          // Extract lat/lng from location object if available
-          latitude: data.location?.lat || null,
-          longitude: data.location?.lng || null,
-          fieldDetailsCompleted: true
-        };
-      }
-      
+        // If the first step is field-details, include that data
+        if (step === 'field-details') {
+          // Validate minimum operating hours
+          if (data.startTime && data.endTime) {
+            const settings = await prisma.systemSettings.findFirst();
+            const minimumHours = settings?.minimumFieldOperatingHours || 4;
+
+            const timeToMinutes = (timeStr: string): number => {
+              const [hours, minutes] = timeStr.split(':').map(Number);
+              return hours * 60 + (minutes || 0);
+            };
+
+            const openingMinutes = timeToMinutes(data.startTime);
+            const closingMinutes = timeToMinutes(data.endTime);
+            const diffHours = (closingMinutes - openingMinutes) / 60;
+
+            if (diffHours < 0) {
+              throw new AppError('Closing time must be after opening time', 400);
+            }
+
+            if (diffHours < minimumHours) {
+              throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
+            }
+          }
+
+          // Convert amenity IDs to names
+          const amenityIds = data.amenities && Array.isArray(data.amenities)
+            ? data.amenities
+            : (typeof data.amenities === 'object'
+              ? Object.keys(data.amenities || {}).filter(key => data.amenities[key])
+              : []);
+          const amenityNames = amenityIds.length > 0 ? await convertAmenityIdsToNames(amenityIds) : [];
+
+          initialFieldData = {
+            ...initialFieldData,
+            name: data.fieldName,
+            size: data.fieldSize,
+            terrainType: data.terrainType,
+            fenceType: data.fenceType,
+            fenceSize: data.fenceSize,
+            surfaceType: data.surfaceType,
+            type: 'PRIVATE',
+            description: data.description,
+            maxDogs: parseInt(data.maxDogs) || 10,
+            openingTime: data.startTime,
+            closingTime: data.endTime,
+            operatingDays: data.openingDays ? [data.openingDays] : [],
+            amenities: amenityNames,
+            // Store location object if provided
+            location: data.location || null,
+            // Also store legacy fields for backward compatibility
+            address: data.streetAddress,
+            // apartment field removed - doesn't exist in schema
+            city: data.city,
+            state: data.county,
+            zipCode: data.postalCode,
+            // Extract lat/lng from location object if available
+            latitude: data.location?.lat || null,
+            longitude: data.location?.lng || null,
+            fieldDetailsCompleted: true
+          };
+        }
+
         // Create the new field
         const newField = await FieldModel.create(initialFieldData);
         fieldId = newField.id;
@@ -1077,31 +1072,31 @@ class FieldController {
     let updateData: any = {};
 
     // Update based on which step is being saved
-    switch(step) {
+    switch (step) {
       case 'field-details':
         // Validate minimum operating hours
         if (data.startTime && data.endTime) {
           const settings = await prisma.systemSettings.findFirst();
           const minimumHours = settings?.minimumFieldOperatingHours || 4;
-          
+
           const timeToMinutes = (timeStr: string): number => {
             const [hours, minutes] = timeStr.split(':').map(Number);
             return hours * 60 + (minutes || 0);
           };
-          
+
           const openingMinutes = timeToMinutes(data.startTime);
           const closingMinutes = timeToMinutes(data.endTime);
           const diffHours = (closingMinutes - openingMinutes) / 60;
-          
+
           if (diffHours < 0) {
             throw new AppError('Closing time must be after opening time', 400);
           }
-          
+
           if (diffHours < minimumHours) {
             throw new AppError(`Field must be open for at least ${minimumHours} hours`, 400);
           }
         }
-        
+
         // Convert amenity IDs to names
         const amenityIdsUpdate = data.amenities && Array.isArray(data.amenities)
           ? data.amenities
@@ -1248,9 +1243,9 @@ class FieldController {
 
     // Check if all steps are completed
     const allStepsCompleted = field.fieldDetailsCompleted &&
-                             field.uploadImagesCompleted &&
-                             field.pricingAvailabilityCompleted &&
-                             field.bookingRulesCompleted;
+      field.uploadImagesCompleted &&
+      field.pricingAvailabilityCompleted &&
+      field.bookingRulesCompleted;
 
     // Note: Field should only become active after submission via submitFieldForReview
     // Do not auto-activate when steps are completed
@@ -1290,9 +1285,9 @@ class FieldController {
 
     // Check if all steps are completed
     if (!field.fieldDetailsCompleted ||
-        !field.uploadImagesCompleted ||
-        !field.pricingAvailabilityCompleted ||
-        !field.bookingRulesCompleted) {
+      !field.uploadImagesCompleted ||
+      !field.pricingAvailabilityCompleted ||
+      !field.bookingRulesCompleted) {
       throw new AppError('Please complete all steps before submitting', 400);
     }
 
@@ -1915,7 +1910,7 @@ class FieldController {
     try {
       // First get the owner's field
       const fields = await FieldModel.findByOwner(ownerId);
-      
+
       if (!fields || fields.length === 0) {
         return res.status(404).json({
           success: false,

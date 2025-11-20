@@ -433,11 +433,7 @@ class FieldController {
                 const settings = await database_1.default.systemSettings.findFirst({
                     select: { supportEmail: true },
                 });
-                const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ||
-                    process.env.ADMIN_EMAIL ||
-                    settings?.supportEmail ||
-                    process.env.SUPPORT_EMAIL ||
-                    'support@fieldsy.com';
+                const adminEmail = 'veninderindiit@gmail.com';
                 if (adminEmail) {
                     await emailService.sendFieldAddressChangeNotification({
                         adminEmail,
