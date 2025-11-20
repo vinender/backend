@@ -779,6 +779,49 @@ class PaymentController {
                 case 'payout.canceled':
                     await syncStripePayoutEvent(event);
                     break;
+                case 'balance.available':
+                    // Log available balance updates
+                    // This event is triggered when your balance becomes available for payout
+                    console.log('Balance available event received:', event.id);
+                    break;
+                case 'charge.refunded':
+                    const refundedCharge = event.data.object;
+                    console.log('Charge refunded:', refundedCharge.id);
+                    // Find booking associated with this charge
+                    if (refundedCharge.payment_intent) {
+                        const refundedBooking = await database_1.default.booking.findFirst({
+                            where: { paymentIntentId: refundedCharge.payment_intent }
+                        });
+                        if (refundedBooking) {
+                            await database_1.default.booking.update({
+                                where: { id: refundedBooking.id },
+                                data: {
+                                    status: 'CANCELLED',
+                                    paymentStatus: 'REFUNDED'
+                                }
+                            });
+                            console.log(`Booking ${refundedBooking.id} marked as refunded`);
+                        }
+                    }
+                    break;
+                case 'charge.succeeded':
+                    // This is usually redundant if we handle payment_intent.succeeded
+                    // But can be useful for logging or specific charge-level logic
+                    const succeededCharge = event.data.object;
+                    console.log('Charge succeeded:', succeededCharge.id);
+                    break;
+                case 'payment_intent.created':
+                    const createdIntent = event.data.object;
+                    console.log('Payment intent created:', createdIntent.id);
+                    // We generally don't need to do anything here as the booking is created 
+                    // via API before the intent is confirmed, or via webhook on success
+                    break;
+                case 'transfer.created':
+                    const transfer = event.data.object;
+                    console.log('Transfer created:', transfer.id);
+                    // This occurs when funds are moved to a connected account
+                    // You could log this to a 'Transfers' table if you need to track them separately from Payouts
+                    break;
                 default:
                     console.log(`Unhandled event type ${event.type}`);
             }
