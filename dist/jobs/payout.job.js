@@ -349,10 +349,11 @@ async function calculateFieldOwnerEarnings() {
             });
             const totalPayouts = payouts.reduce((sum, payout) => sum + payout.amount, 0);
             // Skip notification if there is nothing meaningful to report
+            // Only send if there are pending or available earnings, or if total earnings for the period are positive
+            // We exclude totalPayouts from this check because historical payouts shouldn't trigger a "Current Earnings" notification
             const hasEarningsActivity = totalEarnings > 0 ||
                 availableEarnings > 0 ||
-                pendingEarnings > 0 ||
-                totalPayouts > 0;
+                pendingEarnings > 0;
             if (!hasEarningsActivity) {
                 continue;
             }
@@ -362,7 +363,7 @@ async function calculateFieldOwnerEarnings() {
                 userId: owner.id,
                 type: 'earnings_update',
                 title: 'Earnings Update',
-                message: `Your current earnings: Total: $${totalEarnings.toFixed(2)}, Available: $${availableEarnings.toFixed(2)}, Pending: $${pendingEarnings.toFixed(2)}`,
+                message: `Your current earnings: Total: £${totalEarnings.toFixed(2)}, Available: £${availableEarnings.toFixed(2)}, Pending: £${pendingEarnings.toFixed(2)}`,
                 data: {
                     totalEarnings,
                     availableEarnings,

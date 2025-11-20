@@ -84,10 +84,10 @@ export const initPayoutJobs = () => {
             }
           }
         });
-        
+
         // Import payout service
         const { payoutService } = await import('../services/payout.service');
-        
+
         // Process payouts for each booking
         for (const booking of newlyCompletedBookings) {
           try {
@@ -102,35 +102,35 @@ export const initPayoutJobs = () => {
       console.error('Error marking bookings as completed:', error);
     }
   });
-  
+
   // Run every hour at minute 0
   cron.schedule('0 * * * *', async () => {
     console.log('🏦 Running scheduled automatic payout job...');
-    
+
     try {
       // Process automatic payouts for bookings past cancellation window
       const results = await automaticPayoutService.processEligiblePayouts();
-      
+
       console.log(`✅ Automatic payouts processed:`);
       console.log(`   - Processed: ${results.processed}`);
       console.log(`   - Skipped: ${results.skipped}`);
       console.log(`   - Failed: ${results.failed}`);
-      
+
       // Process payouts for completed bookings past cancellation period (legacy)
       await refundService.processCompletedBookingPayouts();
-      
+
       // Also check for any failed payouts to retry
       await retryFailedPayouts();
-      
+
       console.log('✅ Payout job completed successfully');
     } catch (error) {
       console.error('❌ Payout job error:', error);
-      
+
       // Notify admins of job failure
       const adminUsers = await prisma.user.findMany({
         where: { role: 'ADMIN' }
       });
-      
+
       for (const admin of adminUsers) {
         await createNotification({
           userId: admin.id,
@@ -149,7 +149,7 @@ export const initPayoutJobs = () => {
   // Run daily at midnight to calculate and update field owner earnings
   cron.schedule('0 0 * * *', async () => {
     console.log('Running daily earnings calculation...');
-    
+
     try {
       await calculateFieldOwnerEarnings();
       console.log('Earnings calculation completed');
@@ -245,7 +245,7 @@ async function retryFailedPayouts() {
         console.log(`Successfully retried payout ${payout.id}`);
       } catch (retryError: any) {
         console.error(`Failed to retry payout ${payout.id}:`, retryError);
-        
+
         // Update failure reason
         await prisma.payout.update({
           where: { id: payout.id },
@@ -282,7 +282,7 @@ async function calculateFieldOwnerEarnings() {
               where: {
                 OR: [
                   { status: 'COMPLETED' },
-                  { 
+                  {
                     status: 'CANCELLED',
                     cancelledAt: {
                       not: null
@@ -303,7 +303,7 @@ async function calculateFieldOwnerEarnings() {
       let totalEarnings = 0;
       let pendingEarnings = 0;
       let availableEarnings = 0;
-      
+
       for (const field of owner.ownedFields) {
         for (const booking of field.bookings) {
           if (!booking.payment) continue;
@@ -315,7 +315,7 @@ async function calculateFieldOwnerEarnings() {
             const calculated = await calculatePayoutAmounts(booking.totalPrice, owner.id);
             bookingAmount = calculated.fieldOwnerAmount;
           }
-          
+
           if (booking.payoutStatus === 'COMPLETED') {
             totalEarnings += bookingAmount;
             availableEarnings += bookingAmount;
@@ -334,13 +334,14 @@ async function calculateFieldOwnerEarnings() {
       });
 
       const totalPayouts = payouts.reduce((sum, payout) => sum + payout.amount, 0);
-      
+
       // Skip notification if there is nothing meaningful to report
+      // Only send if there are pending or available earnings, or if total earnings for the period are positive
+      // We exclude totalPayouts from this check because historical payouts shouldn't trigger a "Current Earnings" notification
       const hasEarningsActivity =
         totalEarnings > 0 ||
         availableEarnings > 0 ||
-        pendingEarnings > 0 ||
-        totalPayouts > 0;
+        pendingEarnings > 0;
 
       if (!hasEarningsActivity) {
         continue;
@@ -352,7 +353,7 @@ async function calculateFieldOwnerEarnings() {
         userId: owner.id,
         type: 'earnings_update',
         title: 'Earnings Update',
-        message: `Your current earnings: Total: $${totalEarnings.toFixed(2)}, Available: $${availableEarnings.toFixed(2)}, Pending: $${pendingEarnings.toFixed(2)}`,
+        message: `Your current earnings: Total: £${totalEarnings.toFixed(2)}, Available: £${availableEarnings.toFixed(2)}, Pending: £${pendingEarnings.toFixed(2)}`,
         data: {
           totalEarnings,
           availableEarnings,
@@ -408,11 +409,11 @@ export async function processAutomaticTransfers() {
 
         // Process the payout
         await refundService.processFieldOwnerPayout(booking, 0);
-        
+
         console.log(`Processed automatic transfer for booking ${booking.id}`);
       } catch (error) {
         console.error(`Failed to process transfer for booking ${booking.id}:`, error);
-        
+
         // Revert status on error
         await prisma.booking.update({
           where: { id: booking.id },
