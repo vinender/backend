@@ -147,6 +147,7 @@ class Server {
     // Stripe webhook endpoint (raw body needed, must be before JSON parser)
     this.app.use('/api/stripe', express.raw({ type: 'application/json' }));
     this.app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+    this.app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));
 
     // Body parsing middleware
     this.app.use(express.json({ limit: '10mb' }));
@@ -381,6 +382,8 @@ class Server {
 
     // Payment routes - 5 payment attempts per minute
     this.app.use('/api/payments', bypassInDevelopment(paymentLimiter), paymentRoutes);
+    // Alias for singular payment route to support existing Stripe config
+    this.app.use('/api/payment', paymentRoutes);
 
     // General routes
     this.app.use('/api/favorites', favoriteRoutes);

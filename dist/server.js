@@ -121,6 +121,7 @@ class Server {
         // Stripe webhook endpoint (raw body needed, must be before JSON parser)
         this.app.use('/api/stripe', express_1.default.raw({ type: 'application/json' }));
         this.app.use('/api/payments/webhook', express_1.default.raw({ type: 'application/json' }));
+        this.app.use('/api/payment/webhook', express_1.default.raw({ type: 'application/json' }));
         // Body parsing middleware
         this.app.use(express_1.default.json({ limit: '10mb' }));
         this.app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
@@ -337,6 +338,8 @@ class Server {
         this.app.use('/api/notifications', notification_routes_1.default);
         // Payment routes - 5 payment attempts per minute
         this.app.use('/api/payments', (0, rateLimiter_middleware_1.bypassInDevelopment)(rateLimiter_middleware_1.paymentLimiter), payment_routes_1.default);
+        // Alias for singular payment route to support existing Stripe config
+        this.app.use('/api/payment', payment_routes_1.default);
         // General routes
         this.app.use('/api/favorites', favorite_routes_1.default);
         // Chat routes - 30 messages per minute
