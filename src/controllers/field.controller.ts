@@ -2329,7 +2329,8 @@ class FieldController {
                 name: true,
                 email: true,
               }
-            }
+            },
+            payment: true
           }
         }
       }
@@ -2338,6 +2339,21 @@ class FieldController {
     if (!field) {
       throw new AppError('Field not found', 404);
     }
+
+    // Calculate total earnings (revenue) for this field
+    const earningsAggregate = await prisma.booking.aggregate({
+      where: {
+        fieldId: id,
+        status: { in: ['CONFIRMED', 'COMPLETED'] }
+      },
+      _sum: {
+        totalPrice: true,
+        fieldOwnerAmount: true
+      }
+    });
+
+    const totalEarnings = earningsAggregate._sum.totalPrice || 0;
+    const totalOwnerEarnings = earningsAggregate._sum.fieldOwnerAmount || 0;
 
     const normalizePriceValue = (value: any): number | null => {
       if (value === null || value === undefined) return null;
@@ -2435,6 +2451,8 @@ class FieldController {
       policies: bookingPolicies,
       safetyRules: safetyRules,
       recentBookings: field.bookings || [],
+      totalEarnings,
+      totalOwnerEarnings,
       joinedOn: field.owner?.createdAt ? new Date(field.owner.createdAt).toLocaleDateString('en-GB', {
         day: '2-digit',
         month: 'short',

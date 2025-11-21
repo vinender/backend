@@ -20,7 +20,7 @@ router.post('/login', async (req, res) => {
 
     // Find admin user - first find by email, then check role
     const admin = await prisma.user.findFirst({
-      where: { 
+      where: {
         email,
         role: 'ADMIN'
       }
@@ -79,16 +79,16 @@ router.get('/verify', authenticateAdmin, async (req, res) => {
 router.get('/stats', authenticateAdmin, async (req, res) => {
   try {
     const { period = 'Today' } = req.query;
-    
+
     // Get current date and calculate date ranges based on period
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     let startDate: Date;
     let compareStartDate: Date;
     let compareEndDate: Date;
-    
-    switch(period) {
+
+    switch (period) {
       case 'Today':
         startDate = startOfToday;
         compareStartDate = new Date(startOfToday);
@@ -163,7 +163,7 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
       }),
       prisma.user.count({ where: { role: 'DOG_OWNER' } }),
       prisma.user.count({ where: { role: 'FIELD_OWNER' } }),
-      
+
       // Previous period stats for comparison
       prisma.user.count({
         where: {
@@ -455,6 +455,7 @@ router.get('/fields', authenticateAdmin, async (req, res) => {
     const { page = '1', limit = '10' } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
+    // Fetch fields with owner details
     const [fields, total] = await Promise.all([
       prisma.field.findMany({
         skip,
@@ -472,9 +473,27 @@ router.get('/fields', authenticateAdmin, async (req, res) => {
       prisma.field.count()
     ]);
 
+    // Calculate total earnings for each field (sum of fieldOwnerAmount for PAID bookings)
+    const fieldsWithEarnings = await Promise.all(fields.map(async (field) => {
+      const earnings = await prisma.booking.aggregate({
+        _sum: {
+          fieldOwnerAmount: true
+        },
+        where: {
+          fieldId: field.id,
+          paymentStatus: 'PAID'
+        }
+      });
+
+      return {
+        ...field,
+        totalEarnings: earnings._sum.fieldOwnerAmount || 0
+      };
+    }));
+
     res.json({
       success: true,
-      fields,
+      fields: fieldsWithEarnings,
       total,
       pages: Math.ceil(total / parseInt(limit as string))
     });
@@ -652,14 +671,14 @@ router.get('/payments', authenticateAdmin, async (req, res) => {
 router.get('/booking-stats', authenticateAdmin, async (req, res) => {
   try {
     const { period = 'Today' } = req.query;
-    
+
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     let startDate: Date;
     let endDate = now;
-    
-    switch(period) {
+
+    switch (period) {
       case 'Today':
         startDate = startOfToday;
         break;
@@ -721,7 +740,7 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
         dayStart.setDate(startDate.getDate() + i);
         const dayEnd = new Date(dayStart);
         dayEnd.setDate(dayEnd.getDate() + 1);
-        
+
         const [dayCompleted, dayCancelled, dayRefunded] = await Promise.all([
           prisma.booking.count({
             where: {
@@ -742,7 +761,7 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
             }
           })
         ]);
-        
+
         const dayIndex = dayStart.getDay();
         chartData.push({
           day: days[dayIndex === 0 ? 6 : dayIndex - 1],
@@ -757,7 +776,7 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
         weekStart.setDate(startDate.getDate() + (i * 7));
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 7);
-        
+
         const [weekCompleted, weekCancelled, weekRefunded] = await Promise.all([
           prisma.booking.count({
             where: {
@@ -778,7 +797,7 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
             }
           })
         ]);
-        
+
         chartData.push({
           day: weeks[i],
           values: [weekCompleted, weekCancelled, weekRefunded]
@@ -790,7 +809,7 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
       for (let i = 0; i < 12; i++) {
         const monthStart = new Date(now.getFullYear(), i, 1);
         const monthEnd = new Date(now.getFullYear(), i + 1, 0);
-        
+
         const [monthCompleted, monthCancelled, monthRefunded] = await Promise.all([
           prisma.booking.count({
             where: {
@@ -811,7 +830,7 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
             }
           })
         ]);
-        
+
         chartData.push({
           day: months[i],
           values: [monthCompleted, monthCancelled, monthRefunded]
@@ -842,14 +861,14 @@ router.get('/booking-stats', authenticateAdmin, async (req, res) => {
 router.get('/field-utilization', authenticateAdmin, async (req, res) => {
   try {
     const { period = 'Today' } = req.query;
-    
+
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     let startDate: Date;
     let endDate = now;
-    
-    switch(period) {
+
+    switch (period) {
       case 'Today':
         startDate = startOfToday;
         break;
@@ -890,7 +909,7 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
 
     // Calculate utilization chart data
     let chartData = [];
-    
+
     if (period === 'Today' || period === 'Weekly') {
       // Show daily utilization
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -899,7 +918,7 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
         dayStart.setDate(startDate.getDate() + i);
         const dayEnd = new Date(dayStart);
         dayEnd.setDate(dayEnd.getDate() + 1);
-        
+
         const [fieldsWithBookings, totalBookings, avgUtilization] = await Promise.all([
           prisma.field.count({
             where: {
@@ -917,10 +936,10 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
           }),
           prisma.field.count()
         ]);
-        
+
         const utilizationRate = avgUtilization > 0 ? Math.round((fieldsWithBookings / avgUtilization) * 100) : 0;
         const dayIndex = dayStart.getDay();
-        
+
         chartData.push({
           day: days[dayIndex === 0 ? 6 : dayIndex - 1],
           values: [fieldsWithBookings, totalBookings, utilizationRate]
@@ -934,7 +953,7 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
         weekStart.setDate(startDate.getDate() + (i * 7));
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 7);
-        
+
         const [fieldsWithBookings, totalBookings, avgUtilization] = await Promise.all([
           prisma.field.count({
             where: {
@@ -952,9 +971,9 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
           }),
           prisma.field.count()
         ]);
-        
+
         const utilizationRate = avgUtilization > 0 ? Math.round((fieldsWithBookings / avgUtilization) * 100) : 0;
-        
+
         chartData.push({
           day: weeks[i],
           values: [fieldsWithBookings, totalBookings, utilizationRate]
@@ -966,7 +985,7 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
       for (let i = 0; i < 12; i++) {
         const monthStart = new Date(now.getFullYear(), i, 1);
         const monthEnd = new Date(now.getFullYear(), i + 1, 0);
-        
+
         const [fieldsWithBookings, totalBookings, avgUtilization] = await Promise.all([
           prisma.field.count({
             where: {
@@ -984,9 +1003,9 @@ router.get('/field-utilization', authenticateAdmin, async (req, res) => {
           }),
           prisma.field.count()
         ]);
-        
+
         const utilizationRate = avgUtilization > 0 ? Math.round((fieldsWithBookings / avgUtilization) * 100) : 0;
-        
+
         chartData.push({
           day: months[i],
           values: [fieldsWithBookings, totalBookings, utilizationRate]
@@ -1011,7 +1030,7 @@ router.get('/claims', authenticateAdmin, async (req, res) => {
   try {
     const { status, page = '1', limit = '10' } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-    
+
     const where: any = {};
     if (status) {
       where.status = status;

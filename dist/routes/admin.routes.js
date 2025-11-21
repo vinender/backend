@@ -438,6 +438,7 @@ router.get('/fields', admin_middleware_1.authenticateAdmin, async (req, res) => 
     try {
         const { page = '1', limit = '10' } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
+        // Fetch fields with owner details
         const [fields, total] = await Promise.all([
             prisma.field.findMany({
                 skip,
@@ -454,9 +455,25 @@ router.get('/fields', admin_middleware_1.authenticateAdmin, async (req, res) => 
             }),
             prisma.field.count()
         ]);
+        // Calculate total earnings for each field (sum of fieldOwnerAmount for PAID bookings)
+        const fieldsWithEarnings = await Promise.all(fields.map(async (field) => {
+            const earnings = await prisma.booking.aggregate({
+                _sum: {
+                    fieldOwnerAmount: true
+                },
+                where: {
+                    fieldId: field.id,
+                    paymentStatus: 'PAID'
+                }
+            });
+            return {
+                ...field,
+                totalEarnings: earnings._sum.fieldOwnerAmount || 0
+            };
+        }));
         res.json({
             success: true,
-            fields,
+            fields: fieldsWithEarnings,
             total,
             pages: Math.ceil(total / parseInt(limit))
         });
