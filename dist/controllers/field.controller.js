@@ -428,6 +428,7 @@ class FieldController {
         // Enrich field with full amenity objects
         const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(updatedField);
         if (shouldNotifyAdmin) {
+            console.log('Notifying admin about the address change::::::::');
             try {
                 const { emailService } = await Promise.resolve().then(() => __importStar(require('../services/email.service')));
                 const settings = await database_1.default.systemSettings.findFirst({
@@ -452,6 +453,24 @@ class FieldController {
             }
             catch (notificationError) {
                 console.error('Failed to send field address change notification:', notificationError);
+            }
+            // Send in-app notification to all admins
+            try {
+                const { NotificationService } = await Promise.resolve().then(() => __importStar(require('../services/notification.service')));
+                const ownerName = updatedField.owner?.name || field.owner?.name || 'Field Owner';
+                const newAddress = formatAddress(updatedField.address, updatedField.city, updatedField.state, updatedField.zipCode);
+                await NotificationService.notifyAdmins('Field Address Updated', `${ownerName} has updated the address for field "${updatedField.name || 'Field'}". Previous: ${previousAddressSnapshot}. New: ${newAddress}`, {
+                    fieldId: updatedField.id,
+                    fieldName: updatedField.name,
+                    ownerId: field.ownerId,
+                    ownerName: ownerName,
+                    previousAddress: previousAddressSnapshot,
+                    newAddress: newAddress,
+                    changeDate: new Date()
+                });
+            }
+            catch (notificationError) {
+                console.error('Failed to send admin notification for field address change:', notificationError);
             }
         }
         res.json({

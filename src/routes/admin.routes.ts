@@ -452,12 +452,24 @@ router.get('/users', authenticateAdmin, async (req, res) => {
 // Get all fields for admin
 router.get('/fields', authenticateAdmin, async (req, res) => {
   try {
-    const { page = '1', limit = '10' } = req.query;
+    const { page = '1', limit = '10', search = '' } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    // Build search filter
+    const searchFilter = search && (search as string).trim() !== '' ? {
+      OR: [
+        { name: { contains: search as string, mode: 'insensitive' as const } },
+        { address: { contains: search as string, mode: 'insensitive' as const } },
+        { city: { contains: search as string, mode: 'insensitive' as const } },
+        { state: { contains: search as string, mode: 'insensitive' as const } },
+        { owner: { name: { contains: search as string, mode: 'insensitive' as const } } }
+      ]
+    } : {};
 
     // Fetch fields with owner details
     const [fields, total] = await Promise.all([
       prisma.field.findMany({
+        where: searchFilter,
         skip,
         take: parseInt(limit as string),
         orderBy: { createdAt: 'desc' },
@@ -470,7 +482,7 @@ router.get('/fields', authenticateAdmin, async (req, res) => {
           }
         }
       }),
-      prisma.field.count()
+      prisma.field.count({ where: searchFilter })
     ]);
 
     // Calculate total earnings for each field (sum of successful payouts from payouts collection)

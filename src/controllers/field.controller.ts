@@ -522,6 +522,7 @@ class FieldController {
     const enrichedField = await enrichFieldWithAmenities(updatedField);
 
     if (shouldNotifyAdmin) {
+      console.log('Notifying admin about the address change::::::::')
       try {
         const { emailService } = await import('../services/email.service');
         const settings = await prisma.systemSettings.findFirst({
@@ -545,6 +546,29 @@ class FieldController {
         }
       } catch (notificationError) {
         console.error('Failed to send field address change notification:', notificationError);
+      }
+
+      // Send in-app notification to all admins
+      try {
+        const { NotificationService } = await import('../services/notification.service');
+        const ownerName = updatedField.owner?.name || field.owner?.name || 'Field Owner';
+        const newAddress = formatAddress(updatedField.address, updatedField.city, updatedField.state, updatedField.zipCode);
+
+        await NotificationService.notifyAdmins(
+          'Field Address Updated',
+          `${ownerName} has updated the address for field "${updatedField.name || 'Field'}". Previous: ${previousAddressSnapshot}. New: ${newAddress}`,
+          {
+            fieldId: updatedField.id,
+            fieldName: updatedField.name,
+            ownerId: field.ownerId,
+            ownerName: ownerName,
+            previousAddress: previousAddressSnapshot,
+            newAddress: newAddress,
+            changeDate: new Date()
+          }
+        );
+      } catch (notificationError) {
+        console.error('Failed to send admin notification for field address change:', notificationError);
       }
     }
 

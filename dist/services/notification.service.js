@@ -78,6 +78,7 @@ class NotificationService {
             'payment_failed',
             'field_added',
             'field_submitted',
+            'field_address_updated',
             'user_registered',
             'review_posted',
             'refund_processed',
