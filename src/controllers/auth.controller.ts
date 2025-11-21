@@ -80,7 +80,7 @@ class AuthController {
     // when the field owner first saves their field details.
     // This prevents orphaned field documents and handles cases where
     // fields are deleted from the database.
-    
+
     // Old code kept for reference:
     // if (user.role === 'FIELD_OWNER') {
     //   try {
@@ -104,13 +104,13 @@ class AuthController {
 
     // Generate JWT token
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role 
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role
       },
       JWT_SECRET as jwt.Secret,
-      { 
+      {
         expiresIn: JWT_EXPIRES_IN as string | number
       }
     );
@@ -144,7 +144,7 @@ class AuthController {
     if (role && user.role !== role) {
       throw new AppError(`This account is registered as a ${user.role.replace('_', ' ').toLowerCase()}. Please use the correct login form.`, 401);
     }
-    
+
     // Check if user has password (they might only have OAuth)
     if (!user.password) {
       const hasOAuthAccount = await UserModel.hasOAuthAccount(user.id);
@@ -165,13 +165,13 @@ class AuthController {
 
     // Generate JWT token
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role 
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role
       },
       JWT_SECRET as jwt.Secret,
-      { 
+      {
         expiresIn: JWT_EXPIRES_IN as string | number
       }
     );
@@ -212,7 +212,7 @@ class AuthController {
   logout = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     // If using cookies, clear them here
     res.clearCookie('token');
-    
+
     res.json({
       success: true,
       message: 'Logout successful',
@@ -230,13 +230,13 @@ class AuthController {
     try {
       // Verify refresh token
       const decoded = jwt.verify(refreshToken, JWT_SECRET) as any;
-      
+
       // Generate new access token
       const newToken = jwt.sign(
-        { 
-          id: decoded.id, 
-          email: decoded.email, 
-          role: decoded.role 
+        {
+          id: decoded.id,
+          email: decoded.email,
+          role: decoded.role
         },
         JWT_SECRET as jwt.Secret,
         { expiresIn: JWT_EXPIRES_IN as string | number }
@@ -329,7 +329,8 @@ class AuthController {
       });
     }
 
-    // Create or update user (NOT VERIFIED YET)
+
+    // Create or update user (AUTOMATICALLY VERIFIED for social logins)
     console.log('📝 Creating or updating social user...');
     console.log('  - Email:', email);
     console.log('  - Name:', name);
@@ -355,20 +356,30 @@ class AuthController {
     // when the field owner first saves their field details.
     // See comment in register method for more details.
 
-    // Send OTP for verification
-    console.log('📧 Sending OTP for email verification...');
-    const { otpService } = require('../services/otp.service');
-    await otpService.sendOtp(email, 'SOCIAL_LOGIN', name);
-    console.log('✅ OTP sent successfully to:', email);
+    // Social login users are automatically verified - no OTP needed
+    // Generate token and log them in immediately
+    console.log('✅ Social login user - auto-verifying and logging in');
 
-    console.log('📤 Sending response - OTP verification required');
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        provider: user.provider
+      },
+      JWT_SECRET as jwt.Secret,
+      {
+        expiresIn: JWT_EXPIRES_IN as string | number
+      }
+    );
+
+    console.log('✅ Token generated for new social user');
     res.status(200).json({
       success: true,
-      requiresVerification: true,
-      message: 'Please check your email for verification code',
+      message: 'Social login successful',
       data: {
-        email,
-        role: user.role,
+        user,
+        token,
       },
     });
     console.log('==================== SOCIAL LOGIN COMPLETE ====================');
@@ -409,13 +420,13 @@ class AuthController {
 
     // Generate new token with updated role
     const token = jwt.sign(
-      { 
-        id: updatedUser.id, 
-        email: updatedUser.email, 
-        role: updatedUser.role 
+      {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        role: updatedUser.role
       },
       JWT_SECRET as jwt.Secret,
-      { 
+      {
         expiresIn: JWT_EXPIRES_IN as string | number
       }
     );

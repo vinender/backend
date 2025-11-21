@@ -25,7 +25,7 @@ class UserModel {
   async create(data: CreateUserInput) {
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
     const role = data.role || 'DOG_OWNER';
-    
+
     // Get default commission rate from system settings for field owners
     let commissionRate: number | undefined = undefined;
     if (role === 'FIELD_OWNER') {
@@ -33,7 +33,7 @@ class UserModel {
       const settings = await prisma.systemSettings.findFirst();
       commissionRate = settings?.defaultCommissionRate || 15.0; // Use 15% as fallback
     }
-    
+
     return prisma.user.create({
       data: {
         ...data,
@@ -64,7 +64,7 @@ class UserModel {
       where: { email },
     });
   }
-  
+
   // Find user by email and role
   async findByEmailAndRole(email: string, role: 'DOG_OWNER' | 'FIELD_OWNER' | 'ADMIN') {
     return prisma.user.findUnique({
@@ -202,10 +202,10 @@ class UserModel {
         name: data.name || existingUser.name,
         // Keep user's uploaded image, store Google image separately
         image: existingUser.image, // Keep existing uploaded image
-        emailVerified: existingUser.emailVerified, // Keep existing verification status
+        emailVerified: true, // Auto-verify when logging in with social provider
         provider: data.provider, // Update provider to track social login
       };
-      
+
       // Store Google image separately if provider is Google
       if (data.provider === 'google' && data.image) {
         updateData.googleImage = data.image;
@@ -214,7 +214,7 @@ class UserModel {
           updateData.image = data.image;
         }
       }
-      
+
       return prisma.user.update({
         where: { id: existingUser.id },
         data: updateData,
@@ -227,12 +227,13 @@ class UserModel {
           provider: true,
           image: true,
           googleImage: true,
+          emailVerified: true,
           createdAt: true,
           updatedAt: true,
         },
       });
     }
-    
+
     // Create new user from social login with specific role
     const createData: any = {
       email: data.email,
@@ -240,14 +241,14 @@ class UserModel {
       image: data.image,
       role: userRole,
       provider: data.provider,
-      emailVerified: null, // Requires OTP verification even for social logins
+      emailVerified: true, // Social logins are automatically verified
     };
-    
+
     // Store Google image separately if provider is Google
     if (data.provider === 'google' && data.image) {
       createData.googleImage = data.image;
     }
-    
+
     return prisma.user.create({
       data: createData,
       select: {
@@ -259,6 +260,7 @@ class UserModel {
         provider: true,
         image: true,
         googleImage: true,
+        emailVerified: true,
         createdAt: true,
         updatedAt: true,
       },
