@@ -276,7 +276,7 @@ class AuthController {
                 },
             });
         }
-        // Create or update user (NOT VERIFIED YET)
+        // Create or update user (AUTOMATICALLY VERIFIED for social logins)
         console.log('📝 Creating or updating social user...');
         console.log('  - Email:', email);
         console.log('  - Name:', name);
@@ -298,19 +298,24 @@ class AuthController {
         // NOTE: Empty field creation removed - fields are now created dynamically
         // when the field owner first saves their field details.
         // See comment in register method for more details.
-        // Send OTP for verification
-        console.log('📧 Sending OTP for email verification...');
-        const { otpService } = require('../services/otp.service');
-        await otpService.sendOtp(email, 'SOCIAL_LOGIN', name);
-        console.log('✅ OTP sent successfully to:', email);
-        console.log('📤 Sending response - OTP verification required');
+        // Social login users are automatically verified - no OTP needed
+        // Generate token and log them in immediately
+        console.log('✅ Social login user - auto-verifying and logging in');
+        const token = jsonwebtoken_1.default.sign({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            provider: user.provider
+        }, constants_1.JWT_SECRET, {
+            expiresIn: constants_1.JWT_EXPIRES_IN
+        });
+        console.log('✅ Token generated for new social user');
         res.status(200).json({
             success: true,
-            requiresVerification: true,
-            message: 'Please check your email for verification code',
+            message: 'Social login successful',
             data: {
-                email,
-                role: user.role,
+                user,
+                token,
             },
         });
         console.log('==================== SOCIAL LOGIN COMPLETE ====================');

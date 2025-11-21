@@ -167,7 +167,7 @@ class UserModel {
                 name: data.name || existingUser.name,
                 // Keep user's uploaded image, store Google image separately
                 image: existingUser.image, // Keep existing uploaded image
-                emailVerified: existingUser.emailVerified, // Keep existing verification status
+                emailVerified: true, // Auto-verify when logging in with social provider
                 provider: data.provider, // Update provider to track social login
             };
             // Store Google image separately if provider is Google
@@ -190,6 +190,7 @@ class UserModel {
                     provider: true,
                     image: true,
                     googleImage: true,
+                    emailVerified: true,
                     createdAt: true,
                     updatedAt: true,
                 },
@@ -202,7 +203,7 @@ class UserModel {
             image: data.image,
             role: userRole,
             provider: data.provider,
-            emailVerified: null, // Requires OTP verification even for social logins
+            emailVerified: true, // Social logins are automatically verified
         };
         // Store Google image separately if provider is Google
         if (data.provider === 'google' && data.image) {
@@ -219,6 +220,7 @@ class UserModel {
                 provider: true,
                 image: true,
                 googleImage: true,
+                emailVerified: true,
                 createdAt: true,
                 updatedAt: true,
             },
