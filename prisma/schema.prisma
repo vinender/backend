@@ -145,6 +145,7 @@ model Field {
   operatingDays      String[] // e.g., ["Monday", "Tuesday", "Wednesday"]
   instantBooking     Boolean   @default(false)
   cancellationPolicy String?
+  entryCode          String? // Entry code for the field (not unique)
 
   // Additional field details
   fieldFeatures Json? // Store complex field features as JSON

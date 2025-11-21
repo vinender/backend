@@ -1,12 +1,12 @@
 //@ts-nocheck
 import prisma from '../config/database';
-import { 
-  isValidUKPostcode, 
-  formatUKPostcode, 
+import {
+  isValidUKPostcode,
+  formatUKPostcode,
   isPartialPostcode,
   getPostcodeOutwardCode,
   getPostcodeDistrict,
-  getPostcodeArea 
+  getPostcodeArea
 } from '../utils/postcode.utils';
 
 export interface CreateFieldInput {
@@ -44,6 +44,7 @@ export interface CreateFieldInput {
   isClaimed?: boolean;
   ownerName?: string;
   joinedOn?: string;
+  entryCode?: string;
 }
 
 class FieldModel {
@@ -52,13 +53,13 @@ class FieldModel {
     // Get owner details if not provided
     let ownerName = data.ownerName;
     let joinedOn = data.joinedOn;
-    
+
     if ((!ownerName || !joinedOn) && data.ownerId) {
       const owner = await prisma.user.findUnique({
         where: { id: data.ownerId },
         select: { name: true, createdAt: true },
       });
-      
+
       if (owner) {
         ownerName = ownerName || owner.name || undefined;
         // Format joinedOn as "Month Year" if not provided
@@ -70,10 +71,10 @@ class FieldModel {
         }
       }
     }
-    
+
     // Remove apartment field as it doesn't exist in the schema
     const { apartment, ...cleanedData } = data as any;
-    
+
     return prisma.field.create({
       data: {
         ...cleanedData,
@@ -342,39 +343,39 @@ class FieldModel {
     if (where.search) {
       // Check if search term might be a UK postcode
       const isPostcode = isValidUKPostcode(where.search) || isPartialPostcode(where.search);
-      
+
       if (isPostcode) {
         // If it's a postcode, search for matching postcodes
         const formattedPostcode = formatUKPostcode(where.search);
         const searchConditions: any[] = [];
-        
+
         // Search for exact match (formatted)
         if (formattedPostcode) {
           searchConditions.push({ zipCode: formattedPostcode });
           searchConditions.push({ zipCode: formattedPostcode.replace(' ', '') });
         }
-        
+
         // Search for partial matches (outward code, district, area)
         if (isPartialPostcode(where.search)) {
           const searchUpper = where.search.toUpperCase().trim();
-          
+
           // Starts with partial postcode
-          searchConditions.push({ 
-            zipCode: { 
+          searchConditions.push({
+            zipCode: {
               startsWith: searchUpper,
-              mode: 'insensitive' 
-            } 
+              mode: 'insensitive'
+            }
           });
-          
+
           // Contains partial postcode (for formatted postcodes with space)
-          searchConditions.push({ 
-            zipCode: { 
+          searchConditions.push({
+            zipCode: {
               contains: searchUpper,
-              mode: 'insensitive' 
-            } 
+              mode: 'insensitive'
+            }
           });
         }
-        
+
         whereClause.OR = searchConditions;
       } else {
         // Regular search for non-postcode terms
@@ -393,10 +394,10 @@ class FieldModel {
     if (where.zipCode) {
       // Check if it's a UK postcode format
       const isUKPostcode = isValidUKPostcode(where.zipCode) || isPartialPostcode(where.zipCode);
-      
+
       if (isUKPostcode) {
         const formattedPostcode = formatUKPostcode(where.zipCode);
-        
+
         if (formattedPostcode) {
           // Search for exact match (both with and without space)
           whereClause.OR = [
@@ -813,27 +814,27 @@ class FieldModel {
 
     // Check if query might be a UK postcode
     const isPostcode = isValidUKPostcode(query) || isPartialPostcode(query);
-    
+
     if (isPostcode) {
       // For postcode searches, look for matching postcodes
       const formattedPostcode = formatUKPostcode(query);
       const searchConditions: any[] = [];
-      
+
       if (formattedPostcode) {
         searchConditions.push({ zipCode: formattedPostcode });
         searchConditions.push({ zipCode: formattedPostcode.replace(' ', '') });
       }
-      
+
       if (isPartialPostcode(query)) {
         const searchUpper = query.toUpperCase().trim();
-        searchConditions.push({ 
-          zipCode: { 
+        searchConditions.push({
+          zipCode: {
             startsWith: searchUpper,
-            mode: 'insensitive' 
-          } 
+            mode: 'insensitive'
+          }
         });
       }
-      
+
       whereClause.OR = searchConditions;
     } else {
       // Comprehensive search by field name, address, city, state, or postal code
@@ -912,7 +913,7 @@ class FieldModel {
         // We still calculate this for the UI display, but we're doing it on a much smaller subset
         const fieldLat = field.location?.coordinates?.[1] || field.latitude;
         const fieldLng = field.location?.coordinates?.[0] || field.longitude;
-        
+
         let distanceMiles = 0;
         if (fieldLat && fieldLng) {
           const R = 3959; // Earth's radius in miles
