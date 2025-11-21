@@ -541,7 +541,7 @@ class FieldController {
             newAddress: formatAddress(updatedField.address, updatedField.city, updatedField.state, updatedField.zipCode),
             changeDate: new Date(),
           });
-        } else {
+        } else {  
           console.warn('Admin email not configured; skipping field address change notification.');
         }
       } catch (notificationError) {

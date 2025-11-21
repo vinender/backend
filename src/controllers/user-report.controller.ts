@@ -128,7 +128,8 @@ export const userReportController = {
                 id: true,
                 name: true,
                 email: true,
-                image: true
+                image: true,
+                role: true
               }
             },
             reportedUser: {
@@ -137,7 +138,8 @@ export const userReportController = {
                 name: true,
                 email: true,
                 image: true,
-                phone: true
+                phone: true,
+                role: true
               }
             }
           },
@@ -303,7 +305,8 @@ export const userReportController = {
                 id: true,
                 name: true,
                 email: true,
-                image: true
+                image: true,
+                role: true
               }
             }
           },

@@ -108,7 +108,8 @@ exports.userReportController = {
                                 id: true,
                                 name: true,
                                 email: true,
-                                image: true
+                                image: true,
+                                role: true
                             }
                         },
                         reportedUser: {
@@ -117,7 +118,8 @@ exports.userReportController = {
                                 name: true,
                                 email: true,
                                 image: true,
-                                phone: true
+                                phone: true,
+                                role: true
                             }
                         }
                     },
@@ -271,7 +273,8 @@ exports.userReportController = {
                                 id: true,
                                 name: true,
                                 email: true,
-                                image: true
+                                image: true,
+                                role: true
                             }
                         }
                     },
