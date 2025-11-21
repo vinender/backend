@@ -455,20 +455,50 @@ router.get('/fields', admin_middleware_1.authenticateAdmin, async (req, res) => 
             }),
             prisma.field.count()
         ]);
-        // Calculate total earnings for each field (sum of fieldOwnerAmount for PAID bookings)
+        // Calculate total earnings for each field (sum of successful payouts from payouts collection)
         const fieldsWithEarnings = await Promise.all(fields.map(async (field) => {
-            const earnings = await prisma.booking.aggregate({
-                _sum: {
-                    fieldOwnerAmount: true
-                },
-                where: {
-                    fieldId: field.id,
-                    paymentStatus: 'PAID'
-                }
+            // Find Stripe Account for the owner
+            const stripeAccount = await prisma.stripeAccount.findUnique({
+                where: { userId: field.ownerId }
             });
+            let totalPayouts = 0;
+            if (stripeAccount) {
+                // Get all bookings for THIS specific field
+                const fieldBookings = await prisma.booking.findMany({
+                    where: {
+                        fieldId: field.id,
+                        paymentStatus: 'PAID'
+                    },
+                    select: { id: true }
+                });
+                const fieldBookingIds = fieldBookings.map(b => b.id);
+                if (fieldBookingIds.length > 0) {
+                    // Get payouts that include bookings from THIS field
+                    const payouts = await prisma.payout.findMany({
+                        where: {
+                            stripeAccountId: stripeAccount.id,
+                            status: 'paid',
+                            bookingIds: {
+                                hasSome: fieldBookingIds
+                            }
+                        }
+                    });
+                    // Calculate the portion of each payout that belongs to this field
+                    totalPayouts = payouts.reduce((sum, payout) => {
+                        // Count how many bookings in this payout belong to this field
+                        const payoutFieldBookings = payout.bookingIds.filter(id => fieldBookingIds.includes(id));
+                        // Calculate proportional amount
+                        // If payout has 3 bookings and 2 are from this field, this field gets 2/3 of the payout
+                        const proportion = payout.bookingIds.length > 0
+                            ? payoutFieldBookings.length / payout.bookingIds.length
+                            : 0;
+                        return sum + (payout.amount * proportion);
+                    }, 0);
+                }
+            }
             return {
                 ...field,
-                totalEarnings: earnings._sum.fieldOwnerAmount || 0
+                totalEarnings: totalPayouts
             };
         }));
         res.json({

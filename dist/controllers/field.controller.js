@@ -2055,19 +2055,47 @@ class FieldController {
         if (!field) {
             throw new AppError_1.AppError('Field not found', 404);
         }
-        // Calculate total earnings (revenue) for this field
-        const earningsAggregate = await database_1.default.booking.aggregate({
-            where: {
-                fieldId: id,
-                status: { in: ['CONFIRMED', 'COMPLETED'] }
-            },
-            _sum: {
-                totalPrice: true,
-                fieldOwnerAmount: true
-            }
+        // Calculate total earnings from successful payouts for this specific field
+        const stripeAccount = await database_1.default.stripeAccount.findUnique({
+            where: { userId: field.ownerId }
         });
-        const totalEarnings = earningsAggregate._sum.totalPrice || 0;
-        const totalOwnerEarnings = earningsAggregate._sum.fieldOwnerAmount || 0;
+        let totalOwnerEarnings = 0;
+        let totalEarnings = 0;
+        if (stripeAccount) {
+            // Get all bookings for THIS specific field
+            const fieldBookings = await database_1.default.booking.findMany({
+                where: {
+                    fieldId: id,
+                    paymentStatus: 'PAID'
+                },
+                select: { id: true, totalPrice: true }
+            });
+            const fieldBookingIds = fieldBookings.map(b => b.id);
+            if (fieldBookingIds.length > 0) {
+                // Get payouts that include bookings from THIS field
+                const payouts = await database_1.default.payout.findMany({
+                    where: {
+                        stripeAccountId: stripeAccount.id,
+                        status: 'paid',
+                        bookingIds: {
+                            hasSome: fieldBookingIds
+                        }
+                    }
+                });
+                // Calculate the portion of each payout that belongs to this field
+                totalOwnerEarnings = payouts.reduce((sum, payout) => {
+                    // Count how many bookings in this payout belong to this field
+                    const payoutFieldBookings = payout.bookingIds.filter(id => fieldBookingIds.includes(id));
+                    // Calculate proportional amount
+                    const proportion = payout.bookingIds.length > 0
+                        ? payoutFieldBookings.length / payout.bookingIds.length
+                        : 0;
+                    return sum + (payout.amount * proportion);
+                }, 0);
+                // Calculate total revenue (customer payments) for this field
+                totalEarnings = fieldBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
+            }
+        }
         const normalizePriceValue = (value) => {
             if (value === null || value === undefined)
                 return null;
