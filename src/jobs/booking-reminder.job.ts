@@ -114,20 +114,11 @@ async function sendBookingReminders() {
             // Less than 2 hours away - send immediately
             shouldSendReminder = true;
             reminderReason = 'less than 2 hours away';
-          } else if (hoursUntilBooking > 2) {
-            // More than 2 hours away - check if it's time for 2-hour reminder
-            const twoHoursBeforeBooking = new Date(bookingDateTime.getTime() - (2 * 60 * 60 * 1000));
-
-            // Send if we're past the 2-hour mark (with 30-minute buffer to catch it)
-            if (now >= twoHoursBeforeBooking) {
-              shouldSendReminder = true;
-              reminderReason = '2-hour reminder';
-            }
           }
         }
 
         if (!shouldSendReminder) {
-          console.log(`⏭️  Skipping booking ${booking.id} - reminder ${reminderSent ? 'already sent' : `not yet time (${hoursUntilBooking}h until booking)`}`);
+          // console.log(`⏭️  Skipping booking ${booking.id} - reminder ${reminderSent ? 'already sent' : `not yet time (${hoursUntilBooking}h until booking)`}`);
           results.skipped++;
           continue;
         }

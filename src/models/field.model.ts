@@ -583,6 +583,7 @@ class FieldModel {
     });
   }
 
+  
   // Find fields by owner
   async findByOwner(ownerId: string) {
     return prisma.field.findMany({
