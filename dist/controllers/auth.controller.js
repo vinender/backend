@@ -253,11 +253,25 @@ class AuthController {
         console.log('🔍 Checking for existing user with email:', email);
         const existingUser = await user_model_1.default.findByEmail(email);
         if (existingUser && existingUser.emailVerified) {
-            console.log('✅ Existing verified user found - logging in immediately');
+            console.log('✅ Existing verified user found');
             console.log('  - User ID:', existingUser.id);
             console.log('  - User Role:', existingUser.role);
+            console.log('  - Selected Role:', role || 'DOG_OWNER');
             console.log('  - Provider:', existingUser.provider);
-            // User exists and is verified - log them in immediately
+            // Check if the selected role matches the user's registered role
+            const selectedRole = role || 'DOG_OWNER';
+            if (existingUser.role !== selectedRole) {
+                const roleNames = {
+                    DOG_OWNER: 'Dog Owner',
+                    FIELD_OWNER: 'Field Owner',
+                    ADMIN: 'Admin'
+                };
+                const errorMessage = `This email is already registered as a ${roleNames[existingUser.role]}. Please select ${roleNames[existingUser.role]} to continue.`;
+                console.log('❌ Role mismatch:', errorMessage);
+                throw new AppError_1.AppError(errorMessage, 400);
+            }
+            // User exists, is verified, and role matches - log them in immediately
+            console.log('✅ Role matches - logging in immediately');
             const token = jsonwebtoken_1.default.sign({
                 id: existingUser.id,
                 email: existingUser.email,
@@ -394,10 +408,24 @@ class AuthController {
             console.log('🔍 Checking for existing user with email:', appleUser.email);
             const existingUser = await user_model_1.default.findByEmail(appleUser.email);
             if (existingUser && existingUser.emailVerified) {
-                console.log('✅ Existing verified user found - logging in immediately');
+                console.log('✅ Existing verified user found');
                 console.log('  - User ID:', existingUser.id);
                 console.log('  - User Role:', existingUser.role);
-                // User exists and is verified - log them in immediately
+                console.log('  - Selected Role:', role || 'DOG_OWNER');
+                // Check if the selected role matches the user's registered role
+                const selectedRole = role || 'DOG_OWNER';
+                if (existingUser.role !== selectedRole) {
+                    const roleNames = {
+                        DOG_OWNER: 'Dog Owner',
+                        FIELD_OWNER: 'Field Owner',
+                        ADMIN: 'Admin'
+                    };
+                    const errorMessage = `This email is already registered as a ${roleNames[existingUser.role]}. Please select ${roleNames[existingUser.role]} to continue.`;
+                    console.log('❌ Role mismatch:', errorMessage);
+                    throw new AppError_1.AppError(errorMessage, 400);
+                }
+                // User exists, is verified, and role matches - log them in immediately
+                console.log('✅ Role matches - logging in immediately');
                 const token = jsonwebtoken_1.default.sign({
                     id: existingUser.id,
                     email: existingUser.email,

@@ -299,12 +299,27 @@ class AuthController {
     const existingUser = await UserModel.findByEmail(email);
 
     if (existingUser && existingUser.emailVerified) {
-      console.log('✅ Existing verified user found - logging in immediately');
+      console.log('✅ Existing verified user found');
       console.log('  - User ID:', existingUser.id);
       console.log('  - User Role:', existingUser.role);
+      console.log('  - Selected Role:', role || 'DOG_OWNER');
       console.log('  - Provider:', existingUser.provider);
 
-      // User exists and is verified - log them in immediately
+      // Check if the selected role matches the user's registered role
+      const selectedRole = role || 'DOG_OWNER';
+      if (existingUser.role !== selectedRole) {
+        const roleNames = {
+          DOG_OWNER: 'Dog Owner',
+          FIELD_OWNER: 'Field Owner',
+          ADMIN: 'Admin'
+        };
+        const errorMessage = `This email is already registered as a ${roleNames[existingUser.role]}. Please select ${roleNames[existingUser.role]} to continue.`;
+        console.log('❌ Role mismatch:', errorMessage);
+        throw new AppError(errorMessage, 400);
+      }
+
+      // User exists, is verified, and role matches - log them in immediately
+      console.log('✅ Role matches - logging in immediately');
       const token = jwt.sign(
         {
           id: existingUser.id,
@@ -479,11 +494,26 @@ class AuthController {
       const existingUser = await UserModel.findByEmail(appleUser.email);
 
       if (existingUser && existingUser.emailVerified) {
-        console.log('✅ Existing verified user found - logging in immediately');
+        console.log('✅ Existing verified user found');
         console.log('  - User ID:', existingUser.id);
         console.log('  - User Role:', existingUser.role);
+        console.log('  - Selected Role:', role || 'DOG_OWNER');
 
-        // User exists and is verified - log them in immediately
+        // Check if the selected role matches the user's registered role
+        const selectedRole = role || 'DOG_OWNER';
+        if (existingUser.role !== selectedRole) {
+          const roleNames = {
+            DOG_OWNER: 'Dog Owner',
+            FIELD_OWNER: 'Field Owner',
+            ADMIN: 'Admin'
+          };
+          const errorMessage = `This email is already registered as a ${roleNames[existingUser.role]}. Please select ${roleNames[existingUser.role]} to continue.`;
+          console.log('❌ Role mismatch:', errorMessage);
+          throw new AppError(errorMessage, 400);
+        }
+
+        // User exists, is verified, and role matches - log them in immediately
+        console.log('✅ Role matches - logging in immediately');
         const token = jwt.sign(
           {
             id: existingUser.id,

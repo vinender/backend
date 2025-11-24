@@ -195,14 +195,19 @@ class UserModel {
     if (existingUser) {
       // Check if the existing user has a different role
       if (existingUser.role !== userRole) {
-        throw new Error(`An account already exists with this email.`);
+        const roleNames = {
+          DOG_OWNER: 'Dog Owner',
+          FIELD_OWNER: 'Field Owner',
+          ADMIN: 'Admin'
+        };
+        throw new Error(`This email is already registered as a ${roleNames[existingUser.role]}. Please select ${roleNames[existingUser.role]} to continue.`);
       }
       // Update existing user with social login info
       const updateData: any = {
         name: data.name || existingUser.name,
         // Keep user's uploaded image, store Google image separately
         image: existingUser.image, // Keep existing uploaded image
-        emailVerified: true, // Auto-verify when logging in with social provider
+        emailVerified: new Date(), // Auto-verify when logging in with social provider
         provider: data.provider, // Update provider to track social login
       };
 
@@ -241,7 +246,7 @@ class UserModel {
       image: data.image,
       role: userRole,
       provider: data.provider,
-      emailVerified: true, // Social logins are automatically verified
+      emailVerified: new Date(), // Social logins are automatically verified
     };
 
     // Store Google image separately if provider is Google
