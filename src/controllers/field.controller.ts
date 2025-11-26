@@ -528,7 +528,7 @@ class FieldController {
         const settings = await prisma.systemSettings.findFirst({
           select: { supportEmail: true },
         });
-        const adminEmail = 'veninderindiit@gmail.com';
+        const adminEmail = process.env.SMTP_USER;
 
         if (adminEmail) {
           await emailService.sendFieldAddressChangeNotification({

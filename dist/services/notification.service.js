@@ -113,6 +113,8 @@ class NotificationService {
                 where: { role: 'ADMIN' },
                 select: { id: true }
             });
+            console.log(`[NotificationService] Creating admin notifications for ${adminUsers.length} admin(s) - Title: ${title}`);
+            const io = global.io;
             const notifications = [];
             for (const admin of adminUsers) {
                 const notification = await prisma.notification.create({
@@ -125,6 +127,12 @@ class NotificationService {
                     }
                 });
                 notifications.push(notification);
+                // Emit socket event for real-time notification
+                if (io) {
+                    const adminRoomName = `user-${admin.id}`;
+                    console.log('[NotificationService] Emitting admin notification to room:', adminRoomName);
+                    io.to(adminRoomName).emit('notification', notification);
+                }
             }
             return notifications;
         }

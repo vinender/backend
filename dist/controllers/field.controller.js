@@ -434,7 +434,7 @@ class FieldController {
                 const settings = await database_1.default.systemSettings.findFirst({
                     select: { supportEmail: true },
                 });
-                const adminEmail = 'veninderindiit@gmail.com';
+                const adminEmail = process.env.SMTP_USER;
                 if (adminEmail) {
                     await emailService.sendFieldAddressChangeNotification({
                         adminEmail,
