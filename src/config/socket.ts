@@ -259,7 +259,7 @@ export const initializeSocket = (server: HTTPServer) => {
         });
       }
     });
-
+       
     // Handle fetching notifications
     socket.on('fetch-notifications', async ({ page = 1, limit = 20 }) => {
       try {
