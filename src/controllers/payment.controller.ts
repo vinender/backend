@@ -679,23 +679,56 @@ export class PaymentController {
   async handleWebhook(req: Request, res: Response) {
     const sig = req.headers['stripe-signature'] as string;
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const connectWebhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 
-    if (!webhookSecret) {
+    if (!webhookSecret && !connectWebhookSecret) {
       console.error('Stripe webhook secret not configured');
       return res.status(500).json({ error: 'Webhook secret not configured' });
     }
 
     let event: Stripe.Event;
 
+    // Try to verify with the main webhook secret first, then try connect webhook secret
+    // This handles both direct account events and connected account events
     try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        webhookSecret
-      );
+      // First, try the main webhook secret
+      if (webhookSecret) {
+        try {
+          event = stripe.webhooks.constructEvent(
+            req.body,
+            sig,
+            webhookSecret
+          );
+        } catch (err) {
+          // If main secret fails and we have a connect secret, try that
+          if (connectWebhookSecret) {
+            event = stripe.webhooks.constructEvent(
+              req.body,
+              sig,
+              connectWebhookSecret
+            );
+          } else {
+            throw err;
+          }
+        }
+      } else if (connectWebhookSecret) {
+        event = stripe.webhooks.constructEvent(
+          req.body,
+          sig,
+          connectWebhookSecret
+        );
+      } else {
+        throw new Error('No webhook secret configured');
+      }
     } catch (err) {
       console.error('Webhook signature verification failed:', err);
       return res.status(400).send(`Webhook Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+
+    // Log connected account events for debugging
+    const connectedAccountId = (event as any).account;
+    if (connectedAccountId) {
+      console.log(`[Webhook] Received event ${event.type} from connected account: ${connectedAccountId}`);
     }
 
     // Handle the event
@@ -979,11 +1012,45 @@ async function syncStripePayoutEvent(event: Stripe.Event) {
   const payoutObject = event.data.object as Stripe.Payout;
   const connectedAccountId = (event as any).account;
 
-  if (!payoutObject || !connectedAccountId) {
-    console.warn('[StripeWebhook] Payout event missing required data', {
-      hasPayoutObject: !!payoutObject,
-      hasConnectedAccountId: !!connectedAccountId
+  console.log(`[StripeWebhook] Processing ${event.type} event:`, {
+    eventId: event.id,
+    payoutId: payoutObject?.id,
+    payoutStatus: payoutObject?.status,
+    amount: payoutObject?.amount,
+    connectedAccountId,
+    metadata: payoutObject?.metadata
+  });
+
+  if (!payoutObject) {
+    console.warn('[StripeWebhook] Payout event missing payout object');
+    return;
+  }
+
+  // For automatic payouts without connected account ID, try to find the account by payout ID
+  if (!connectedAccountId) {
+    console.log('[StripeWebhook] No connected account ID in event, attempting to find account from payout metadata or existing record');
+
+    // Check if we have an existing payout record
+    const existingPayout = await prisma.payout.findFirst({
+      where: { stripePayoutId: payoutObject.id },
+      include: { stripeAccount: true }
     });
+
+    if (existingPayout) {
+      console.log(`[StripeWebhook] Found existing payout record, updating status to: ${payoutObject.status}`);
+      await prisma.payout.update({
+        where: { id: existingPayout.id },
+        data: {
+          status: payoutObject.status,
+          arrivalDate: payoutObject.arrival_date ? new Date(payoutObject.arrival_date * 1000) : null,
+          failureCode: payoutObject.failure_code || null,
+          failureMessage: payoutObject.failure_message || null
+        }
+      });
+      return;
+    }
+
+    console.warn('[StripeWebhook] Cannot process payout without connected account ID and no existing record found');
     return;
   }
 

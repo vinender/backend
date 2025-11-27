@@ -256,11 +256,13 @@ router.get('/revenue/total', authenticateAdmin, async (req, res) => {
 // Get all bookings for admin
 router.get('/bookings', authenticateAdmin, async (req, res) => {
   try {
-    const { page = '1', limit = '10', searchName } = req.query;
+    const { page = '1', limit = '10', searchName, status, dateRange } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    // Build where clause for name search
+    // Build where clause for filters
     const whereClause: any = {};
+
+    // Name search filter
     if (searchName && typeof searchName === 'string' && searchName.trim()) {
       whereClause.user = {
         name: {
@@ -268,6 +270,49 @@ router.get('/bookings', authenticateAdmin, async (req, res) => {
           mode: 'insensitive' // Case-insensitive search
         }
       };
+    }
+
+    // Status filter (skip if 'All' or not provided)
+    if (status && typeof status === 'string' && status.toLowerCase() !== 'all') {
+      whereClause.status = status.toUpperCase();
+    }
+
+    // Date range filter
+    if (dateRange && typeof dateRange === 'string' && dateRange.toLowerCase() !== 'all') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (dateRange) {
+        case 'Today':
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          whereClause.date = {
+            gte: today,
+            lt: tomorrow
+          };
+          break;
+        case 'This Week':
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          whereClause.date = {
+            gte: weekStart
+          };
+          break;
+        case 'This Month':
+          const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+          whereClause.date = {
+            gte: monthStart
+          };
+          break;
+        case 'Last Month':
+          const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+          whereClause.date = {
+            gte: lastMonthStart,
+            lte: lastMonthEnd
+          };
+          break;
+      }
     }
 
     const [bookings, total] = await Promise.all([

@@ -118,10 +118,11 @@ class Server {
         this.app.use('/api', rateLimiter_middleware_1.dynamicLimiter);
         // Data sanitization against NoSQL query injection
         this.app.use((0, express_mongo_sanitize_1.default)());
-        // Stripe webhook endpoint (raw body needed, must be before JSON parser)
-        this.app.use('/api/stripe', express_1.default.raw({ type: 'application/json' }));
-        this.app.use('/api/payments/webhook', express_1.default.raw({ type: 'application/json' }));
-        this.app.use('/api/payment/webhook', express_1.default.raw({ type: 'application/json' }));
+        // Stripe webhook endpoints - register the actual handler BEFORE JSON parser
+        // This is critical: raw body is required for Stripe signature verification
+        const paymentController = new (require('./controllers/payment.controller').PaymentController)();
+        this.app.post('/api/payment/webhook', express_1.default.raw({ type: 'application/json' }), paymentController.handleWebhook);
+        this.app.post('/api/payments/webhook', express_1.default.raw({ type: 'application/json' }), paymentController.handleWebhook);
         // Body parsing middleware
         this.app.use(express_1.default.json({ limit: '10mb' }));
         this.app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
