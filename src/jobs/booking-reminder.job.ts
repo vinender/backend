@@ -125,6 +125,23 @@ async function sendBookingReminders() {
 
         console.log(`📧 Sending ${reminderReason} for booking ${booking.id} (${hoursUntilBooking}h away)`);
 
+        // Mark reminder as sent FIRST to prevent race conditions with concurrent job runs
+        // Use updateMany with a condition to ensure atomic update (only updates if not already sent)
+        const updateResult = await prisma.booking.updateMany({
+          where: {
+            id: booking.id,
+            reminderSent: false // Only update if not already sent
+          },
+          data: { reminderSent: true }
+        });
+
+        // If no rows were updated, another process already sent the reminder
+        if (updateResult.count === 0) {
+          console.log(`⏭️  Skipping booking ${booking.id} - reminder already sent by another process`);
+          results.skipped++;
+          continue;
+        }
+
         // Send in-app notification
         await createNotification({
           userId: booking.userId,
@@ -159,12 +176,6 @@ async function sendBookingReminders() {
         } catch (emailError) {
           console.error('Failed to send reminder email:', emailError);
         }
-
-        // Mark reminder as sent
-        await prisma.booking.update({
-          where: { id: booking.id },
-          data: { reminderSent: true }
-        });
 
         results.sent++;
         console.log(`✅ Sent reminder for booking ${booking.id} to ${booking.user.email}`);
