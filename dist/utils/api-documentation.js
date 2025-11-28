@@ -3985,14 +3985,14 @@ socket.on('booking-notification', (notification) => {
   switch (notification.type) {
     case 'BOOKING_CREATED':
       // Field owner received new booking request
-      playSound('new-booking.mp3');
+      playSound('new-booking.wav');
       break;
     case 'BOOKING_CONFIRMED':
       // Dog owner's booking was confirmed
-      playSound('success.mp3');
+      playSound('success.wav');
       break;
     case 'BOOKING_CANCELLED':
-      playSound('alert.mp3');
+      playSound('alert.wav');
       break;
     case 'BOOKING_COMPLETED':
       // Booking finished, prompt for review

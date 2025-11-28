@@ -118,11 +118,90 @@ class Server {
         this.app.use('/api', rateLimiter_middleware_1.dynamicLimiter);
         // Data sanitization against NoSQL query injection
         this.app.use((0, express_mongo_sanitize_1.default)());
-        // Stripe webhook endpoints - register the actual handler BEFORE JSON parser
-        // This is critical: raw body is required for Stripe signature verification
+        // =========================================================================
+        // STRIPE WEBHOOK ENDPOINTS
+        // =========================================================================
+        // IMPORTANT: These must be registered BEFORE express.json() middleware
+        // Raw body is required for Stripe signature verification
+        // =========================================================================
         const paymentController = new (require('./controllers/payment.controller').PaymentController)();
+        const { webhookController } = require('./controllers/webhook.controller');
+        // Legacy webhook endpoints (backward compatible - handles all events)
         this.app.post('/api/payment/webhook', express_1.default.raw({ type: 'application/json' }), paymentController.handleWebhook);
         this.app.post('/api/payments/webhook', express_1.default.raw({ type: 'application/json' }), paymentController.handleWebhook);
+        // =========================================================================
+        // DEDICATED WEBHOOK ENDPOINTS (Recommended for production)
+        // =========================================================================
+        /**
+         * 1. PAYMENTS WEBHOOK - Platform Payment Events
+         * URL: /api/webhooks/payments
+         * Listen to: "Events on your account"
+         * Secret: STRIPE_WEBHOOK_SECRET
+         *
+         * Events to enable:
+         * - payment_intent.created
+         * - payment_intent.succeeded
+         * - payment_intent.payment_failed
+         * - payment_intent.canceled
+         * - payment_intent.processing
+         * - charge.succeeded
+         * - charge.failed
+         * - charge.updated
+         * - charge.captured
+         */
+        this.app.post('/api/webhooks/payments', express_1.default.raw({ type: 'application/json' }), webhookController.handlePaymentWebhook.bind(webhookController));
+        /**
+         * 2. CONNECT ACCOUNTS WEBHOOK - Field Owner Account Onboarding
+         * URL: /api/webhooks/connect
+         * Listen to: "Events on Connected accounts"
+         * Secret: STRIPE_CONNECT_WEBHOOK_SECRET
+         *
+         * Events to enable:
+         * - account.updated
+         * - account.application.authorized
+         * - account.application.deauthorized
+         * - account.external_account.created
+         * - account.external_account.updated
+         * - account.external_account.deleted
+         * - capability.updated
+         * - person.created
+         * - person.updated
+         * - person.deleted
+         */
+        this.app.post('/api/webhooks/connect', express_1.default.raw({ type: 'application/json' }), webhookController.handleConnectWebhook.bind(webhookController));
+        /**
+         * 3. PAYOUTS WEBHOOK - Field Owner Payout Events
+         * URL: /api/webhooks/payouts
+         * Listen to: "Events on Connected accounts"
+         * Secret: STRIPE_PAYOUT_WEBHOOK_SECRET
+         *
+         * Events to enable:
+         * - payout.created
+         * - payout.updated
+         * - payout.paid
+         * - payout.failed
+         * - payout.canceled
+         * - payout.reconciliation_completed
+         * - transfer.created
+         * - transfer.updated
+         * - transfer.reversed
+         * - balance.available
+         */
+        this.app.post('/api/webhooks/payouts', express_1.default.raw({ type: 'application/json' }), webhookController.handlePayoutWebhook.bind(webhookController));
+        /**
+         * 4. REFUNDS WEBHOOK - Customer Refund Events
+         * URL: /api/webhooks/refunds
+         * Listen to: "Events on your account"
+         * Secret: STRIPE_REFUND_WEBHOOK_SECRET
+         *
+         * Events to enable:
+         * - charge.refunded
+         * - charge.refund.updated
+         * - refund.created
+         * - refund.updated
+         * - refund.failed
+         */
+        this.app.post('/api/webhooks/refunds', express_1.default.raw({ type: 'application/json' }), webhookController.handleRefundWebhook.bind(webhookController));
         // Body parsing middleware
         this.app.use(express_1.default.json({ limit: '10mb' }));
         this.app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));

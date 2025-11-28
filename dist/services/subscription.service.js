@@ -323,14 +323,16 @@ class SubscriptionService {
         const bookingPrice = booking.totalPrice || booking.subscription.totalPrice || 0;
         const refundAmount = Math.round(bookingPrice * 100);
         if (paymentIntentId && refundAmount > 0) {
+            // Note: Stripe only accepts 'duplicate', 'fraudulent', or 'requested_by_customer' as reason
             stripeRefund = await stripe_config_1.stripe.refunds.create({
                 payment_intent: paymentIntentId,
                 amount: refundAmount,
-                reason: reason,
+                reason: 'requested_by_customer',
                 metadata: {
                     bookingId: booking.id,
                     subscriptionId: booking.subscriptionId || '',
-                    userId: booking.userId
+                    userId: booking.userId,
+                    cancellationReason: reason?.substring(0, 500) || 'No reason provided'
                 }
             });
         }

@@ -85,14 +85,16 @@ class RefundService {
             if (refundAmount > 0 && booking.payment.stripePaymentId) {
                 try {
                     // Create refund in Stripe
+                    // Note: Stripe only accepts 'duplicate', 'fraudulent', or 'requested_by_customer' as reason
                     stripeRefund = await stripe_config_1.stripe.refunds.create({
                         payment_intent: booking.payment.stripePaymentId,
                         amount: Math.round(refundAmount * 100), // Convert to cents
-                        reason: reason,
+                        reason: 'requested_by_customer',
                         metadata: {
                             bookingId: booking.id,
                             userId: booking.userId,
-                            fieldId: booking.fieldId
+                            fieldId: booking.fieldId,
+                            cancellationReason: reason?.substring(0, 500) || 'No reason provided' // Store user's reason in metadata (max 500 chars)
                         }
                     });
                     // Update payment record

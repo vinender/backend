@@ -639,25 +639,25 @@ socket.on('booking-notification', (notification) => {
     case 'BOOKING_CREATED':
       // Field owner received new booking request
       showNotification('New booking request!', notification.message);
-      playSound('new-booking.mp3');
+      playSound('new-booking.wav');
       break;
 
     case 'BOOKING_CONFIRMED':
       // Dog owner's booking was confirmed
       showNotification('Booking confirmed!', notification.message);
-      playSound('success.mp3');
+      playSound('success.wav');
       break;
 
     case 'BOOKING_CANCELLED':
       // Booking was cancelled
       showNotification('Booking cancelled', notification.message);
-      playSound('alert.mp3');
+      playSound('alert.wav');
       break;
 
     case 'BOOKING_COMPLETED':
       // Booking completed, time to review
       showNotification('Booking completed!', notification.message);
-      playSound('complete.mp3');
+      playSound('complete.wav');
       break;
   }
 
