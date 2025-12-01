@@ -763,7 +763,7 @@ export class WebhookController {
 
     const payoutRecord = await this.syncPayoutRecord(payout, connectedAccountId);
 
-    if (payoutRecord && connectedAccountId) {
+    if (connectedAccountId) {
       const stripeAccount = await prisma.stripeAccount.findFirst({
         where: { stripeAccountId: connectedAccountId },
         include: { user: true }
@@ -771,40 +771,58 @@ export class WebhookController {
 
       if (stripeAccount?.user) {
         // Send notification
-        await createNotification({
-          userId: stripeAccount.userId,
-          type: 'payout_completed',
-          title: 'Payout Completed',
-          message: `Your payout of £${(payout.amount / 100).toFixed(2)} has been deposited to your bank account.`,
-          data: {
-            payoutId: payoutRecord.id,
-            stripePayoutId: payout.id,
-            amount: payout.amount / 100
-          }
-        });
-
-        // Update related bookings
-        if (payoutRecord.bookingIds?.length > 0) {
-          await prisma.booking.updateMany({
-            where: { id: { in: payoutRecord.bookingIds } },
-            data: { payoutStatus: 'COMPLETED' }
+        try {
+          await createNotification({
+            userId: stripeAccount.userId,
+            type: 'payout_completed',
+            title: 'Payout Completed',
+            message: `Your payout of £${(payout.amount / 100).toFixed(2)} has been deposited to your bank account.`,
+            data: {
+              payoutId: payoutRecord?.id || payout.id,
+              stripePayoutId: payout.id,
+              amount: payout.amount / 100
+            }
           });
+        } catch (notifError) {
+          console.error('[PayoutWebhook] Failed to send notification:', notifError);
+        }
+
+        // Update related bookings from metadata
+        const bookingIds = this.extractBookingIds(payout.metadata);
+        if (bookingIds.length > 0) {
+          try {
+            await prisma.booking.updateMany({
+              where: { id: { in: bookingIds } },
+              data: { payoutStatus: 'COMPLETED' }
+            });
+            console.log(`[PayoutWebhook] Updated ${bookingIds.length} bookings to COMPLETED`);
+          } catch (bookingError) {
+            console.error('[PayoutWebhook] Failed to update bookings:', bookingError);
+          }
         }
 
         // Send email
         if (stripeAccount.user.email) {
-          await emailService.sendEmail({
-            to: stripeAccount.user.email,
-            subject: 'Payout Completed',
-            template: 'payout-completed',
-            data: {
-              userName: stripeAccount.user.name || 'Field Owner',
-              amount: (payout.amount / 100).toFixed(2),
-              currency: payout.currency.toUpperCase()
-            }
-          });
+          try {
+            await emailService.sendEmail({
+              to: stripeAccount.user.email,
+              subject: 'Payout Completed',
+              template: 'payout-completed',
+              data: {
+                userName: stripeAccount.user.name || 'Field Owner',
+                amount: (payout.amount / 100).toFixed(2),
+                currency: payout.currency.toUpperCase()
+              }
+            });
+          } catch (emailError) {
+            console.error('[PayoutWebhook] Failed to send email:', emailError);
+          }
         }
+      } else {
+        console.log(`[PayoutWebhook] No user found for connected account: ${connectedAccountId}`);
       }
+    } else {
+      console.log(`[PayoutWebhook] Payout paid event has no connected account ID`);
     }
   }
 
@@ -821,33 +839,45 @@ export class WebhookController {
 
     const payoutRecord = await this.syncPayoutRecord(payout, connectedAccountId);
 
-    if (payoutRecord && connectedAccountId) {
+    if (connectedAccountId) {
       const stripeAccount = await prisma.stripeAccount.findFirst({
         where: { stripeAccountId: connectedAccountId },
         include: { user: true }
       });
 
       if (stripeAccount?.user) {
-        await createNotification({
-          userId: stripeAccount.userId,
-          type: 'payout_failed',
-          title: 'Payout Failed',
-          message: `Your payout of £${(payout.amount / 100).toFixed(2)} could not be processed. ${payout.failure_message || 'Please check your bank details.'}`,
-          data: {
-            payoutId: payoutRecord.id,
-            stripePayoutId: payout.id,
-            failureCode: payout.failure_code,
-            failureMessage: payout.failure_message
-          }
-        });
-
-        // Update related bookings
-        if (payoutRecord.bookingIds?.length > 0) {
-          await prisma.booking.updateMany({
-            where: { id: { in: payoutRecord.bookingIds } },
-            data: { payoutStatus: 'FAILED' }
+        try {
+          await createNotification({
+            userId: stripeAccount.userId,
+            type: 'payout_failed',
+            title: 'Payout Failed',
+            message: `Your payout of £${(payout.amount / 100).toFixed(2)} could not be processed. ${payout.failure_message || 'Please check your bank details.'}`,
+            data: {
+              payoutId: payoutRecord?.id || payout.id,
+              stripePayoutId: payout.id,
+              failureCode: payout.failure_code,
+              failureMessage: payout.failure_message
+            }
           });
+        } catch (notifError) {
+          console.error('[PayoutWebhook] Failed to send notification:', notifError);
         }
+
+        // Update related bookings from metadata
+        const bookingIds = this.extractBookingIds(payout.metadata);
+        if (bookingIds.length > 0) {
+          try {
+            await prisma.booking.updateMany({
+              where: { id: { in: bookingIds } },
+              data: { payoutStatus: 'FAILED' }
+            });
+            console.log(`[PayoutWebhook] Updated ${bookingIds.length} bookings to FAILED`);
+          } catch (bookingError) {
+            console.error('[PayoutWebhook] Failed to update bookings:', bookingError);
+          }
+        }
+      } else {
+        console.log(`[PayoutWebhook] No user found for connected account: ${connectedAccountId}`);
       }
     }
   }
@@ -1071,48 +1101,58 @@ export class WebhookController {
   // ============================================================================
 
   private async syncPayoutRecord(payout: Stripe.Payout, connectedAccountId?: string): Promise<any> {
-    let payoutRecord = await prisma.payout.findFirst({
-      where: { stripePayoutId: payout.id }
-    });
-
-    const bookingIds = this.extractBookingIds(payout.metadata);
-
-    if (payoutRecord) {
-      payoutRecord = await prisma.payout.update({
-        where: { id: payoutRecord.id },
-        data: {
-          status: payout.status,
-          arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
-          failureCode: payout.failure_code || null,
-          failureMessage: payout.failure_message || null
-        }
-      });
-      console.log(`[PayoutWebhook] Updated payout ${payoutRecord.id} to: ${payout.status}`);
-    } else if (connectedAccountId) {
-      const stripeAccount = await prisma.stripeAccount.findFirst({
-        where: { stripeAccountId: connectedAccountId }
+    try {
+      let payoutRecord = await prisma.payout.findFirst({
+        where: { stripePayoutId: payout.id }
       });
 
-      if (stripeAccount) {
-        payoutRecord = await prisma.payout.create({
+      const bookingIds = this.extractBookingIds(payout.metadata);
+
+      if (payoutRecord) {
+        payoutRecord = await prisma.payout.update({
+          where: { id: payoutRecord.id },
           data: {
-            stripeAccountId: stripeAccount.id,
-            stripePayoutId: payout.id,
-            amount: payout.amount / 100,
-            currency: payout.currency,
             status: payout.status,
-            description: payout.description || `Payout ${payout.id}`,
             arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
             failureCode: payout.failure_code || null,
-            failureMessage: payout.failure_message || null,
-            bookingIds
+            failureMessage: payout.failure_message || null
           }
         });
-        console.log(`[PayoutWebhook] Created payout record ${payoutRecord.id}`);
-      }
-    }
+        console.log(`[PayoutWebhook] Updated payout ${payoutRecord.id} to: ${payout.status}`);
+      } else if (connectedAccountId) {
+        const stripeAccount = await prisma.stripeAccount.findFirst({
+          where: { stripeAccountId: connectedAccountId }
+        });
 
-    return payoutRecord;
+        if (stripeAccount) {
+          payoutRecord = await prisma.payout.create({
+            data: {
+              stripeAccountId: stripeAccount.id,
+              stripePayoutId: payout.id,
+              amount: payout.amount / 100,
+              currency: payout.currency,
+              status: payout.status,
+              description: payout.description || `Payout ${payout.id}`,
+              arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
+              failureCode: payout.failure_code || null,
+              failureMessage: payout.failure_message || null,
+              bookingIds
+            }
+          });
+          console.log(`[PayoutWebhook] Created payout record ${payoutRecord.id}`);
+        } else {
+          console.log(`[PayoutWebhook] No StripeAccount found for connected account: ${connectedAccountId}`);
+        }
+      } else {
+        console.log(`[PayoutWebhook] No payout record found and no connected account ID provided for payout: ${payout.id}`);
+      }
+
+      return payoutRecord;
+    } catch (error) {
+      console.error(`[PayoutWebhook] Error syncing payout record:`, error);
+      // Return null instead of throwing - we don't want to fail the webhook
+      return null;
+    }
   }
 
   private extractBookingIds(metadata?: Stripe.Metadata | null): string[] {
