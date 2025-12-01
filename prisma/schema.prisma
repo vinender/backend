@@ -413,15 +413,44 @@ model Transaction {
   id                    String   @id @default(auto()) @map("_id") @db.ObjectId
   bookingId             String   @db.ObjectId
   userId                String   @db.ObjectId
+  fieldOwnerId          String?  @db.ObjectId // Field owner who receives payout
   amount                Float
   netAmount             Float? // Amount after platform fee (for field owner)
   platformFee           Float? // Platform commission amount
   commissionRate        Float? // Commission rate used for this transaction
-  type                  String // e.g., "PAYMENT", "REFUND"
-  status                String // e.g., "PENDING", "COMPLETED", "FAILED"
+  type                  String // "PAYMENT", "REFUND", "TRANSFER", "PAYOUT"
+  status                String // "PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"
+
+  // Payment Lifecycle Stage Tracking
+  // Stages: PAYMENT_RECEIVED -> FUNDS_PENDING -> FUNDS_AVAILABLE -> TRANSFERRED -> PAYOUT_INITIATED -> PAYOUT_COMPLETED
+  lifecycleStage        String?  @default("PAYMENT_RECEIVED")
+
+  // Stripe IDs for complete tracking
   stripePaymentIntentId String?
+  stripeChargeId        String?
+  stripeBalanceTransactionId String? // Balance transaction when funds hit Stripe
+  stripeTransferId      String?  // Transfer to connected account
+  stripePayoutId        String?  // Payout to field owner's bank
   stripeRefundId        String?
+
+  // Connected Account Info
+  connectedAccountId    String?  // Stripe connected account ID (acct_xxx)
+
+  // Lifecycle Timestamps - Track each stage
+  paymentReceivedAt     DateTime? // When dog owner payment was received
+  fundsAvailableAt      DateTime? // When funds became available in Stripe (out of pending)
+  transferredAt         DateTime? // When platform transferred to connected account
+  payoutInitiatedAt     DateTime? // When payout to bank was initiated
+  payoutCompletedAt     DateTime? // When payout reached field owner's bank
+  refundedAt            DateTime? // When refund was processed (if applicable)
+
+  // Failure tracking
+  failureCode           String?
+  failureMessage        String?
+
   description           String?
+  metadata              Json?    // Additional tracking data (e.g., booking details snapshot)
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -431,7 +460,10 @@ model Transaction {
 
   @@index([userId])
   @@index([bookingId])
+  @@index([fieldOwnerId])
   @@index([status])
+  @@index([lifecycleStage])
+  @@index([stripePaymentIntentId])
   @@map("transactions")
 }
 

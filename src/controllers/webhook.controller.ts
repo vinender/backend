@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import { createNotification } from './notification.controller';
 import { emailService } from '../services/email.service';
 import { calculatePayoutAmounts } from '../utils/commission.utils';
+import { transactionLifecycleService, LIFECYCLE_STAGES } from '../services/transaction-lifecycle.service';
 
 /**
  * ============================================================================
@@ -429,6 +430,9 @@ export class WebhookController {
                   paymentStatus: 'PAID'
                 }
               });
+
+              // Create lifecycle transaction for existing booking
+              await this.createLifecycleTransaction(existingBooking, paymentIntent, metadata);
             }
             return;
           }
@@ -455,6 +459,9 @@ export class WebhookController {
           });
 
           console.log('[PaymentWebhook] Created new booking:', newBooking.id);
+
+          // Create lifecycle transaction for new booking
+          await this.createLifecycleTransaction(newBooking, paymentIntent, metadata);
         }
       } else if (booking.status !== 'CONFIRMED' || booking.paymentStatus !== 'PAID') {
         // Update existing booking
@@ -465,6 +472,9 @@ export class WebhookController {
             paymentStatus: 'PAID'
           }
         });
+
+        // Create lifecycle transaction
+        await this.createLifecycleTransaction(booking, paymentIntent, paymentIntent.metadata);
 
         // Send confirmation notification
         await createNotification({
@@ -491,6 +501,45 @@ export class WebhookController {
     });
   }
 
+  /**
+   * Create lifecycle transaction for tracking payment flow
+   */
+  private async createLifecycleTransaction(booking: any, paymentIntent: Stripe.PaymentIntent, metadata: any) {
+    try {
+      // Get charge ID if available
+      let chargeId: string | undefined;
+      if (paymentIntent.latest_charge) {
+        chargeId = typeof paymentIntent.latest_charge === 'string'
+          ? paymentIntent.latest_charge
+          : paymentIntent.latest_charge.id;
+      }
+
+      // Get connected account ID for field owner
+      const fieldOwnerStripeAccount = await prisma.stripeAccount.findFirst({
+        where: { userId: metadata.fieldOwnerId || booking.field?.ownerId }
+      });
+
+      await transactionLifecycleService.createPaymentTransaction({
+        bookingId: booking.id,
+        userId: booking.userId,
+        fieldOwnerId: metadata.fieldOwnerId || booking.field?.ownerId,
+        amount: paymentIntent.amount / 100,
+        platformFee: parseFloat(metadata.platformCommission || '0'),
+        netAmount: parseFloat(metadata.fieldOwnerAmount || '0'),
+        commissionRate: parseFloat(metadata.commissionRate || '0'),
+        stripePaymentIntentId: paymentIntent.id,
+        stripeChargeId: chargeId,
+        connectedAccountId: fieldOwnerStripeAccount?.stripeAccountId,
+        description: `Payment for booking ${booking.id}`
+      });
+
+      console.log('[PaymentWebhook] Created lifecycle transaction for booking:', booking.id);
+    } catch (error) {
+      console.error('[PaymentWebhook] Error creating lifecycle transaction:', error);
+      // Don't fail the webhook if transaction creation fails
+    }
+  }
+
   private async handlePaymentIntentFailed(event: Stripe.Event) {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
     console.error('[PaymentWebhook] Payment intent failed:', paymentIntent.id);
@@ -507,6 +556,13 @@ export class WebhookController {
           status: 'CANCELLED',
           paymentStatus: 'FAILED'
         }
+      });
+
+      // Update lifecycle transaction to FAILED
+      await transactionLifecycleService.updateFailed({
+        stripePaymentIntentId: paymentIntent.id,
+        failureCode: paymentIntent.last_payment_error?.code || 'unknown',
+        failureMessage: paymentIntent.last_payment_error?.message || 'Payment failed'
       });
 
       await createNotification({
@@ -541,7 +597,21 @@ export class WebhookController {
   private async handleChargeSucceeded(event: Stripe.Event) {
     const charge = event.data.object as Stripe.Charge;
     console.log('[PaymentWebhook] Charge succeeded:', charge.id);
-    // Usually handled by payment_intent.succeeded, but log for tracking
+
+    // Update lifecycle to FUNDS_PENDING with balance transaction ID
+    if (charge.payment_intent) {
+      const paymentIntentId = typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent.id;
+
+      const balanceTransactionId = charge.balance_transaction
+        ? (typeof charge.balance_transaction === 'string'
+          ? charge.balance_transaction
+          : charge.balance_transaction.id)
+        : undefined;
+
+      await transactionLifecycleService.updateFundsPending(paymentIntentId, balanceTransactionId);
+    }
   }
 
   private async handleChargeFailed(event: Stripe.Event) {
@@ -736,6 +806,15 @@ export class WebhookController {
     });
 
     await this.syncPayoutRecord(payout, connectedAccountId);
+
+    // Update lifecycle to PAYOUT_INITIATED
+    const bookingId = payout.metadata?.bookingId;
+    if (bookingId) {
+      await transactionLifecycleService.updatePayoutInitiated({
+        bookingId,
+        stripePayoutId: payout.id
+      });
+    }
   }
 
   private async handlePayoutUpdated(event: Stripe.Event) {
@@ -762,6 +841,9 @@ export class WebhookController {
     });
 
     const payoutRecord = await this.syncPayoutRecord(payout, connectedAccountId);
+
+    // Update lifecycle to PAYOUT_COMPLETED
+    await transactionLifecycleService.updatePayoutCompleted(payout.id);
 
     if (connectedAccountId) {
       const stripeAccount = await prisma.stripeAccount.findFirst({
@@ -897,6 +979,28 @@ export class WebhookController {
       amount: transfer.amount / 100,
       destination: transfer.destination
     });
+
+    // Update lifecycle to TRANSFERRED
+    const destinationAccountId = typeof transfer.destination === 'string'
+      ? transfer.destination
+      : transfer.destination?.id;
+
+    if (destinationAccountId) {
+      // Try to find the transaction by payment intent from transfer metadata
+      const bookingId = transfer.metadata?.bookingId;
+      const paymentIntentId = transfer.source_transaction
+        ? (typeof transfer.source_transaction === 'string'
+          ? transfer.source_transaction
+          : transfer.source_transaction.id)
+        : undefined;
+
+      await transactionLifecycleService.updateTransferred({
+        bookingId,
+        stripePaymentIntentId: paymentIntentId,
+        stripeTransferId: transfer.id,
+        connectedAccountId: destinationAccountId
+      });
+    }
   }
 
   private async handleTransferUpdated(event: Stripe.Event) {
@@ -1000,17 +1104,11 @@ export class WebhookController {
       }
     });
 
-    // Create transaction record
-    await prisma.transaction.create({
-      data: {
-        bookingId: booking.id,
-        userId: booking.userId,
-        amount: -refundAmount,
-        type: 'REFUND',
-        status: 'COMPLETED',
-        stripeRefundId: charge.id,
-        description: `Refund for booking ${booking.id} (${isFullRefund ? 'full' : 'partial'})`
-      }
+    // Update lifecycle transaction to REFUNDED
+    await transactionLifecycleService.updateRefunded({
+      stripePaymentIntentId: paymentIntentId,
+      stripeRefundId: charge.id,
+      refundAmount
     });
 
     // Notify user

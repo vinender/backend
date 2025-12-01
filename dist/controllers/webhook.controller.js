@@ -8,6 +8,7 @@ const stripe_config_1 = require("../config/stripe.config");
 const database_1 = __importDefault(require("../config/database"));
 const notification_controller_1 = require("./notification.controller");
 const email_service_1 = require("../services/email.service");
+const transaction_lifecycle_service_1 = require("../services/transaction-lifecycle.service");
 /**
  * ============================================================================
  * STRIPE WEBHOOK CONTROLLER
@@ -371,6 +372,8 @@ class WebhookController {
                                     paymentStatus: 'PAID'
                                 }
                             });
+                            // Create lifecycle transaction for existing booking
+                            await this.createLifecycleTransaction(existingBooking, paymentIntent, metadata);
                         }
                         return;
                     }
@@ -395,6 +398,8 @@ class WebhookController {
                         }
                     });
                     console.log('[PaymentWebhook] Created new booking:', newBooking.id);
+                    // Create lifecycle transaction for new booking
+                    await this.createLifecycleTransaction(newBooking, paymentIntent, metadata);
                 }
             }
             else if (booking.status !== 'CONFIRMED' || booking.paymentStatus !== 'PAID') {
@@ -406,6 +411,8 @@ class WebhookController {
                         paymentStatus: 'PAID'
                     }
                 });
+                // Create lifecycle transaction
+                await this.createLifecycleTransaction(booking, paymentIntent, paymentIntent.metadata);
                 // Send confirmation notification
                 await (0, notification_controller_1.createNotification)({
                     userId: booking.userId,
@@ -428,6 +435,42 @@ class WebhookController {
             }
         });
     }
+    /**
+     * Create lifecycle transaction for tracking payment flow
+     */
+    async createLifecycleTransaction(booking, paymentIntent, metadata) {
+        try {
+            // Get charge ID if available
+            let chargeId;
+            if (paymentIntent.latest_charge) {
+                chargeId = typeof paymentIntent.latest_charge === 'string'
+                    ? paymentIntent.latest_charge
+                    : paymentIntent.latest_charge.id;
+            }
+            // Get connected account ID for field owner
+            const fieldOwnerStripeAccount = await database_1.default.stripeAccount.findFirst({
+                where: { userId: metadata.fieldOwnerId || booking.field?.ownerId }
+            });
+            await transaction_lifecycle_service_1.transactionLifecycleService.createPaymentTransaction({
+                bookingId: booking.id,
+                userId: booking.userId,
+                fieldOwnerId: metadata.fieldOwnerId || booking.field?.ownerId,
+                amount: paymentIntent.amount / 100,
+                platformFee: parseFloat(metadata.platformCommission || '0'),
+                netAmount: parseFloat(metadata.fieldOwnerAmount || '0'),
+                commissionRate: parseFloat(metadata.commissionRate || '0'),
+                stripePaymentIntentId: paymentIntent.id,
+                stripeChargeId: chargeId,
+                connectedAccountId: fieldOwnerStripeAccount?.stripeAccountId,
+                description: `Payment for booking ${booking.id}`
+            });
+            console.log('[PaymentWebhook] Created lifecycle transaction for booking:', booking.id);
+        }
+        catch (error) {
+            console.error('[PaymentWebhook] Error creating lifecycle transaction:', error);
+            // Don't fail the webhook if transaction creation fails
+        }
+    }
     async handlePaymentIntentFailed(event) {
         const paymentIntent = event.data.object;
         console.error('[PaymentWebhook] Payment intent failed:', paymentIntent.id);
@@ -442,6 +485,12 @@ class WebhookController {
                     status: 'CANCELLED',
                     paymentStatus: 'FAILED'
                 }
+            });
+            // Update lifecycle transaction to FAILED
+            await transaction_lifecycle_service_1.transactionLifecycleService.updateFailed({
+                stripePaymentIntentId: paymentIntent.id,
+                failureCode: paymentIntent.last_payment_error?.code || 'unknown',
+                failureMessage: paymentIntent.last_payment_error?.message || 'Payment failed'
             });
             await (0, notification_controller_1.createNotification)({
                 userId: booking.userId,
@@ -471,7 +520,18 @@ class WebhookController {
     async handleChargeSucceeded(event) {
         const charge = event.data.object;
         console.log('[PaymentWebhook] Charge succeeded:', charge.id);
-        // Usually handled by payment_intent.succeeded, but log for tracking
+        // Update lifecycle to FUNDS_PENDING with balance transaction ID
+        if (charge.payment_intent) {
+            const paymentIntentId = typeof charge.payment_intent === 'string'
+                ? charge.payment_intent
+                : charge.payment_intent.id;
+            const balanceTransactionId = charge.balance_transaction
+                ? (typeof charge.balance_transaction === 'string'
+                    ? charge.balance_transaction
+                    : charge.balance_transaction.id)
+                : undefined;
+            await transaction_lifecycle_service_1.transactionLifecycleService.updateFundsPending(paymentIntentId, balanceTransactionId);
+        }
     }
     async handleChargeFailed(event) {
         const charge = event.data.object;
@@ -644,6 +704,14 @@ class WebhookController {
             connectedAccountId
         });
         await this.syncPayoutRecord(payout, connectedAccountId);
+        // Update lifecycle to PAYOUT_INITIATED
+        const bookingId = payout.metadata?.bookingId;
+        if (bookingId) {
+            await transaction_lifecycle_service_1.transactionLifecycleService.updatePayoutInitiated({
+                bookingId,
+                stripePayoutId: payout.id
+            });
+        }
     }
     async handlePayoutUpdated(event) {
         const payout = event.data.object;
@@ -664,6 +732,8 @@ class WebhookController {
             arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null
         });
         const payoutRecord = await this.syncPayoutRecord(payout, connectedAccountId);
+        // Update lifecycle to PAYOUT_COMPLETED
+        await transaction_lifecycle_service_1.transactionLifecycleService.updatePayoutCompleted(payout.id);
         if (connectedAccountId) {
             const stripeAccount = await database_1.default.stripeAccount.findFirst({
                 where: { stripeAccountId: connectedAccountId },
@@ -794,6 +864,25 @@ class WebhookController {
             amount: transfer.amount / 100,
             destination: transfer.destination
         });
+        // Update lifecycle to TRANSFERRED
+        const destinationAccountId = typeof transfer.destination === 'string'
+            ? transfer.destination
+            : transfer.destination?.id;
+        if (destinationAccountId) {
+            // Try to find the transaction by payment intent from transfer metadata
+            const bookingId = transfer.metadata?.bookingId;
+            const paymentIntentId = transfer.source_transaction
+                ? (typeof transfer.source_transaction === 'string'
+                    ? transfer.source_transaction
+                    : transfer.source_transaction.id)
+                : undefined;
+            await transaction_lifecycle_service_1.transactionLifecycleService.updateTransferred({
+                bookingId,
+                stripePaymentIntentId: paymentIntentId,
+                stripeTransferId: transfer.id,
+                connectedAccountId: destinationAccountId
+            });
+        }
     }
     async handleTransferUpdated(event) {
         const transfer = event.data.object;
@@ -882,17 +971,11 @@ class WebhookController {
                 description: `Canceled due to refund for booking ${booking.id}`
             }
         });
-        // Create transaction record
-        await database_1.default.transaction.create({
-            data: {
-                bookingId: booking.id,
-                userId: booking.userId,
-                amount: -refundAmount,
-                type: 'REFUND',
-                status: 'COMPLETED',
-                stripeRefundId: charge.id,
-                description: `Refund for booking ${booking.id} (${isFullRefund ? 'full' : 'partial'})`
-            }
+        // Update lifecycle transaction to REFUNDED
+        await transaction_lifecycle_service_1.transactionLifecycleService.updateRefunded({
+            stripePaymentIntentId: paymentIntentId,
+            stripeRefundId: charge.id,
+            refundAmount
         });
         // Notify user
         await (0, notification_controller_1.createNotification)({

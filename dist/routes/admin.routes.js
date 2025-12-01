@@ -1335,4 +1335,334 @@ router.patch('/users/:userId/unblock', admin_middleware_1.authenticateAdmin, asy
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+// ============================================================================
+// TRANSACTIONS - Admin Financial Overview
+// ============================================================================
+// Get all transactions (payments, refunds, payouts, transfers)
+router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const { page = '1', limit = '20', search = '', type = 'ALL', status = 'ALL', dateRange = 'ALL' } = req.query;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const take = parseInt(limit);
+        // Build date filter
+        let dateFilter = {};
+        const now = new Date();
+        switch (dateRange) {
+            case 'today':
+                const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                dateFilter = { gte: startOfToday };
+                break;
+            case 'week':
+                const weekAgo = new Date(now);
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                dateFilter = { gte: weekAgo };
+                break;
+            case 'month':
+                const monthAgo = new Date(now);
+                monthAgo.setMonth(monthAgo.getMonth() - 1);
+                dateFilter = { gte: monthAgo };
+                break;
+            case 'quarter':
+                const quarterAgo = new Date(now);
+                quarterAgo.setMonth(quarterAgo.getMonth() - 3);
+                dateFilter = { gte: quarterAgo };
+                break;
+            case 'year':
+                const yearAgo = new Date(now);
+                yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+                dateFilter = { gte: yearAgo };
+                break;
+        }
+        // Collect all transactions from different sources
+        let allTransactions = [];
+        // 1. Get Transactions from Transaction model
+        if (type === 'ALL' || type === 'PAYMENT' || type === 'REFUND') {
+            const transactionWhere = {};
+            if (type !== 'ALL') {
+                transactionWhere.type = type;
+            }
+            if (status !== 'ALL') {
+                transactionWhere.status = status;
+            }
+            if (dateRange !== 'ALL') {
+                transactionWhere.createdAt = dateFilter;
+            }
+            if (search) {
+                transactionWhere.OR = [
+                    { description: { contains: search, mode: 'insensitive' } },
+                    { user: { name: { contains: search, mode: 'insensitive' } } },
+                    { user: { email: { contains: search, mode: 'insensitive' } } },
+                    { booking: { field: { name: { contains: search, mode: 'insensitive' } } } }
+                ];
+            }
+            const transactions = await prisma.transaction.findMany({
+                where: transactionWhere,
+                include: {
+                    user: {
+                        select: { id: true, name: true, email: true }
+                    },
+                    booking: {
+                        include: {
+                            field: {
+                                include: {
+                                    owner: {
+                                        select: { id: true, name: true, email: true }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+            allTransactions.push(...transactions.map(t => ({
+                id: t.id,
+                type: t.type,
+                amount: t.amount,
+                netAmount: t.netAmount,
+                platformFee: t.platformFee,
+                commissionRate: t.commissionRate,
+                status: t.status,
+                description: t.description,
+                stripePaymentIntentId: t.stripePaymentIntentId,
+                stripeChargeId: t.stripeChargeId,
+                stripeBalanceTransactionId: t.stripeBalanceTransactionId,
+                stripeRefundId: t.stripeRefundId,
+                stripeTransferId: t.stripeTransferId,
+                stripePayoutId: t.stripePayoutId,
+                connectedAccountId: t.connectedAccountId,
+                // Lifecycle tracking fields
+                lifecycleStage: t.lifecycleStage,
+                paymentReceivedAt: t.paymentReceivedAt,
+                fundsAvailableAt: t.fundsAvailableAt,
+                transferredAt: t.transferredAt,
+                payoutInitiatedAt: t.payoutInitiatedAt,
+                payoutCompletedAt: t.payoutCompletedAt,
+                refundedAt: t.refundedAt,
+                failureCode: t.failureCode,
+                failureMessage: t.failureMessage,
+                createdAt: t.createdAt,
+                user: t.user,
+                booking: t.booking
+            })));
+        }
+        // 2. Get Payouts
+        if (type === 'ALL' || type === 'PAYOUT') {
+            const payoutWhere = {};
+            if (status !== 'ALL') {
+                payoutWhere.status = status.toLowerCase();
+            }
+            if (dateRange !== 'ALL') {
+                payoutWhere.createdAt = dateFilter;
+            }
+            const payouts = await prisma.payout.findMany({
+                where: payoutWhere,
+                include: {
+                    stripeAccount: {
+                        include: {
+                            user: {
+                                select: { id: true, name: true, email: true }
+                            }
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+            // Get booking details for payouts
+            for (const payout of payouts) {
+                let bookingDetails = null;
+                if (payout.bookingIds && payout.bookingIds.length > 0) {
+                    const booking = await prisma.booking.findFirst({
+                        where: { id: payout.bookingIds[0] },
+                        include: {
+                            field: {
+                                include: {
+                                    owner: {
+                                        select: { id: true, name: true, email: true }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    bookingDetails = booking;
+                }
+                allTransactions.push({
+                    id: payout.id,
+                    type: 'PAYOUT',
+                    amount: payout.amount,
+                    status: payout.status.toUpperCase(),
+                    description: payout.description,
+                    stripePayoutId: payout.stripePayoutId,
+                    stripeAccountId: payout.stripeAccountId,
+                    arrivalDate: payout.arrivalDate,
+                    failureCode: payout.failureCode,
+                    failureMessage: payout.failureMessage,
+                    createdAt: payout.createdAt,
+                    user: payout.stripeAccount?.user,
+                    booking: bookingDetails
+                });
+            }
+        }
+        // Sort all transactions by date
+        allTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        // Apply search filter if needed (for payouts that weren't filtered above)
+        if (search && type !== 'PAYMENT' && type !== 'REFUND') {
+            const searchLower = search.toLowerCase();
+            allTransactions = allTransactions.filter(t => t.description?.toLowerCase().includes(searchLower) ||
+                t.user?.name?.toLowerCase().includes(searchLower) ||
+                t.user?.email?.toLowerCase().includes(searchLower) ||
+                t.booking?.field?.name?.toLowerCase().includes(searchLower) ||
+                t.id.toLowerCase().includes(searchLower));
+        }
+        // Get total before pagination
+        const total = allTransactions.length;
+        // Apply pagination
+        const paginatedTransactions = allTransactions.slice(skip, skip + take);
+        // Calculate stats
+        const [totalPaymentsResult, totalRefundsResult, totalPayoutsResult, platformFeeResult] = await Promise.all([
+            prisma.transaction.aggregate({
+                where: { type: 'PAYMENT', status: 'COMPLETED' },
+                _sum: { amount: true }
+            }),
+            prisma.transaction.aggregate({
+                where: { type: 'REFUND', status: 'COMPLETED' },
+                _sum: { amount: true }
+            }),
+            prisma.payout.aggregate({
+                where: { status: 'paid' },
+                _sum: { amount: true }
+            }),
+            prisma.transaction.aggregate({
+                where: { type: 'PAYMENT', status: 'COMPLETED' },
+                _sum: { platformFee: true }
+            })
+        ]);
+        const stats = {
+            totalPayments: totalPaymentsResult._sum.amount || 0,
+            totalRefunds: totalRefundsResult._sum.amount || 0,
+            totalPayouts: totalPayoutsResult._sum.amount || 0,
+            totalTransfers: 0, // Can be calculated from separate transfers if tracked
+            netRevenue: platformFeeResult._sum.platformFee || 0
+        };
+        res.json({
+            success: true,
+            transactions: paginatedTransactions,
+            total,
+            pages: Math.ceil(total / take),
+            stats
+        });
+    }
+    catch (error) {
+        console.error('Get transactions error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+// Get single transaction details
+router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Try to find in Transaction model first
+        let transaction = await prisma.transaction.findUnique({
+            where: { id },
+            include: {
+                user: {
+                    select: { id: true, name: true, email: true, phone: true }
+                },
+                booking: {
+                    include: {
+                        field: {
+                            include: {
+                                owner: {
+                                    select: { id: true, name: true, email: true }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        if (transaction) {
+            return res.json({
+                success: true,
+                transaction: {
+                    ...transaction,
+                    type: transaction.type,
+                    amount: transaction.amount,
+                    netAmount: transaction.netAmount,
+                    platformFee: transaction.platformFee,
+                    commissionRate: transaction.commissionRate,
+                    status: transaction.status,
+                    // Lifecycle tracking
+                    lifecycleStage: transaction.lifecycleStage,
+                    stripeChargeId: transaction.stripeChargeId,
+                    stripeBalanceTransactionId: transaction.stripeBalanceTransactionId,
+                    stripeTransferId: transaction.stripeTransferId,
+                    stripePayoutId: transaction.stripePayoutId,
+                    connectedAccountId: transaction.connectedAccountId,
+                    paymentReceivedAt: transaction.paymentReceivedAt,
+                    fundsAvailableAt: transaction.fundsAvailableAt,
+                    transferredAt: transaction.transferredAt,
+                    payoutInitiatedAt: transaction.payoutInitiatedAt,
+                    payoutCompletedAt: transaction.payoutCompletedAt,
+                    refundedAt: transaction.refundedAt,
+                    failureCode: transaction.failureCode,
+                    failureMessage: transaction.failureMessage
+                }
+            });
+        }
+        // Try to find in Payout model
+        const payout = await prisma.payout.findUnique({
+            where: { id },
+            include: {
+                stripeAccount: {
+                    include: {
+                        user: {
+                            select: { id: true, name: true, email: true, phone: true }
+                        }
+                    }
+                }
+            }
+        });
+        if (payout) {
+            let bookingDetails = null;
+            if (payout.bookingIds && payout.bookingIds.length > 0) {
+                bookingDetails = await prisma.booking.findFirst({
+                    where: { id: payout.bookingIds[0] },
+                    include: {
+                        field: {
+                            include: {
+                                owner: {
+                                    select: { id: true, name: true, email: true }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            return res.json({
+                success: true,
+                transaction: {
+                    id: payout.id,
+                    type: 'PAYOUT',
+                    amount: payout.amount,
+                    status: payout.status.toUpperCase(),
+                    description: payout.description,
+                    stripePayoutId: payout.stripePayoutId,
+                    stripeAccountId: payout.stripeAccountId,
+                    arrivalDate: payout.arrivalDate,
+                    failureCode: payout.failureCode,
+                    failureMessage: payout.failureMessage,
+                    createdAt: payout.createdAt,
+                    user: payout.stripeAccount?.user,
+                    booking: bookingDetails
+                }
+            });
+        }
+        res.status(404).json({ error: 'Transaction not found' });
+    }
+    catch (error) {
+        console.error('Get transaction details error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 exports.default = router;
