@@ -1422,6 +1422,8 @@ router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, re
                 netAmount: t.netAmount,
                 platformFee: t.platformFee,
                 commissionRate: t.commissionRate,
+                isCustomCommission: t.isCustomCommission,
+                defaultCommissionRate: t.defaultCommissionRate,
                 status: t.status,
                 description: t.description,
                 stripePaymentIntentId: t.stripePaymentIntentId,
@@ -1591,6 +1593,8 @@ router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req
                     netAmount: transaction.netAmount,
                     platformFee: transaction.platformFee,
                     commissionRate: transaction.commissionRate,
+                    isCustomCommission: transaction.isCustomCommission,
+                    defaultCommissionRate: transaction.defaultCommissionRate,
                     status: transaction.status,
                     // Lifecycle tracking
                     lifecycleStage: transaction.lifecycleStage,

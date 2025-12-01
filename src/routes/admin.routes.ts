@@ -1553,6 +1553,8 @@ router.get('/transactions', authenticateAdmin, async (req, res) => {
         netAmount: t.netAmount,
         platformFee: t.platformFee,
         commissionRate: t.commissionRate,
+        isCustomCommission: t.isCustomCommission,
+        defaultCommissionRate: t.defaultCommissionRate,
         status: t.status,
         description: t.description,
         stripePaymentIntentId: t.stripePaymentIntentId,
@@ -1744,6 +1746,8 @@ router.get('/transactions/:id', authenticateAdmin, async (req, res) => {
           netAmount: transaction.netAmount,
           platformFee: transaction.platformFee,
           commissionRate: transaction.commissionRate,
+          isCustomCommission: transaction.isCustomCommission,
+          defaultCommissionRate: transaction.defaultCommissionRate,
           status: transaction.status,
           // Lifecycle tracking
           lifecycleStage: transaction.lifecycleStage,

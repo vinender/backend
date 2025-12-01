@@ -10,6 +10,7 @@ const database_1 = __importDefault(require("../config/database"));
 /**
  * Get the effective commission rate for a field owner
  * Returns the custom rate if set, otherwise the system default
+ * Also returns whether a custom rate was used and the default rate for auditing
  */
 async function getEffectiveCommissionRate(userId) {
     try {
@@ -18,28 +19,41 @@ async function getEffectiveCommissionRate(userId) {
             where: { id: userId },
             select: { commissionRate: true }
         });
+        // Get the system default
+        const settings = await database_1.default.systemSettings.findFirst();
+        const defaultRate = settings?.defaultCommissionRate || 20;
         // If user has a custom rate, use it
         if (user?.commissionRate !== null && user?.commissionRate !== undefined) {
-            return user.commissionRate;
+            return {
+                effectiveRate: user.commissionRate,
+                isCustomRate: true,
+                defaultRate
+            };
         }
-        // Otherwise, get the system default
-        const settings = await database_1.default.systemSettings.findFirst();
-        // Return the default rate or 20% if no settings exist
-        return settings?.defaultCommissionRate || 20;
+        // Otherwise, use the system default
+        return {
+            effectiveRate: defaultRate,
+            isCustomRate: false,
+            defaultRate
+        };
     }
     catch (error) {
         console.error('Error getting commission rate:', error);
         // Return default 20% on error
-        return 20;
+        return {
+            effectiveRate: 20,
+            isCustomRate: false,
+            defaultRate: 20
+        };
     }
 }
 /**
  * Calculate field owner amount and platform fee based on commission rate
  */
 async function calculatePayoutAmounts(totalAmount, fieldOwnerId) {
-    const commissionRate = await getEffectiveCommissionRate(fieldOwnerId);
+    const { effectiveRate, isCustomRate, defaultRate } = await getEffectiveCommissionRate(fieldOwnerId);
     // Platform gets the commission percentage
-    const platformFeeAmount = (totalAmount * commissionRate) / 100;
+    const platformFeeAmount = (totalAmount * effectiveRate) / 100;
     const platformCommission = platformFeeAmount; // Same value, different name for DB compatibility
     // Field owner gets the remaining amount
     const fieldOwnerAmount = totalAmount - platformFeeAmount;
@@ -47,6 +61,8 @@ async function calculatePayoutAmounts(totalAmount, fieldOwnerId) {
         fieldOwnerAmount,
         platformFeeAmount,
         platformCommission, // DB field name
-        commissionRate
+        commissionRate: effectiveRate,
+        isCustomCommission: isCustomRate,
+        defaultCommissionRate: defaultRate
     };
 }

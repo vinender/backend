@@ -43,6 +43,8 @@ export class TransactionLifecycleService {
     platformFee: number;
     netAmount: number;
     commissionRate: number;
+    isCustomCommission?: boolean;
+    defaultCommissionRate?: number;
     stripePaymentIntentId: string;
     stripeChargeId?: string;
     connectedAccountId?: string;
@@ -68,6 +70,8 @@ export class TransactionLifecycleService {
           platformFee: params.platformFee,
           netAmount: params.netAmount,
           commissionRate: params.commissionRate,
+          isCustomCommission: params.isCustomCommission ?? false,
+          defaultCommissionRate: params.defaultCommissionRate,
           type: 'PAYMENT',
           status: 'COMPLETED',
           lifecycleStage: LIFECYCLE_STAGES.PAYMENT_RECEIVED,

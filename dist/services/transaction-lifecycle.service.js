@@ -56,6 +56,8 @@ class TransactionLifecycleService {
                     platformFee: params.platformFee,
                     netAmount: params.netAmount,
                     commissionRate: params.commissionRate,
+                    isCustomCommission: params.isCustomCommission ?? false,
+                    defaultCommissionRate: params.defaultCommissionRate,
                     type: 'PAYMENT',
                     status: 'COMPLETED',
                     lifecycleStage: exports.LIFECYCLE_STAGES.PAYMENT_RECEIVED,

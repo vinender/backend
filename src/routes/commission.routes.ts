@@ -39,11 +39,12 @@ router.put('/settings', authenticateAdmin, async (req, res) => {
 
     const { defaultCommissionRate } = req.body;
 
-    // Validate commission rate
-    if (typeof defaultCommissionRate !== 'number' || defaultCommissionRate < 0 || defaultCommissionRate > 100) {
+    // Validate commission rate: must be 1-50%, whole numbers only, no 0
+    const rate = Number(defaultCommissionRate);
+    if (isNaN(rate) || rate < 1 || rate > 50 || !Number.isInteger(rate)) {
       return res.status(400).json({
         success: false,
-        message: 'Commission rate must be between 0 and 100'
+        message: 'Commission rate must be a whole number between 1% and 50%'
       });
     }
 
@@ -145,11 +146,12 @@ router.put('/field-owner/:userId', authenticateAdmin, async (req, res) => {
       });
     }
 
-    // Validate commission rate
-    if (typeof commissionRate !== 'number' || commissionRate < 0 || commissionRate > 100) {
+    // Validate commission rate: must be 1-50%, whole numbers only, no 0
+    const rate = Number(commissionRate);
+    if (isNaN(rate) || rate < 1 || rate > 50 || !Number.isInteger(rate)) {
       return res.status(400).json({
         success: false,
-        message: 'Commission rate must be between 0 and 100'
+        message: 'Commission rate must be a whole number between 1% and 50%'
       });
     }
 

@@ -56,6 +56,16 @@ const updateSystemSettings = async (req, res) => {
                 });
             }
         }
+        // Validate defaultCommissionRate: must be 1-50%, whole numbers only, no 0
+        if (defaultCommissionRate !== undefined) {
+            const rate = Number(defaultCommissionRate);
+            if (isNaN(rate) || rate < 1 || rate > 50 || !Number.isInteger(rate)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Commission rate must be a whole number between 1% and 50%'
+                });
+            }
+        }
         // Get existing settings or create if not exists
         let settings = await prisma.systemSettings.findFirst();
         if (!settings) {

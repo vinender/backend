@@ -37,11 +37,12 @@ router.get('/settings', admin_middleware_1.authenticateAdmin, async (req, res) =
 router.put('/settings', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         const { defaultCommissionRate } = req.body;
-        // Validate commission rate
-        if (typeof defaultCommissionRate !== 'number' || defaultCommissionRate < 0 || defaultCommissionRate > 100) {
+        // Validate commission rate: must be 1-50%, whole numbers only, no 0
+        const rate = Number(defaultCommissionRate);
+        if (isNaN(rate) || rate < 1 || rate > 50 || !Number.isInteger(rate)) {
             return res.status(400).json({
                 success: false,
-                message: 'Commission rate must be between 0 and 100'
+                message: 'Commission rate must be a whole number between 1% and 50%'
             });
         }
         // Get or create system settings
@@ -132,11 +133,12 @@ router.put('/field-owner/:userId', admin_middleware_1.authenticateAdmin, async (
                 message: 'Field owner set to use default commission rate'
             });
         }
-        // Validate commission rate
-        if (typeof commissionRate !== 'number' || commissionRate < 0 || commissionRate > 100) {
+        // Validate commission rate: must be 1-50%, whole numbers only, no 0
+        const rate = Number(commissionRate);
+        if (isNaN(rate) || rate < 1 || rate > 50 || !Number.isInteger(rate)) {
             return res.status(400).json({
                 success: false,
-                message: 'Commission rate must be between 0 and 100'
+                message: 'Commission rate must be a whole number between 1% and 50%'
             });
         }
         const user = await database_1.default.user.update({

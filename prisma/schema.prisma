@@ -418,6 +418,8 @@ model Transaction {
   netAmount             Float? // Amount after platform fee (for field owner)
   platformFee           Float? // Platform commission amount
   commissionRate        Float? // Commission rate used for this transaction
+  isCustomCommission    Boolean? @default(false) // Whether custom rate was used (vs default)
+  defaultCommissionRate Float? // Default commission rate at time of transaction (for audit)
   type                  String // "PAYMENT", "REFUND", "TRANSFER", "PAYOUT"
   status                String // "PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"
 

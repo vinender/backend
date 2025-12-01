@@ -111,7 +111,7 @@ class PaymentController {
             // Calculate amount in cents (Stripe uses smallest currency unit)
             const amountInCents = Math.round(amount * 100);
             // Calculate platform commission dynamically using commission utils
-            const { fieldOwnerAmount, platformCommission, commissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(amount, field.ownerId || '');
+            const { fieldOwnerAmount, platformCommission, commissionRate, isCustomCommission, defaultCommissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(amount, field.ownerId || '');
             // Prepare payment intent parameters
             // Payment goes to platform account (admin) first
             const paymentIntentParams = {
@@ -128,7 +128,9 @@ class PaymentController {
                     type: 'field_booking',
                     platformCommission: platformCommission.toString(),
                     fieldOwnerAmount: fieldOwnerAmount.toString(),
-                    commissionRate: commissionRate.toString()
+                    commissionRate: commissionRate.toString(),
+                    isCustomCommission: isCustomCommission.toString(),
+                    defaultCommissionRate: defaultCommissionRate.toString()
                 },
                 description: `Booking for ${field.name} on ${date} at ${timeSlot}`,
                 receipt_email: req.user?.email,
@@ -524,7 +526,7 @@ class PaymentController {
                     }
                 });
                 // Calculate commission amounts
-                const { fieldOwnerAmount, platformFeeAmount, commissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, field?.ownerId || '');
+                const { fieldOwnerAmount, platformFeeAmount, commissionRate, isCustomCommission, defaultCommissionRate } = await (0, commission_utils_1.calculatePayoutAmounts)(booking.totalPrice, field?.ownerId || '');
                 // Create transaction record with commission details
                 await database_1.default.transaction.create({
                     data: {
@@ -534,6 +536,8 @@ class PaymentController {
                         netAmount: fieldOwnerAmount,
                         platformFee: platformFeeAmount,
                         commissionRate: commissionRate,
+                        isCustomCommission: isCustomCommission,
+                        defaultCommissionRate: defaultCommissionRate,
                         type: 'PAYMENT',
                         status: 'COMPLETED',
                         stripePaymentIntentId: paymentIntentId

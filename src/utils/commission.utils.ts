@@ -4,8 +4,13 @@ import prisma from '../config/database';
 /**
  * Get the effective commission rate for a field owner
  * Returns the custom rate if set, otherwise the system default
+ * Also returns whether a custom rate was used and the default rate for auditing
  */
-export async function getEffectiveCommissionRate(userId: string): Promise<number> {
+export async function getEffectiveCommissionRate(userId: string): Promise<{
+  effectiveRate: number;
+  isCustomRate: boolean;
+  defaultRate: number;
+}> {
   try {
     // Get the field owner's custom commission rate
     const user = await prisma.user.findUnique({
@@ -13,20 +18,33 @@ export async function getEffectiveCommissionRate(userId: string): Promise<number
       select: { commissionRate: true }
     });
 
+    // Get the system default
+    const settings = await prisma.systemSettings.findFirst();
+    const defaultRate = settings?.defaultCommissionRate || 20;
+
     // If user has a custom rate, use it
     if (user?.commissionRate !== null && user?.commissionRate !== undefined) {
-      return user.commissionRate;
+      return {
+        effectiveRate: user.commissionRate,
+        isCustomRate: true,
+        defaultRate
+      };
     }
 
-    // Otherwise, get the system default
-    const settings = await prisma.systemSettings.findFirst();
-    
-    // Return the default rate or 20% if no settings exist
-    return settings?.defaultCommissionRate || 20;
+    // Otherwise, use the system default
+    return {
+      effectiveRate: defaultRate,
+      isCustomRate: false,
+      defaultRate
+    };
   } catch (error) {
     console.error('Error getting commission rate:', error);
     // Return default 20% on error
-    return 20;
+    return {
+      effectiveRate: 20,
+      isCustomRate: false,
+      defaultRate: 20
+    };
   }
 }
 
@@ -36,11 +54,18 @@ export async function getEffectiveCommissionRate(userId: string): Promise<number
 export async function calculatePayoutAmounts(
   totalAmount: number,
   fieldOwnerId: string
-): Promise<{ fieldOwnerAmount: number; platformFeeAmount: number; platformCommission: number; commissionRate: number }> {
-  const commissionRate = await getEffectiveCommissionRate(fieldOwnerId);
+): Promise<{
+  fieldOwnerAmount: number;
+  platformFeeAmount: number;
+  platformCommission: number;
+  commissionRate: number;
+  isCustomCommission: boolean;
+  defaultCommissionRate: number;
+}> {
+  const { effectiveRate, isCustomRate, defaultRate } = await getEffectiveCommissionRate(fieldOwnerId);
 
   // Platform gets the commission percentage
-  const platformFeeAmount = (totalAmount * commissionRate) / 100;
+  const platformFeeAmount = (totalAmount * effectiveRate) / 100;
   const platformCommission = platformFeeAmount; // Same value, different name for DB compatibility
 
   // Field owner gets the remaining amount
@@ -50,6 +75,8 @@ export async function calculatePayoutAmounts(
     fieldOwnerAmount,
     platformFeeAmount,
     platformCommission, // DB field name
-    commissionRate
+    commissionRate: effectiveRate,
+    isCustomCommission: isCustomRate,
+    defaultCommissionRate: defaultRate
   };
 }

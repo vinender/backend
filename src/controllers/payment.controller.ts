@@ -128,7 +128,7 @@ export class PaymentController {
       const amountInCents = Math.round(amount * 100);
 
       // Calculate platform commission dynamically using commission utils
-      const { fieldOwnerAmount, platformCommission, commissionRate } =
+      const { fieldOwnerAmount, platformCommission, commissionRate, isCustomCommission, defaultCommissionRate } =
         await calculatePayoutAmounts(amount, field.ownerId || '');
 
       // Prepare payment intent parameters
@@ -147,7 +147,9 @@ export class PaymentController {
           type: 'field_booking',
           platformCommission: platformCommission.toString(),
           fieldOwnerAmount: fieldOwnerAmount.toString(),
-          commissionRate: commissionRate.toString()
+          commissionRate: commissionRate.toString(),
+          isCustomCommission: isCustomCommission.toString(),
+          defaultCommissionRate: defaultCommissionRate.toString()
         },
         description: `Booking for ${field.name} on ${date} at ${timeSlot}`,
         receipt_email: (req as any).user?.email,
@@ -582,7 +584,7 @@ export class PaymentController {
         });
 
         // Calculate commission amounts
-        const { fieldOwnerAmount, platformFeeAmount, commissionRate } = await calculatePayoutAmounts(
+        const { fieldOwnerAmount, platformFeeAmount, commissionRate, isCustomCommission, defaultCommissionRate } = await calculatePayoutAmounts(
           booking.totalPrice,
           field?.ownerId || ''
         );
@@ -596,6 +598,8 @@ export class PaymentController {
             netAmount: fieldOwnerAmount,
             platformFee: platformFeeAmount,
             commissionRate: commissionRate,
+            isCustomCommission: isCustomCommission,
+            defaultCommissionRate: defaultCommissionRate,
             type: 'PAYMENT',
             status: 'COMPLETED',
             stripePaymentIntentId: paymentIntentId

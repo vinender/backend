@@ -459,6 +459,8 @@ class WebhookController {
                 platformFee: parseFloat(metadata.platformCommission || '0'),
                 netAmount: parseFloat(metadata.fieldOwnerAmount || '0'),
                 commissionRate: parseFloat(metadata.commissionRate || '0'),
+                isCustomCommission: metadata.isCustomCommission === 'true',
+                defaultCommissionRate: parseFloat(metadata.defaultCommissionRate || '0'),
                 stripePaymentIntentId: paymentIntent.id,
                 stripeChargeId: chargeId,
                 connectedAccountId: fieldOwnerStripeAccount?.stripeAccountId,
