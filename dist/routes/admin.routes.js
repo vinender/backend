@@ -259,14 +259,24 @@ router.get('/bookings', admin_middleware_1.authenticateAdmin, async (req, res) =
         const skip = (parseInt(page) - 1) * parseInt(limit);
         // Build where clause for filters
         const whereClause = {};
-        // Name search filter
+        // Search filter - supports searching by user name OR booking ID
         if (searchName && typeof searchName === 'string' && searchName.trim()) {
-            whereClause.user = {
-                name: {
-                    contains: searchName.trim(),
-                    mode: 'insensitive' // Case-insensitive search
-                }
-            };
+            const searchTerm = searchName.trim();
+            // Check if search term looks like a booking ID (MongoDB ObjectId format: 24 hex characters)
+            const isBookingId = /^[a-f0-9]{24}$/i.test(searchTerm);
+            if (isBookingId) {
+                // Search by booking ID directly
+                whereClause.id = searchTerm;
+            }
+            else {
+                // Search by user name (case-insensitive)
+                whereClause.user = {
+                    name: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                };
+            }
         }
         // Status filter (skip if 'All' or not provided)
         if (status && typeof status === 'string' && status.toLowerCase() !== 'all') {

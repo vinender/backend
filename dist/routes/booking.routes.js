@@ -10,6 +10,7 @@ const auth_middleware_1 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 // Public routes to check availability
 router.get('/availability', booking_controller_1.default.checkAvailability);
+router.get('/recurring-conflicts', booking_controller_1.default.checkRecurringConflicts);
 router.get('/fields/:fieldId/slot-availability', booking_controller_1.default.getSlotAvailability);
 // All routes below require authentication
 router.use(auth_middleware_1.protect);

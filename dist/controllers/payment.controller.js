@@ -10,12 +10,23 @@ const notification_controller_1 = require("./notification.controller");
 const notification_service_1 = require("../services/notification.service");
 const commission_utils_1 = require("../utils/commission.utils");
 const email_service_1 = require("../services/email.service");
+const booking_model_1 = __importDefault(require("../models/booking.model"));
 class PaymentController {
     // Create a payment intent for booking a field
     async createPaymentIntent(req, res) {
         try {
-            const { fieldId, numberOfDogs, date, timeSlot, repeatBooking, amount, paymentMethodId // Optional: use saved payment method
+            const { fieldId, numberOfDogs, date, timeSlots, // Array of selected time slots (e.g., ["9:00AM - 10:00AM", "10:00AM - 11:00AM"])
+            repeatBooking, amount, paymentMethodId // Optional: use saved payment method
              } = req.body;
+            // Normalize timeSlots - ensure it's always an array
+            const normalizedTimeSlots = Array.isArray(timeSlots) ? timeSlots : (timeSlots ? [timeSlots] : []);
+            if (normalizedTimeSlots.length === 0) {
+                return res.status(400).json({ error: 'At least one time slot is required' });
+            }
+            // For display purposes, use first and last slot
+            const displayTimeSlot = normalizedTimeSlots.length === 1
+                ? normalizedTimeSlots[0]
+                : `${normalizedTimeSlots[0]} (+${normalizedTimeSlots.length - 1} more)`;
             // Validate user
             const userId = req.user?.id;
             if (!userId) {
@@ -55,44 +66,48 @@ class PaymentController {
             // Use a unique key for each payment intent attempt
             const crypto = require('crypto');
             const requestId = crypto.randomBytes(16).toString('hex');
-            const idempotencyKey = `booking_${userId}_${fieldId}_${date}_${timeSlot}_${requestId}`.replace(/[\s:]/g, '_');
-            // Check if a booking already exists for this exact combination
-            const existingBooking = await database_1.default.booking.findFirst({
+            const timeSlotsKey = normalizedTimeSlots.sort().join('_');
+            const idempotencyKey = `booking_${userId}_${fieldId}_${date}_${timeSlotsKey}_${requestId}`.replace(/[\s:]/g, '_');
+            // Check if bookings already exist for any of the selected time slots
+            const existingBookings = await database_1.default.booking.findMany({
                 where: {
                     userId,
                     fieldId,
                     date: new Date(date),
-                    timeSlot,
+                    timeSlot: { in: normalizedTimeSlots },
                     status: {
                         notIn: ['CANCELLED']
                     }
                 }
             });
-            if (existingBooking) {
+            if (existingBookings.length > 0) {
+                const existingSlots = existingBookings.map(b => b.timeSlot);
                 console.log('Duplicate booking attempt detected:', {
                     userId,
                     fieldId,
                     date,
-                    timeSlot,
-                    existingBookingId: existingBooking.id
+                    existingSlots,
+                    existingBookingIds: existingBookings.map(b => b.id)
                 });
-                // Check if the existing booking is already paid
-                if (existingBooking.paymentStatus === 'PAID' && existingBooking.status === 'CONFIRMED') {
-                    // Return existing booking info instead of creating duplicate
+                // Check if all existing bookings are already paid
+                const allPaid = existingBookings.every(b => b.paymentStatus === 'PAID' && b.status === 'CONFIRMED');
+                const anyPending = existingBookings.some(b => b.paymentStatus === 'PENDING');
+                if (allPaid && existingBookings.length === normalizedTimeSlots.length) {
+                    // All slots are already booked and confirmed
                     return res.status(200).json({
                         paymentSucceeded: true,
-                        bookingId: existingBooking.id,
+                        bookingId: existingBookings[0].id,
+                        bookingIds: existingBookings.map(b => b.id),
                         message: 'Booking already exists and is confirmed',
                         isDuplicate: true
                     });
                 }
-                else if (existingBooking.paymentStatus === 'PENDING') {
-                    // If there's a pending booking, we can try to complete it
-                    // but for safety, we'll still prevent duplicate creation
+                else if (anyPending) {
                     return res.status(200).json({
                         paymentSucceeded: false,
-                        bookingId: existingBooking.id,
-                        message: 'A booking for this slot is already being processed',
+                        bookingId: existingBookings[0].id,
+                        bookingIds: existingBookings.map(b => b.id),
+                        message: 'A booking for one or more slots is already being processed',
                         isDuplicate: true,
                         isPending: true
                     });
@@ -123,7 +138,8 @@ class PaymentController {
                     fieldOwnerId: field.ownerId || '',
                     numberOfDogs: numberOfDogs.toString(),
                     date,
-                    timeSlot,
+                    timeSlots: JSON.stringify(normalizedTimeSlots), // Store as JSON array
+                    timeSlotCount: normalizedTimeSlots.length.toString(),
                     repeatBooking: repeatBooking || 'none',
                     type: 'field_booking',
                     platformCommission: platformCommission.toString(),
@@ -132,7 +148,7 @@ class PaymentController {
                     isCustomCommission: isCustomCommission.toString(),
                     defaultCommissionRate: defaultCommissionRate.toString()
                 },
-                description: `Booking for ${field.name} on ${date} at ${timeSlot}`,
+                description: `Booking for ${field.name} on ${date} - ${normalizedTimeSlots.length} slot(s)`,
                 receipt_email: req.user?.email,
             };
             // If a payment method is provided, use it
@@ -259,9 +275,10 @@ class PaymentController {
                     details: process.env.NODE_ENV === 'development' ? stripeError.message : undefined
                 });
             }
-            // Parse the time slot to extract start and end times
+            // Parse the first time slot to extract start and end times for subscription
             // Expected format: "4:00PM - 5:00PM"
-            const [startTimeStr, endTimeStr] = timeSlot.split(' - ').map(t => t.trim());
+            const firstTimeSlot = normalizedTimeSlots[0];
+            const [startTimeStr, endTimeStr] = firstTimeSlot.split(' - ').map((t) => t.trim());
             // Create a booking record with appropriate status
             const bookingStatus = paymentIntent.status === 'succeeded' ? 'CONFIRMED' : 'PENDING';
             const paymentStatus = paymentIntent.status === 'succeeded' ? 'PAID' : 'PENDING';
@@ -317,6 +334,31 @@ class PaymentController {
                 try {
                     // Create subscription record in database
                     const bookingDate = new Date(date);
+                    // Check for conflicts with existing bookings on future recurring dates
+                    const conflictCheck = await booking_model_1.default.checkRecurringSubscriptionConflicts(fieldId, bookingDate, startTimeStr, endTimeStr, normalizedRepeatBooking);
+                    if (conflictCheck.hasConflict) {
+                        const conflictDates = conflictCheck.conflictingDates
+                            .slice(0, 3) // Show first 3 conflicts
+                            .map(c => {
+                            const dateStr = c.date.toLocaleDateString('en-GB', {
+                                weekday: 'short',
+                                day: 'numeric',
+                                month: 'short'
+                            });
+                            return dateStr;
+                        })
+                            .join(', ');
+                        const moreCount = conflictCheck.conflictingDates.length > 3
+                            ? ` and ${conflictCheck.conflictingDates.length - 3} more`
+                            : '';
+                        return res.status(400).json({
+                            error: `Cannot create ${normalizedRepeatBooking} recurring booking. There are existing bookings on: ${conflictDates}${moreCount}. Please choose a different time slot or cancel the conflicting bookings first.`,
+                            conflictingDates: conflictCheck.conflictingDates.map(c => ({
+                                date: c.date.toISOString(),
+                                bookedBy: c.existingBooking.user?.name || 'Another user'
+                            }))
+                        });
+                    }
                     const dayOfWeek = bookingDate.toLocaleDateString('en-US', { weekday: 'long' });
                     const dayOfMonth = bookingDate.getDate();
                     // Calculate next billing date
@@ -368,7 +410,8 @@ class PaymentController {
                             intervalCount: 1,
                             currentPeriodStart: bookingDate,
                             currentPeriodEnd: currentPeriodEnd,
-                            timeSlot,
+                            timeSlot: displayTimeSlot, // For display: first slot or "X:XX (+N more)"
+                            timeSlots: normalizedTimeSlots, // Store all time slots as array
                             dayOfWeek: normalizedRepeatBooking === 'weekly' ? dayOfWeek : null,
                             dayOfMonth: normalizedRepeatBooking === 'monthly' ? dayOfMonth : null,
                             startTime: startTimeStr,
@@ -380,34 +423,53 @@ class PaymentController {
                         }
                     });
                     subscriptionId = subscription.id;
-                    console.log('Created subscription for recurring booking:', subscriptionId);
+                    console.log('✅ Created subscription for recurring booking:', {
+                        subscriptionId,
+                        userId,
+                        fieldId,
+                        status: subscription.status,
+                        interval: subscription.interval,
+                        timeSlot: subscription.timeSlot,
+                        timeSlots: subscription.timeSlots
+                    });
                 }
                 catch (subscriptionError) {
                     console.error('Error creating subscription:', subscriptionError);
                     // Continue with booking creation even if subscription fails
                 }
             }
-            const booking = await database_1.default.booking.create({
-                data: {
-                    fieldId,
-                    userId,
-                    date: new Date(date),
-                    startTime: startTimeStr,
-                    endTime: endTimeStr,
-                    timeSlot,
-                    numberOfDogs: parseInt(numberOfDogs),
-                    totalPrice: amount,
-                    platformCommission: platformCommission,
-                    fieldOwnerAmount,
-                    status: bookingStatus,
-                    paymentStatus: paymentStatus,
-                    paymentIntentId: paymentIntent.id,
-                    payoutStatus,
-                    payoutHeldReason,
-                    repeatBooking: normalizedRepeatBooking || repeatBooking || 'none',
-                    subscriptionId: subscriptionId // Link to subscription if created
-                }
-            });
+            // Create a booking for each selected time slot
+            // Calculate per-slot amounts
+            const pricePerSlot = amount / normalizedTimeSlots.length;
+            const platformCommissionPerSlot = platformCommission / normalizedTimeSlots.length;
+            const fieldOwnerAmountPerSlot = fieldOwnerAmount / normalizedTimeSlots.length;
+            const bookings = await Promise.all(normalizedTimeSlots.map(async (slot) => {
+                const [slotStart, slotEnd] = slot.split(' - ').map((t) => t.trim());
+                return database_1.default.booking.create({
+                    data: {
+                        fieldId,
+                        userId,
+                        date: new Date(date),
+                        startTime: slotStart,
+                        endTime: slotEnd,
+                        timeSlot: slot,
+                        numberOfDogs: parseInt(numberOfDogs),
+                        totalPrice: pricePerSlot,
+                        platformCommission: platformCommissionPerSlot,
+                        fieldOwnerAmount: fieldOwnerAmountPerSlot,
+                        status: bookingStatus,
+                        paymentStatus: paymentStatus,
+                        paymentIntentId: paymentIntent.id,
+                        payoutStatus,
+                        payoutHeldReason,
+                        repeatBooking: normalizedRepeatBooking || repeatBooking || 'none',
+                        subscriptionId: subscriptionId // Link to subscription if created
+                    }
+                });
+            }));
+            // Use first booking as primary for backward compatibility
+            const booking = bookings[0];
+            const allBookingIds = bookings.map(b => b.id);
             // If payment was auto-confirmed with saved card, create notifications
             if (paymentIntent.status === 'succeeded') {
                 // Create payment record
@@ -424,20 +486,23 @@ class PaymentController {
                     }
                 });
                 // Send notifications
+                const slotsDisplay = normalizedTimeSlots.length === 1
+                    ? normalizedTimeSlots[0]
+                    : `${normalizedTimeSlots.length} time slots`;
                 await (0, notification_controller_1.createNotification)({
                     userId,
                     type: 'BOOKING_CONFIRMATION',
                     title: 'Booking Confirmed',
-                    message: `Your booking for ${field.name} on ${date} at ${timeSlot} has been confirmed.`,
-                    data: { bookingId: booking.id, fieldId }
+                    message: `Your booking for ${field.name} on ${date} (${slotsDisplay}) has been confirmed.`,
+                    data: { bookingId: booking.id, bookingIds: allBookingIds, fieldId }
                 });
                 if (field.ownerId && field.ownerId !== userId) {
                     await (0, notification_controller_1.createNotification)({
                         userId: field.ownerId,
                         type: 'NEW_BOOKING',
                         title: 'New Booking',
-                        message: `You have a new booking for ${field.name} on ${date} at ${timeSlot}.`,
-                        data: { bookingId: booking.id, fieldId }
+                        message: `You have a new booking for ${field.name} on ${date} (${slotsDisplay}).`,
+                        data: { bookingId: booking.id, bookingIds: allBookingIds, fieldId }
                     });
                 }
                 // Send email notifications
@@ -487,6 +552,8 @@ class PaymentController {
             res.json({
                 clientSecret: paymentIntent.client_secret,
                 bookingId: booking.id,
+                bookingIds: allBookingIds, // All booking IDs for multi-slot bookings
+                slotsCount: normalizedTimeSlots.length,
                 paymentSucceeded: paymentIntent.status === 'succeeded',
                 publishableKey: `pk_test_${process.env.STRIPE_SECRET_KEY?.slice(8, 40)}` // Send publishable key
             });

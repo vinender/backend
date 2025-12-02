@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const database_1 = __importDefault(require("../config/database"));
+const date_fns_1 = require("date-fns");
 class BookingModel {
     // Create a new booking
     async create(data) {
@@ -268,8 +269,242 @@ class BookingModel {
     }
     // Helper function to convert time string to minutes
     timeToMinutes(time) {
+        // Handle both "HH:mm" and "H:mmAM/PM" formats
+        if (time.includes('AM') || time.includes('PM')) {
+            const match = time.match(/(\d+):(\d+)(AM|PM)/i);
+            if (match) {
+                let hours = parseInt(match[1]);
+                const minutes = parseInt(match[2]);
+                const period = match[3].toUpperCase();
+                if (period === 'PM' && hours !== 12)
+                    hours += 12;
+                if (period === 'AM' && hours === 12)
+                    hours = 0;
+                return hours * 60 + minutes;
+            }
+        }
         const [hours, minutes] = time.split(':').map(Number);
-        return hours * 60 + minutes;
+        return hours * 60 + (minutes || 0);
+    }
+    /**
+     * Check if a date falls on a recurring subscription's scheduled day
+     * Returns the subscription if there's a conflict, null otherwise
+     */
+    async checkRecurringSlotConflict(fieldId, date, startTime, endTime, excludeSubscriptionId) {
+        // Get all active subscriptions for this field
+        const activeSubscriptions = await database_1.default.subscription.findMany({
+            where: {
+                fieldId,
+                status: 'active',
+                cancelAtPeriodEnd: false,
+                ...(excludeSubscriptionId ? { id: { not: excludeSubscriptionId } } : {})
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+        if (activeSubscriptions.length === 0) {
+            return { hasConflict: false };
+        }
+        const requestedDate = new Date(date);
+        requestedDate.setHours(0, 0, 0, 0);
+        const requestedDayOfWeek = requestedDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const requestedDayOfMonth = requestedDate.getDate();
+        // Day name mapping
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const requestedDayName = dayNames[requestedDayOfWeek];
+        for (const subscription of activeSubscriptions) {
+            let isDateMatch = false;
+            if (subscription.interval === 'everyday') {
+                // Everyday subscription - every day matches
+                isDateMatch = true;
+            }
+            else if (subscription.interval === 'weekly') {
+                // Weekly subscription - check if day of week matches
+                isDateMatch = subscription.dayOfWeek === requestedDayName;
+            }
+            else if (subscription.interval === 'monthly') {
+                // Monthly subscription - check if day of month matches
+                isDateMatch = subscription.dayOfMonth === requestedDayOfMonth;
+            }
+            if (isDateMatch) {
+                // Check time overlap
+                const subStart = this.timeToMinutes(subscription.startTime);
+                const subEnd = this.timeToMinutes(subscription.endTime);
+                const reqStart = this.timeToMinutes(startTime);
+                const reqEnd = this.timeToMinutes(endTime);
+                // Check if times overlap
+                const hasTimeOverlap = (reqStart >= subStart && reqStart < subEnd) ||
+                    (reqEnd > subStart && reqEnd <= subEnd) ||
+                    (reqStart <= subStart && reqEnd >= subEnd);
+                if (hasTimeOverlap) {
+                    return {
+                        hasConflict: true,
+                        subscription,
+                        reason: `This time slot is reserved by a ${subscription.interval} recurring booking (${subscription.timeSlot})`
+                    };
+                }
+            }
+        }
+        return { hasConflict: false };
+    }
+    /**
+     * Get all future dates reserved by recurring subscriptions for a field
+     * Used to show reserved slots in the calendar UI
+     */
+    async getRecurringReservedDates(fieldId, startDate, endDate) {
+        const activeSubscriptions = await database_1.default.subscription.findMany({
+            where: {
+                fieldId,
+                status: 'active',
+                cancelAtPeriodEnd: false
+            }
+        });
+        const reservedDates = [];
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        for (const subscription of activeSubscriptions) {
+            let currentDate = new Date(startDate);
+            currentDate.setHours(0, 0, 0, 0);
+            while (currentDate <= endDate) {
+                let shouldAdd = false;
+                if (subscription.interval === 'everyday') {
+                    shouldAdd = true;
+                }
+                else if (subscription.interval === 'weekly') {
+                    const currentDayName = dayNames[currentDate.getDay()];
+                    shouldAdd = subscription.dayOfWeek === currentDayName;
+                }
+                else if (subscription.interval === 'monthly') {
+                    shouldAdd = subscription.dayOfMonth === currentDate.getDate();
+                }
+                if (shouldAdd) {
+                    // Check if there's already a booking for this subscription on this date
+                    const existingBooking = await database_1.default.booking.findFirst({
+                        where: {
+                            subscriptionId: subscription.id,
+                            date: currentDate,
+                            status: { notIn: ['CANCELLED'] }
+                        }
+                    });
+                    // Only add to reserved if no booking exists yet (booking will show in regular availability)
+                    if (!existingBooking) {
+                        reservedDates.push({
+                            date: new Date(currentDate),
+                            timeSlot: subscription.timeSlot,
+                            subscriptionId: subscription.id,
+                            interval: subscription.interval
+                        });
+                    }
+                }
+                currentDate = (0, date_fns_1.addDays)(currentDate, 1);
+            }
+        }
+        return reservedDates;
+    }
+    /**
+     * Check if creating a recurring subscription would conflict with existing bookings
+     * This checks all future dates that the recurring subscription would occupy
+     */
+    async checkRecurringSubscriptionConflicts(fieldId, startDate, startTime, endTime, interval, maxDaysToCheck = 60 // Check up to 60 days ahead by default
+    ) {
+        const conflictingDates = [];
+        // Get the day of week and day of month from start date
+        const dayOfWeek = startDate.getDay(); // 0-6
+        const dayOfMonth = startDate.getDate(); // 1-31
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        // Calculate end date for checking
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + maxDaysToCheck);
+        // Get all existing non-cancelled bookings for this field in the date range
+        const existingBookings = await database_1.default.booking.findMany({
+            where: {
+                fieldId,
+                date: {
+                    gte: startDate,
+                    lte: endDate
+                },
+                status: {
+                    notIn: ['CANCELLED']
+                }
+            },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+        // Convert start/end times to minutes for comparison
+        const reqStart = this.timeToMinutes(startTime);
+        const reqEnd = this.timeToMinutes(endTime);
+        // Check each existing booking to see if it would conflict
+        for (const booking of existingBookings) {
+            const bookingDate = new Date(booking.date);
+            bookingDate.setHours(0, 0, 0, 0);
+            let wouldConflict = false;
+            if (interval === 'everyday') {
+                // Every day conflicts
+                wouldConflict = true;
+            }
+            else if (interval === 'weekly') {
+                // Check if booking is on the same day of week
+                wouldConflict = bookingDate.getDay() === dayOfWeek;
+            }
+            else if (interval === 'monthly') {
+                // Check if booking is on the same day of month
+                wouldConflict = bookingDate.getDate() === dayOfMonth;
+            }
+            if (wouldConflict) {
+                // Check time overlap
+                const bookingStart = this.timeToMinutes(booking.startTime);
+                const bookingEnd = this.timeToMinutes(booking.endTime);
+                const hasTimeOverlap = (reqStart >= bookingStart && reqStart < bookingEnd) ||
+                    (reqEnd > bookingStart && reqEnd <= bookingEnd) ||
+                    (reqStart <= bookingStart && reqEnd >= bookingEnd);
+                if (hasTimeOverlap) {
+                    conflictingDates.push({
+                        date: bookingDate,
+                        existingBooking: booking
+                    });
+                }
+            }
+        }
+        return {
+            hasConflict: conflictingDates.length > 0,
+            conflictingDates
+        };
+    }
+    /**
+     * Enhanced availability check that includes both existing bookings AND recurring reservations
+     */
+    async checkFullAvailability(fieldId, date, startTime, endTime, excludeBookingId, excludeSubscriptionId) {
+        // First check existing bookings
+        const bookingAvailable = await this.checkAvailability(fieldId, date, startTime, endTime, excludeBookingId);
+        if (!bookingAvailable) {
+            return {
+                available: false,
+                reason: 'This time slot is already booked',
+                conflictType: 'booking'
+            };
+        }
+        // Then check recurring subscription reservations
+        const recurringCheck = await this.checkRecurringSlotConflict(fieldId, date, startTime, endTime, excludeSubscriptionId);
+        if (recurringCheck.hasConflict) {
+            return {
+                available: false,
+                reason: recurringCheck.reason,
+                conflictType: 'recurring'
+            };
+        }
+        return { available: true };
     }
     // Get booking statistics for a field owner
     async getFieldOwnerStats(ownerId) {

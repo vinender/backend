@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -176,6 +209,17 @@ class SubscriptionService {
         }
         if (!subscription.user) {
             throw new Error(`User not found for subscription ${subscriptionId}`);
+        }
+        // Import BookingModel for availability check
+        const BookingModel = (await Promise.resolve().then(() => __importStar(require('../models/booking.model')))).default;
+        // Check if the slot is available (check for existing bookings that might conflict)
+        // We exclude this subscription from the recurring check since we're creating a booking for it
+        const availabilityCheck = await BookingModel.checkFullAvailability(subscription.fieldId, bookingDate, subscription.startTime, subscription.endTime, undefined, // No booking to exclude
+        subscription.id // Exclude this subscription from recurring check
+        );
+        if (!availabilityCheck.available) {
+            console.log(`⚠️ Slot conflict for subscription ${subscriptionId} on ${bookingDate.toISOString().split('T')[0]}: ${availabilityCheck.reason}`);
+            throw new Error(`Slot not available: ${availabilityCheck.reason}`);
         }
         // Calculate price based on field duration
         const { field } = subscription;
@@ -614,12 +658,26 @@ class SubscriptionService {
         if (!subscription) {
             throw new Error('Subscription not found');
         }
-        // Cancel in Stripe
-        const stripeSubscription = await stripe_config_1.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-            cancel_at_period_end: !cancelImmediately
-        });
-        if (cancelImmediately) {
-            await stripe_config_1.stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+        // Only call Stripe API if it's an actual Stripe subscription (starts with 'sub_')
+        // Fieldsy uses a custom recurring booking system with individual payment intents,
+        // not Stripe's subscription product. The stripeSubscriptionId field may contain a payment intent ID.
+        if (subscription.stripeSubscriptionId && subscription.stripeSubscriptionId.startsWith('sub_')) {
+            try {
+                await stripe_config_1.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+                    cancel_at_period_end: !cancelImmediately
+                });
+                if (cancelImmediately) {
+                    await stripe_config_1.stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+                }
+            }
+            catch (stripeError) {
+                console.error('Stripe subscription cancellation error:', stripeError);
+                // Continue with local cancellation even if Stripe fails
+            }
+        }
+        else {
+            // This is a payment intent ID or custom recurring booking, handle locally only
+            console.log('Custom recurring booking (not Stripe subscription), handling cancellation locally');
         }
         // Update in database
         await database_1.default.subscription.update({

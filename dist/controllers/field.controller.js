@@ -229,6 +229,7 @@ class FieldController {
                 amenities: field.amenities?.slice(0, 4) || [], // Only first 4 amenities for card
                 isClaimed: field.isClaimed,
                 owner: field.ownerName || 'Field Owner',
+                maxDogs: field.maxDogs || 10, // Maximum dogs allowed per booking
                 // Location info
                 location: {
                     address: field.address,

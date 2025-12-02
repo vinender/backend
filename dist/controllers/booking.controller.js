@@ -107,10 +107,10 @@ class BookingController {
         if (existingBooking) {
             throw new AppError_1.AppError('This time slot is already booked. Once booked, a slot becomes private for that dog owner.', 400);
         }
-        // Check availability
-        const isAvailable = await booking_model_1.default.checkAvailability(fieldId, new Date(date), startTime, endTime);
-        if (!isAvailable) {
-            throw new AppError_1.AppError('This time slot is not available', 400);
+        // Check full availability (including recurring booking reservations)
+        const availabilityCheck = await booking_model_1.default.checkFullAvailability(fieldId, new Date(date), startTime, endTime);
+        if (!availabilityCheck.available) {
+            throw new AppError_1.AppError(availabilityCheck.reason || 'This time slot is not available', 400);
         }
         // Calculate total price based on duration and number of dogs
         const startMinutes = this.timeToMinutes(startTime);
@@ -495,7 +495,8 @@ class BookingController {
                         else if (includeExpired === 'true') {
                             // Previous tab: show bookings with past dates OR same-day bookings that are COMPLETED
                             // Don't filter by date for COMPLETED status - they will be filtered by end time in post-processing
-                            if (s !== 'COMPLETED') {
+                            // Don't filter by date for CANCELLED status - cancelled bookings should show regardless of date
+                            if (s !== 'COMPLETED' && s !== 'CANCELLED') {
                                 statusCondition.date = { lt: now };
                             }
                         }
@@ -515,7 +516,8 @@ class BookingController {
                     else if (includeExpired === 'true') {
                         // Previous tab: show bookings with past dates OR same-day bookings that are COMPLETED
                         // Don't filter by date for COMPLETED status - they will be filtered by end time in post-processing
-                        if (status !== 'COMPLETED') {
+                        // Don't filter by date for CANCELLED status - cancelled bookings should show regardless of date
+                        if (status !== 'COMPLETED' && status !== 'CANCELLED') {
                             statusCondition.date = { lt: now };
                         }
                     }
@@ -1171,10 +1173,13 @@ class BookingController {
             const newDate = date ? new Date(date) : booking.date;
             const newStartTime = startTime || booking.startTime;
             const newEndTime = endTime || booking.endTime;
-            const isAvailable = await booking_model_1.default.checkAvailability(booking.fieldId, newDate, newStartTime, newEndTime, id // Exclude current booking from check
+            // Check full availability (including recurring booking reservations)
+            // Exclude the current booking's subscription (if any) to allow rescheduling within same subscription
+            const availabilityCheck = await booking_model_1.default.checkFullAvailability(booking.fieldId, newDate, newStartTime, newEndTime, id, // Exclude current booking from check
+            booking.subscriptionId || undefined // Exclude current subscription if this is a recurring booking
             );
-            if (!isAvailable) {
-                throw new AppError_1.AppError('The new time slot is not available', 400);
+            if (!availabilityCheck.available) {
+                throw new AppError_1.AppError(availabilityCheck.reason || 'The new time slot is not available', 400);
             }
             // Always recalculate price when rescheduling with the original numberOfDogs
             const field = await field_model_1.default.findById(booking.fieldId);
@@ -1353,8 +1358,8 @@ class BookingController {
         const maxFutureDate = new Date(selectedDate);
         maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
         // Filter subscriptions that apply to the selected date
-        const { addDays, addMonths } = await Promise.resolve().then(() => __importStar(require('date-fns')));
-        const recurringTimeSlots = new Set();
+        // Store recurring subscriptions with their time info for proper overlap checking
+        const recurringSubscriptions = [];
         for (const subscription of activeSubscriptions) {
             // Check if the selected date falls on a recurring booking day
             let isRecurringDay = false;
@@ -1377,21 +1382,59 @@ class BookingController {
             }
             // If this is a recurring day, check if it's within the booking window
             if (isRecurringDay) {
-                // Check if this date is within maxAdvanceBookingDays from last booking date
-                const lastBookingDate = subscription.lastBookingDate || subscription.createdAt;
-                const daysSinceLastBooking = Math.floor((selectedDate.getTime() - new Date(lastBookingDate).getTime()) / (1000 * 60 * 60 * 24));
-                // Only mark as booked if it's a future potential booking date within the advance booking window
-                if (selectedDate >= new Date() && selectedDate <= maxFutureDate) {
+                // Only mark as reserved if it's a future date
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (selectedDate >= today && selectedDate <= maxFutureDate) {
                     // Check if a booking doesn't already exist for this date and subscription
                     const hasExistingBooking = bookings.some(b => b.subscriptionId === subscription.id &&
                         (b.timeSlot === subscription.timeSlot || b.startTime === subscription.startTime));
-                    // If no booking exists yet, mark the time slot as reserved for recurring booking
+                    // If no booking exists yet, add to recurring list for overlap checking
                     if (!hasExistingBooking) {
-                        recurringTimeSlots.add(subscription.timeSlot || `${subscription.startTime} - ${subscription.endTime}`);
+                        recurringSubscriptions.push({
+                            timeSlot: subscription.timeSlot || `${subscription.startTime} - ${subscription.endTime}`,
+                            startTime: subscription.startTime,
+                            endTime: subscription.endTime,
+                            interval: subscription.interval
+                        });
                     }
                 }
             }
         }
+        // Helper to convert time string to minutes for overlap checking
+        const timeStringToMinutes = (time) => {
+            // Handle both "HH:mm" and "H:mmAM/PM" formats
+            if (time.includes('AM') || time.includes('PM')) {
+                const match = time.match(/(\d+):(\d+)(AM|PM)/i);
+                if (match) {
+                    let hours = parseInt(match[1]);
+                    const minutes = parseInt(match[2]);
+                    const period = match[3].toUpperCase();
+                    if (period === 'PM' && hours !== 12)
+                        hours += 12;
+                    if (period === 'AM' && hours === 12)
+                        hours = 0;
+                    return hours * 60 + minutes;
+                }
+            }
+            const [hours, mins] = time.split(':').map(Number);
+            return hours * 60 + (mins || 0);
+        };
+        // Check if a slot overlaps with recurring bookings
+        const checkRecurringOverlap = (slotStart, slotEnd) => {
+            for (const recurring of recurringSubscriptions) {
+                const recurStart = timeStringToMinutes(recurring.startTime);
+                const recurEnd = timeStringToMinutes(recurring.endTime);
+                // Check for overlap
+                const hasOverlap = (slotStart >= recurStart && slotStart < recurEnd) ||
+                    (slotEnd > recurStart && slotEnd <= recurEnd) ||
+                    (slotStart <= recurStart && slotEnd >= recurEnd);
+                if (hasOverlap) {
+                    return { isOverlapping: true, interval: recurring.interval };
+                }
+            }
+            return { isOverlapping: false };
+        };
         // Generate time slots based on field's operating hours and booking duration
         // Parse opening and closing times to include minutes
         const parseTime = (timeStr) => {
@@ -1457,8 +1500,9 @@ class BookingController {
             const slotTime = `${startTime} - ${endTime}`;
             // Check if slot is booked (private booking system)
             const isBookedByBooking = bookings.some(booking => booking.timeSlot === slotTime || booking.startTime === startTime);
-            // Check if slot is reserved by recurring booking
-            const isBookedByRecurring = recurringTimeSlots.has(slotTime);
+            // Check if slot is reserved by recurring booking (using proper overlap detection)
+            const recurringCheck = checkRecurringOverlap(currentMinutes, endTotalMinutes);
+            const isBookedByRecurring = recurringCheck.isOverlapping;
             const isBooked = isBookedByBooking || isBookedByRecurring;
             // Note: isPast check removed from backend because server timezone may differ from client timezone
             // Frontend will calculate isPast using client's local timezone
@@ -1468,6 +1512,7 @@ class BookingController {
                 startMinute: startMinute, // Add startMinute so frontend can calculate isPast
                 isBooked,
                 isBookedByRecurring, // Add flag to indicate it's a recurring booking
+                recurringInterval: recurringCheck.interval, // Add interval type (weekly/monthly/everyday)
                 isAvailable: !isBooked // Only check if booked, not isPast (frontend handles that)
             });
             // Move to next slot
@@ -1489,22 +1534,68 @@ class BookingController {
             }
         });
     });
-    // Check field availability
+    // Check field availability (including recurring booking reservations)
     checkAvailability = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const { fieldId, date, startTime, endTime } = req.query;
         if (!fieldId || !date || !startTime || !endTime) {
             throw new AppError_1.AppError('Field ID, date, start time, and end time are required', 400);
         }
-        const isAvailable = await booking_model_1.default.checkAvailability(fieldId, new Date(date), startTime, endTime);
+        // Use checkFullAvailability to include recurring slot checks
+        const availabilityCheck = await booking_model_1.default.checkFullAvailability(fieldId, new Date(date), startTime, endTime);
         res.json({
             success: true,
-            available: isAvailable,
+            available: availabilityCheck.available,
+            reason: availabilityCheck.reason,
+            conflictType: availabilityCheck.conflictType
         });
+    });
+    // Check recurring subscription conflicts before booking
+    // This is called from the book-field page when user selects a recurring option
+    checkRecurringConflicts = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const { fieldId, date, startTime, endTime, interval } = req.query;
+        if (!fieldId || !date || !startTime || !endTime || !interval) {
+            throw new AppError_1.AppError('Field ID, date, start time, end time, and interval are required', 400);
+        }
+        // Validate interval
+        const validIntervals = ['everyday', 'weekly', 'monthly'];
+        const normalizedInterval = interval.toLowerCase();
+        if (!validIntervals.includes(normalizedInterval)) {
+            throw new AppError_1.AppError('Invalid interval. Must be everyday, weekly, or monthly', 400);
+        }
+        // Check for conflicts
+        const conflictCheck = await booking_model_1.default.checkRecurringSubscriptionConflicts(fieldId, new Date(date), startTime, endTime, normalizedInterval);
+        if (conflictCheck.hasConflict) {
+            // Format the conflicting dates for display
+            const conflictDates = conflictCheck.conflictingDates.slice(0, 5).map(c => {
+                const dateObj = new Date(c.date);
+                return dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+            });
+            const moreCount = conflictCheck.conflictingDates.length > 5
+                ? ` and ${conflictCheck.conflictingDates.length - 5} more`
+                : '';
+            res.json({
+                success: true,
+                hasConflict: true,
+                message: `Cannot create ${normalizedInterval} recurring booking. There are existing bookings on: ${conflictDates.join(', ')}${moreCount}. Please choose a different time slot or cancel the conflicting bookings first.`,
+                conflictingDates: conflictCheck.conflictingDates.map(c => ({
+                    date: c.date.toISOString(),
+                    bookedBy: c.existingBooking.user?.name || 'Another user'
+                }))
+            });
+        }
+        else {
+            res.json({
+                success: true,
+                hasConflict: false,
+                message: 'No conflicts found'
+            });
+        }
     });
     // Get my recurring bookings (subscriptions + bookings with repeatBooking)
     getMyRecurringBookings = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
         const userId = req.user.id;
         const { status = 'active' } = req.query;
+        console.log('[getMyRecurringBookings] Starting fetch for userId:', userId, 'status filter:', status);
         // Get system settings for maxAdvanceBookingDays
         const settings = await database_1.default.systemSettings.findFirst({
             select: { maxAdvanceBookingDays: true }
@@ -1513,13 +1604,16 @@ class BookingController {
         // Calculate the max date for future bookings
         const maxFutureDate = new Date();
         maxFutureDate.setDate(maxFutureDate.getDate() + maxAdvanceBookingDays);
+        // Build where clause - if status is 'all' or empty, show all subscriptions
+        const whereClause = { userId };
+        if (status && status !== 'all') {
+            whereClause.status = status;
+        }
+        console.log('[getMyRecurringBookings] Query whereClause:', JSON.stringify(whereClause));
         // Get user's subscriptions from subscription table
         // Only show subscription cards - individual recurring bookings are created from subscriptions
         const subscriptions = await database_1.default.subscription.findMany({
-            where: {
-                userId,
-                ...(status && { status: status })
-            },
+            where: whereClause,
             include: {
                 field: {
                     include: {
@@ -1545,6 +1639,16 @@ class BookingController {
                 createdAt: 'desc'
             }
         });
+        console.log('[getMyRecurringBookings] Found', subscriptions.length, 'subscriptions');
+        if (subscriptions.length > 0) {
+            console.log('[getMyRecurringBookings] First subscription:', {
+                id: subscriptions[0].id,
+                status: subscriptions[0].status,
+                interval: subscriptions[0].interval,
+                fieldId: subscriptions[0].fieldId,
+                bookingsCount: subscriptions[0].bookings?.length || 0
+            });
+        }
         const now = new Date();
         // Format subscriptions with calculated next billing date
         const formattedSubscriptions = subscriptions.map(sub => {
@@ -1639,8 +1743,10 @@ class BookingController {
         if (subscription.userId !== userId) {
             throw new AppError_1.AppError('You are not authorized to cancel this recurring booking', 403);
         }
-        // Cancel in Stripe if subscription exists
-        if (subscription.stripeSubscriptionId) {
+        // Cancel in Stripe if it's an actual Stripe subscription (starts with 'sub_')
+        // Note: Fieldsy uses a custom recurring booking system with individual payment intents,
+        // not Stripe's subscription product. The stripeSubscriptionId field may contain a payment intent ID.
+        if (subscription.stripeSubscriptionId && subscription.stripeSubscriptionId.startsWith('sub_')) {
             try {
                 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
                 if (cancelImmediately) {
@@ -1658,6 +1764,11 @@ class BookingController {
                 console.error('Stripe cancellation error:', stripeError);
                 // Continue with local cancellation even if Stripe fails
             }
+        }
+        else if (subscription.stripeSubscriptionId) {
+            // This is a payment intent ID, not a Stripe subscription
+            // For custom recurring bookings, we just handle the cancellation locally
+            console.log('Custom recurring booking (not Stripe subscription), handling cancellation locally');
         }
         // Update subscription in database
         const updatedSubscription = await database_1.default.subscription.update({
