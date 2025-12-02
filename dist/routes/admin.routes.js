@@ -1425,38 +1425,61 @@ router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, re
                 },
                 orderBy: { createdAt: 'desc' }
             });
-            allTransactions.push(...transactions.map(t => ({
-                id: t.id,
-                type: t.type,
-                amount: t.amount,
-                netAmount: t.netAmount,
-                platformFee: t.platformFee,
-                commissionRate: t.commissionRate,
-                isCustomCommission: t.isCustomCommission,
-                defaultCommissionRate: t.defaultCommissionRate,
-                status: t.status,
-                description: t.description,
-                stripePaymentIntentId: t.stripePaymentIntentId,
-                stripeChargeId: t.stripeChargeId,
-                stripeBalanceTransactionId: t.stripeBalanceTransactionId,
-                stripeRefundId: t.stripeRefundId,
-                stripeTransferId: t.stripeTransferId,
-                stripePayoutId: t.stripePayoutId,
-                connectedAccountId: t.connectedAccountId,
-                // Lifecycle tracking fields
-                lifecycleStage: t.lifecycleStage,
-                paymentReceivedAt: t.paymentReceivedAt,
-                fundsAvailableAt: t.fundsAvailableAt,
-                transferredAt: t.transferredAt,
-                payoutInitiatedAt: t.payoutInitiatedAt,
-                payoutCompletedAt: t.payoutCompletedAt,
-                refundedAt: t.refundedAt,
-                failureCode: t.failureCode,
-                failureMessage: t.failureMessage,
-                createdAt: t.createdAt,
-                user: t.user,
-                booking: t.booking
-            })));
+            allTransactions.push(...transactions.map(t => {
+                // Determine lifecycle stage based on transaction type and status
+                // For REFUND type, always use REFUNDED regardless of what's stored (schema default may have set PAYMENT_RECEIVED)
+                let lifecycleStage = t.lifecycleStage;
+                if (t.type === 'REFUND') {
+                    lifecycleStage = 'REFUNDED';
+                }
+                else if (!lifecycleStage || lifecycleStage === 'PAYMENT_RECEIVED') {
+                    // For payments, determine stage based on status if not explicitly set
+                    if (t.status === 'FAILED') {
+                        lifecycleStage = 'FAILED';
+                    }
+                    else if (t.status === 'CANCELLED') {
+                        lifecycleStage = 'CANCELLED';
+                    }
+                    else if (t.status === 'COMPLETED') {
+                        lifecycleStage = t.lifecycleStage || 'PAYMENT_RECEIVED';
+                    }
+                    else {
+                        lifecycleStage = 'PAYMENT_RECEIVED';
+                    }
+                }
+                return {
+                    id: t.id,
+                    type: t.type,
+                    amount: t.amount,
+                    netAmount: t.netAmount,
+                    platformFee: t.platformFee,
+                    commissionRate: t.commissionRate,
+                    isCustomCommission: t.isCustomCommission,
+                    defaultCommissionRate: t.defaultCommissionRate,
+                    status: t.status,
+                    description: t.description,
+                    stripePaymentIntentId: t.stripePaymentIntentId,
+                    stripeChargeId: t.stripeChargeId,
+                    stripeBalanceTransactionId: t.stripeBalanceTransactionId,
+                    stripeRefundId: t.stripeRefundId,
+                    stripeTransferId: t.stripeTransferId,
+                    stripePayoutId: t.stripePayoutId,
+                    connectedAccountId: t.connectedAccountId,
+                    // Lifecycle tracking fields - use computed default if not set
+                    lifecycleStage,
+                    paymentReceivedAt: t.paymentReceivedAt || (t.type === 'PAYMENT' && t.status === 'COMPLETED' ? t.createdAt : null),
+                    fundsAvailableAt: t.fundsAvailableAt,
+                    transferredAt: t.transferredAt,
+                    payoutInitiatedAt: t.payoutInitiatedAt,
+                    payoutCompletedAt: t.payoutCompletedAt,
+                    refundedAt: t.refundedAt || (t.type === 'REFUND' ? t.createdAt : null),
+                    failureCode: t.failureCode,
+                    failureMessage: t.failureMessage,
+                    createdAt: t.createdAt,
+                    user: t.user,
+                    booking: t.booking
+                };
+            }));
         }
         // 2. Get Payouts
         if (type === 'ALL' || type === 'PAYOUT') {
@@ -1498,6 +1521,20 @@ router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, re
                     });
                     bookingDetails = booking;
                 }
+                // Determine lifecycle stage for payouts based on status
+                let payoutLifecycleStage = 'PAYOUT_INITIATED';
+                if (payout.status.toLowerCase() === 'paid') {
+                    payoutLifecycleStage = 'PAYOUT_COMPLETED';
+                }
+                else if (payout.status.toLowerCase() === 'failed') {
+                    payoutLifecycleStage = 'FAILED';
+                }
+                else if (payout.status.toLowerCase() === 'canceled' || payout.status.toLowerCase() === 'cancelled') {
+                    payoutLifecycleStage = 'CANCELLED';
+                }
+                else if (payout.status.toLowerCase() === 'in_transit') {
+                    payoutLifecycleStage = 'PAYOUT_INITIATED';
+                }
                 allTransactions.push({
                     id: payout.id,
                     type: 'PAYOUT',
@@ -1511,7 +1548,11 @@ router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, re
                     failureMessage: payout.failureMessage,
                     createdAt: payout.createdAt,
                     user: payout.stripeAccount?.user,
-                    booking: bookingDetails
+                    booking: bookingDetails,
+                    // Lifecycle stage for payouts
+                    lifecycleStage: payoutLifecycleStage,
+                    payoutInitiatedAt: payout.createdAt,
+                    payoutCompletedAt: payout.status.toLowerCase() === 'paid' ? (payout.arrivalDate || payout.createdAt) : null
                 });
             }
         }

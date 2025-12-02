@@ -108,7 +108,7 @@ class RefundService {
                             processedAt: new Date()
                         }
                     });
-                    // Create transaction record for refund
+                    // Create transaction record for refund with lifecycle tracking
                     await database_1.default.transaction.create({
                         data: {
                             bookingId: booking.id,
@@ -117,7 +117,11 @@ class RefundService {
                             type: 'REFUND',
                             status: 'COMPLETED',
                             stripeRefundId: stripeRefund.id,
-                            description: `Refund for booking cancellation (${refundPercentage}%)`
+                            stripePaymentIntentId: booking.payment.stripePaymentId,
+                            description: `Refund for booking cancellation (${refundPercentage}%)`,
+                            // Lifecycle tracking
+                            lifecycleStage: 'REFUNDED',
+                            refundedAt: new Date()
                         }
                     });
                     // Update booking/payment payout metadata

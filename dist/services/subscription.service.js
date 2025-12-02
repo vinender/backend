@@ -194,7 +194,7 @@ class SubscriptionService {
         };
     }
     /**
-     * Create a booking from a subscription
+     * Create bookings from a subscription (handles multi-slot subscriptions)
      */
     async createBookingFromSubscription(subscriptionId, bookingDate) {
         const subscription = await database_1.default.subscription.findUnique({
@@ -212,132 +212,125 @@ class SubscriptionService {
         }
         // Import BookingModel for availability check
         const BookingModel = (await Promise.resolve().then(() => __importStar(require('../models/booking.model')))).default;
-        // Check if the slot is available (check for existing bookings that might conflict)
-        // We exclude this subscription from the recurring check since we're creating a booking for it
-        const availabilityCheck = await BookingModel.checkFullAvailability(subscription.fieldId, bookingDate, subscription.startTime, subscription.endTime, undefined, // No booking to exclude
-        subscription.id // Exclude this subscription from recurring check
-        );
-        if (!availabilityCheck.available) {
-            console.log(`⚠️ Slot conflict for subscription ${subscriptionId} on ${bookingDate.toISOString().split('T')[0]}: ${availabilityCheck.reason}`);
-            throw new Error(`Slot not available: ${availabilityCheck.reason}`);
-        }
-        // Calculate price based on field duration
         const { field } = subscription;
         const pricePerUnit = field.price || 0;
-        // Safely parse time strings - handle both "HH:mm" and "H:mmAM/PM" formats
-        let startHour = 0, startMin = 0, endHour = 0, endMin = 0;
-        try {
-            // Check if time is already in "H:mmAM/PM" format or "HH:mm" format
-            if (subscription.startTime.includes('AM') || subscription.startTime.includes('PM')) {
-                // Parse "4:00PM" format
-                const startMatch = subscription.startTime.match(/(\d+):(\d+)(AM|PM)/i);
-                if (startMatch) {
-                    startHour = parseInt(startMatch[1]);
-                    startMin = parseInt(startMatch[2]);
-                    const period = startMatch[3].toUpperCase();
-                    if (period === 'PM' && startHour !== 12)
-                        startHour += 12;
-                    if (period === 'AM' && startHour === 12)
-                        startHour = 0;
+        // Determine if this is a multi-slot subscription
+        const timeSlots = subscription.timeSlots && subscription.timeSlots.length > 0
+            ? subscription.timeSlots
+            : [subscription.timeSlot]; // Fallback to single slot format
+        const bookings = [];
+        for (const slot of timeSlots) {
+            // Parse start and end time from slot format "X:XXAM - Y:YYAM" or use stored times
+            let slotStart = subscription.startTime;
+            let slotEnd = subscription.endTime;
+            if (slot.includes(' - ')) {
+                const [start, end] = slot.split(' - ').map(t => t.trim());
+                slotStart = start;
+                slotEnd = end;
+            }
+            // Check if this specific slot is available
+            const availabilityCheck = await BookingModel.checkFullAvailability(subscription.fieldId, bookingDate, slotStart, slotEnd, undefined, // No booking to exclude
+            subscription.id // Exclude this subscription from recurring check
+            );
+            if (!availabilityCheck.available) {
+                console.log(`⚠️ Slot conflict for subscription ${subscriptionId} slot ${slot} on ${bookingDate.toISOString().split('T')[0]}: ${availabilityCheck.reason}`);
+                // Skip this slot but continue with others
+                continue;
+            }
+            // Parse time for price calculation
+            let startHour = 0, startMin = 0, endHour = 0, endMin = 0;
+            try {
+                if (slotStart.includes('AM') || slotStart.includes('PM')) {
+                    const startMatch = slotStart.match(/(\d+):(\d+)(AM|PM)/i);
+                    if (startMatch) {
+                        startHour = parseInt(startMatch[1]);
+                        startMin = parseInt(startMatch[2]);
+                        const period = startMatch[3].toUpperCase();
+                        if (period === 'PM' && startHour !== 12)
+                            startHour += 12;
+                        if (period === 'AM' && startHour === 12)
+                            startHour = 0;
+                    }
+                    const endMatch = slotEnd.match(/(\d+):(\d+)(AM|PM)/i);
+                    if (endMatch) {
+                        endHour = parseInt(endMatch[1]);
+                        endMin = parseInt(endMatch[2]);
+                        const period = endMatch[3].toUpperCase();
+                        if (period === 'PM' && endHour !== 12)
+                            endHour += 12;
+                        if (period === 'AM' && endHour === 12)
+                            endHour = 0;
+                    }
                 }
-                const endMatch = subscription.endTime.match(/(\d+):(\d+)(AM|PM)/i);
-                if (endMatch) {
-                    endHour = parseInt(endMatch[1]);
-                    endMin = parseInt(endMatch[2]);
-                    const period = endMatch[3].toUpperCase();
-                    if (period === 'PM' && endHour !== 12)
-                        endHour += 12;
-                    if (period === 'AM' && endHour === 12)
-                        endHour = 0;
+                else {
+                    const startParts = slotStart.split(':');
+                    const endParts = slotEnd.split(':');
+                    startHour = parseInt(startParts[0]) || 0;
+                    startMin = parseInt(startParts[1]) || 0;
+                    endHour = parseInt(endParts[0]) || 0;
+                    endMin = parseInt(endParts[1]) || 0;
                 }
+            }
+            catch (error) {
+                console.error(`Failed to parse time for subscription ${subscriptionId} slot ${slot}:`, error);
+                continue; // Skip this slot
+            }
+            if (isNaN(startHour) || isNaN(startMin) || isNaN(endHour) || isNaN(endMin)) {
+                console.error(`Invalid time values for slot ${slot}`);
+                continue;
+            }
+            const durationHours = (endHour * 60 + endMin - startHour * 60 - startMin) / 60;
+            let slotPrice = 0;
+            if (field.bookingDuration === '30min') {
+                const duration30MinBlocks = durationHours * 2;
+                slotPrice = pricePerUnit * duration30MinBlocks * subscription.numberOfDogs;
             }
             else {
-                // Parse "HH:mm" or "H:mm" format
-                const startParts = subscription.startTime.split(':');
-                const endParts = subscription.endTime.split(':');
-                startHour = parseInt(startParts[0]) || 0;
-                startMin = parseInt(startParts[1]) || 0;
-                endHour = parseInt(endParts[0]) || 0;
-                endMin = parseInt(endParts[1]) || 0;
+                slotPrice = pricePerUnit * durationHours * subscription.numberOfDogs;
             }
-        }
-        catch (error) {
-            console.error(`Failed to parse time for subscription ${subscriptionId}:`, error);
-            console.error(`  startTime: ${subscription.startTime}, endTime: ${subscription.endTime}`);
-            throw new Error(`Invalid time format in subscription: ${subscription.startTime} - ${subscription.endTime}`);
-        }
-        // Validate parsed times
-        if (isNaN(startHour) || isNaN(startMin) || isNaN(endHour) || isNaN(endMin)) {
-            throw new Error(`Failed to parse times - startTime: ${subscription.startTime}, endTime: ${subscription.endTime}`);
-        }
-        const durationHours = (endHour * 60 + endMin - startHour * 60 - startMin) / 60;
-        let totalPrice = 0;
-        if (field.bookingDuration === '30min') {
-            const duration30MinBlocks = durationHours * 2;
-            totalPrice = pricePerUnit * duration30MinBlocks * subscription.numberOfDogs;
-        }
-        else {
-            totalPrice = pricePerUnit * durationHours * subscription.numberOfDogs;
-        }
-        // Validate calculated price
-        if (isNaN(totalPrice) || totalPrice <= 0) {
-            console.error(`Invalid price calculation for subscription ${subscriptionId}:`, {
-                pricePerUnit,
-                durationHours,
-                numberOfDogs: subscription.numberOfDogs,
-                totalPrice
+            if (isNaN(slotPrice) || slotPrice <= 0) {
+                console.error(`Invalid price calculation for slot ${slot}`);
+                continue;
+            }
+            const formattedStartTime = this.formatTimeFromComponents(startHour, startMin);
+            const formattedEndTime = this.formatTimeFromComponents(endHour, endMin);
+            // Create booking for this slot
+            const booking = await database_1.default.booking.create({
+                data: {
+                    user: {
+                        connect: { id: subscription.userId }
+                    },
+                    field: {
+                        connect: { id: subscription.fieldId }
+                    },
+                    date: bookingDate,
+                    startTime: formattedStartTime,
+                    endTime: formattedEndTime,
+                    timeSlot: slot,
+                    numberOfDogs: subscription.numberOfDogs,
+                    totalPrice: slotPrice,
+                    status: 'CONFIRMED',
+                    paymentStatus: 'PAID',
+                    repeatBooking: subscription.interval,
+                    subscription: {
+                        connect: { id: subscription.id }
+                    },
+                    platformCommission: slotPrice * 0.20,
+                    fieldOwnerAmount: slotPrice * 0.80
+                }
             });
-            throw new Error('Failed to calculate booking price');
+            bookings.push(booking);
         }
-        // Get the first booking in this subscription series to use as parent
-        const firstBooking = await database_1.default.booking.findFirst({
-            where: {
-                subscriptionId: subscription.id
-            },
-            orderBy: {
-                createdAt: 'asc'
-            }
-        });
-        // Map subscription interval to recurring frequency
-        const recurringFrequencyMap = {
-            'everyday': 'EVERYDAY',
-            'weekly': 'WEEKLY',
-            'monthly': 'MONTHLY'
-        };
-        // Format times for booking - use the parsed values
-        const formattedStartTime = this.formatTimeFromComponents(startHour, startMin);
-        const formattedEndTime = this.formatTimeFromComponents(endHour, endMin);
-        // Create booking with user relation using connect
-        const booking = await database_1.default.booking.create({
-            data: {
-                user: {
-                    connect: { id: subscription.userId }
-                },
-                field: {
-                    connect: { id: subscription.fieldId }
-                },
-                date: bookingDate,
-                startTime: formattedStartTime,
-                endTime: formattedEndTime,
-                timeSlot: subscription.timeSlot,
-                numberOfDogs: subscription.numberOfDogs,
-                totalPrice,
-                status: 'CONFIRMED',
-                paymentStatus: 'PAID',
-                repeatBooking: subscription.interval,
-                subscription: {
-                    connect: { id: subscription.id }
-                },
-                platformCommission: totalPrice * 0.20,
-                fieldOwnerAmount: totalPrice * 0.80
-            }
-        });
+        if (bookings.length === 0) {
+            throw new Error('No bookings could be created - all slots had conflicts');
+        }
         // Update subscription last booking date
         await database_1.default.subscription.update({
             where: { id: subscriptionId },
             data: { lastBookingDate: bookingDate }
         });
-        return booking;
+        // Return first booking for backward compatibility, but all were created
+        return bookings[0];
     }
     /**
      * Refund a single recurring booking occurrence without cancelling the subscription
@@ -436,7 +429,7 @@ class SubscriptionService {
                 description: `Payout canceled due to refund for recurring booking ${booking.id}`
             }
         });
-        // Record refund transaction
+        // Record refund transaction with lifecycle tracking
         if (stripeRefund) {
             await database_1.default.transaction.create({
                 data: {
@@ -451,7 +444,11 @@ class SubscriptionService {
                     type: 'REFUND',
                     status: 'COMPLETED',
                     stripeRefundId: stripeRefund.id,
-                    description: 'Recurring booking refund'
+                    stripePaymentIntentId: paymentIntentId,
+                    description: 'Recurring booking refund',
+                    // Lifecycle tracking
+                    lifecycleStage: 'REFUNDED',
+                    refundedAt: new Date()
                 }
             });
         }

@@ -75,11 +75,14 @@ export class PaymentController {
       }
 
       // Create idempotency key to prevent duplicate bookings
-      // Use a unique key for each payment intent attempt
+      // Use a deterministic key based on the booking parameters (NOT random!)
+      // This ensures that retry attempts for the same booking use the same key
       const crypto = require('crypto');
-      const requestId = crypto.randomBytes(16).toString('hex');
       const timeSlotsKey = normalizedTimeSlots.sort().join('_');
-      const idempotencyKey = `booking_${userId}_${fieldId}_${date}_${timeSlotsKey}_${requestId}`.replace(/[\s:]/g, '_');
+      const repeatBookingKey = repeatBooking || 'none';
+      // Create a hash of the booking parameters for idempotency
+      const idempotencyBase = `${userId}_${fieldId}_${date}_${timeSlotsKey}_${repeatBookingKey}_${numberOfDogs}`;
+      const idempotencyKey = `booking_${crypto.createHash('sha256').update(idempotencyBase).digest('hex').substring(0, 32)}`;
 
       // Check if bookings already exist for any of the selected time slots
       const existingBookings = await prisma.booking.findMany({
@@ -101,12 +104,20 @@ export class PaymentController {
           fieldId,
           date,
           existingSlots,
-          existingBookingIds: existingBookings.map(b => b.id)
+          existingBookingIds: existingBookings.map(b => b.id),
+          existingStatuses: existingBookings.map(b => ({ status: b.status, paymentStatus: b.paymentStatus }))
         });
 
         // Check if all existing bookings are already paid
         const allPaid = existingBookings.every(b => b.paymentStatus === 'PAID' && b.status === 'CONFIRMED');
         const anyPending = existingBookings.some(b => b.paymentStatus === 'PENDING');
+
+        // Check if booking was created very recently (within last 30 seconds) - likely a duplicate request
+        const recentlyCreated = existingBookings.some(b => {
+          const createdAt = new Date(b.createdAt);
+          const now = new Date();
+          return (now.getTime() - createdAt.getTime()) < 30000; // 30 seconds
+        });
 
         if (allPaid && existingBookings.length === normalizedTimeSlots.length) {
           // All slots are already booked and confirmed
@@ -117,7 +128,8 @@ export class PaymentController {
             message: 'Booking already exists and is confirmed',
             isDuplicate: true
           });
-        } else if (anyPending) {
+        } else if (anyPending || recentlyCreated) {
+          // Either pending payment or just created - prevent duplicate
           return res.status(200).json({
             paymentSucceeded: false,
             bookingId: existingBookings[0].id,
@@ -125,6 +137,15 @@ export class PaymentController {
             message: 'A booking for one or more slots is already being processed',
             isDuplicate: true,
             isPending: true
+          });
+        } else {
+          // Existing bookings that aren't paid and weren't recently created - still prevent duplicates
+          // These are likely failed or incomplete bookings
+          console.log('Found existing non-paid bookings, preventing duplicate creation');
+          return res.status(400).json({
+            error: 'A booking already exists for one or more of these time slots. Please refresh and try again.',
+            existingSlots,
+            isDuplicate: true
           });
         }
       }
@@ -674,11 +695,12 @@ export class PaymentController {
           field?.ownerId || ''
         );
 
-        // Create transaction record with commission details
+        // Create transaction record with commission details and lifecycle tracking
         await prisma.transaction.create({
           data: {
             bookingId: booking.id,
             userId: booking.userId,
+            fieldOwnerId: field?.ownerId || null,
             amount: booking.totalPrice,
             netAmount: fieldOwnerAmount,
             platformFee: platformFeeAmount,
@@ -687,7 +709,11 @@ export class PaymentController {
             defaultCommissionRate: defaultCommissionRate,
             type: 'PAYMENT',
             status: 'COMPLETED',
-            stripePaymentIntentId: paymentIntentId
+            stripePaymentIntentId: paymentIntentId,
+            // Lifecycle tracking
+            lifecycleStage: 'PAYMENT_RECEIVED',
+            paymentReceivedAt: new Date(),
+            description: `Payment for booking at ${field?.name || 'field'}`
           }
         });
 
@@ -904,18 +930,23 @@ export class PaymentController {
                   field?.ownerId || ''
                 );
 
-                // Create transaction record with commission details
+                // Create transaction record with commission details and lifecycle tracking
                 await tx.transaction.create({
                   data: {
                     bookingId: newBooking.id,
                     userId: metadata.userId,
+                    fieldOwnerId: field?.ownerId || null,
                     amount: paymentIntent.amount / 100,
                     netAmount: payoutAmounts.fieldOwnerAmount,
                     platformFee: payoutAmounts.platformFeeAmount,
                     commissionRate: payoutAmounts.commissionRate,
                     type: 'PAYMENT',
                     status: 'COMPLETED',
-                    stripePaymentIntentId: paymentIntent.id
+                    stripePaymentIntentId: paymentIntent.id,
+                    // Lifecycle tracking
+                    lifecycleStage: 'PAYMENT_RECEIVED',
+                    paymentReceivedAt: new Date(),
+                    description: `Payment for booking (webhook)`
                   }
                 });
 
@@ -951,18 +982,23 @@ export class PaymentController {
                   field?.ownerId || ''
                 );
 
-                // Create transaction record with commission details
+                // Create transaction record with commission details and lifecycle tracking
                 await tx.transaction.create({
                   data: {
                     bookingId: booking.id,
                     userId: booking.userId,
+                    fieldOwnerId: field?.ownerId || null,
                     amount: booking.totalPrice,
                     netAmount: payoutAmounts.fieldOwnerAmount,
                     platformFee: payoutAmounts.platformFeeAmount,
                     commissionRate: payoutAmounts.commissionRate,
                     type: 'PAYMENT',
                     status: 'COMPLETED',
-                    stripePaymentIntentId: paymentIntent.id
+                    stripePaymentIntentId: paymentIntent.id,
+                    // Lifecycle tracking
+                    lifecycleStage: 'PAYMENT_RECEIVED',
+                    paymentReceivedAt: new Date(),
+                    description: `Payment for booking (webhook)`
                   }
                 });
               }

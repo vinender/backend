@@ -113,7 +113,7 @@ export class RefundService {
             }
           });
 
-          // Create transaction record for refund
+          // Create transaction record for refund with lifecycle tracking
           await prisma.transaction.create({
             data: {
               bookingId: booking.id,
@@ -122,7 +122,11 @@ export class RefundService {
               type: 'REFUND',
               status: 'COMPLETED',
               stripeRefundId: stripeRefund.id,
-              description: `Refund for booking cancellation (${refundPercentage}%)`
+              stripePaymentIntentId: booking.payment.stripePaymentId,
+              description: `Refund for booking cancellation (${refundPercentage}%)`,
+              // Lifecycle tracking
+              lifecycleStage: 'REFUNDED',
+              refundedAt: new Date()
             }
           });
 

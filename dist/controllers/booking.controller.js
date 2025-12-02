@@ -1916,7 +1916,7 @@ class BookingController {
             userEmail: booking.user?.email || '',
             userPhone: booking.user?.phone || '',
             time: `${booking.startTime} - ${booking.endTime}`,
-            orderId: `#${booking.id.substring(0, 6).toUpperCase()}`,
+            orderId: `#${booking.id.substring(0, 8).toUpperCase()}`,
             status: booking.status.toLowerCase(),
             frequency: booking.repeatBooking && booking.repeatBooking.toLowerCase() !== 'none' ? booking.repeatBooking : null,
             dogs: booking.numberOfDogs || 1,
