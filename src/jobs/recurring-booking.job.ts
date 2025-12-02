@@ -280,20 +280,48 @@ async function createUpcomingRecurringBookings() {
         console.log(`✅ Created booking ${booking.id} for subscription ${subscription.id}`);
 
       } catch (error) {
+        const errorMessage = (error as any).message || 'Unknown error';
         console.error(`❌ Failed to process subscription ${subscription.id}:`, error);
         results.failed++;
 
-        // Notify user about the failure
+        // Check if this is a slot conflict error
+        const isSlotConflict = errorMessage.includes('Slot not available');
+
+        // Notify user about the failure with appropriate message
         await createNotification({
           userId: subscription.userId,
-          type: 'recurring_booking_failed',
-          title: 'Booking Creation Failed',
-          message: `We couldn't create your upcoming ${subscription.interval} booking. Please contact support.`,
+          type: isSlotConflict ? 'recurring_booking_conflict' : 'recurring_booking_failed',
+          title: isSlotConflict ? 'Recurring Booking Skipped' : 'Booking Creation Failed',
+          message: isSlotConflict
+            ? `Your ${subscription.interval} booking at ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} was skipped because the time slot is already booked. Your subscription remains active.`
+            : `We couldn't create your upcoming ${subscription.interval} booking. Please contact support.`,
           data: {
             subscriptionId: subscription.id,
-            error: (error as any).message
+            fieldName: subscription.field.name,
+            bookingDate: nextBookingDate.toISOString(),
+            timeSlot: subscription.timeSlot,
+            error: errorMessage,
+            isSlotConflict
           }
         });
+
+        // Also notify field owner about the conflict
+        if (isSlotConflict && subscription.field.ownerId) {
+          await createNotification({
+            userId: subscription.field.ownerId,
+            type: 'recurring_booking_conflict',
+            title: 'Recurring Booking Conflict',
+            message: `A ${subscription.interval} recurring booking for ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot} was skipped due to a scheduling conflict.`,
+            data: {
+              subscriptionId: subscription.id,
+              fieldId: subscription.fieldId,
+              fieldName: subscription.field.name,
+              bookingDate: nextBookingDate.toISOString(),
+              timeSlot: subscription.timeSlot,
+              dogOwnerName: subscription.user.name
+            }
+          });
+        }
       }
     }
 
@@ -495,8 +523,29 @@ async function checkPastBookingsAndCreateNext() {
         console.log(`✅ Created booking ${newBooking.id} for subscription ${subscription.id}`);
 
       } catch (error) {
+        const errorMessage = (error as any).message || 'Unknown error';
+        const isSlotConflict = errorMessage.includes('Slot not available');
+
         console.error(`❌ Failed to process subscription ${subscription.id}:`, error);
         results.failed++;
+
+        // For slot conflicts in hourly job, notify user (since daily job might have missed this)
+        if (isSlotConflict) {
+          console.log(`⚠️ Slot conflict for subscription ${subscription.id} - notifying user`);
+          await createNotification({
+            userId: subscription.userId,
+            type: 'recurring_booking_conflict',
+            title: 'Recurring Booking Skipped',
+            message: `Your ${subscription.interval} booking at ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} was skipped because the time slot is already booked.`,
+            data: {
+              subscriptionId: subscription.id,
+              fieldName: subscription.field.name,
+              bookingDate: nextBookingDate.toISOString(),
+              timeSlot: subscription.timeSlot,
+              isSlotConflict: true
+            }
+          });
+        }
       }
     }
 

@@ -216,6 +216,25 @@ export class SubscriptionService {
       throw new Error(`User not found for subscription ${subscriptionId}`);
     }
 
+    // Import BookingModel for availability check
+    const BookingModel = (await import('../models/booking.model')).default;
+
+    // Check if the slot is available (check for existing bookings that might conflict)
+    // We exclude this subscription from the recurring check since we're creating a booking for it
+    const availabilityCheck = await BookingModel.checkFullAvailability(
+      subscription.fieldId,
+      bookingDate,
+      subscription.startTime,
+      subscription.endTime,
+      undefined, // No booking to exclude
+      subscription.id // Exclude this subscription from recurring check
+    );
+
+    if (!availabilityCheck.available) {
+      console.log(`⚠️ Slot conflict for subscription ${subscriptionId} on ${bookingDate.toISOString().split('T')[0]}: ${availabilityCheck.reason}`);
+      throw new Error(`Slot not available: ${availabilityCheck.reason}`);
+    }
+
     // Calculate price based on field duration
     const { field } = subscription;
     const pricePerUnit = field.price || 0;
@@ -698,16 +717,28 @@ export class SubscriptionService {
       throw new Error('Subscription not found');
     }
 
-    // Cancel in Stripe
-    const stripeSubscription = await stripe.subscriptions.update(
-      subscription.stripeSubscriptionId,
-      {
-        cancel_at_period_end: !cancelImmediately
-      }
-    );
+    // Only call Stripe API if it's an actual Stripe subscription (starts with 'sub_')
+    // Fieldsy uses a custom recurring booking system with individual payment intents,
+    // not Stripe's subscription product. The stripeSubscriptionId field may contain a payment intent ID.
+    if (subscription.stripeSubscriptionId && subscription.stripeSubscriptionId.startsWith('sub_')) {
+      try {
+        await stripe.subscriptions.update(
+          subscription.stripeSubscriptionId,
+          {
+            cancel_at_period_end: !cancelImmediately
+          }
+        );
 
-    if (cancelImmediately) {
-      await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+        if (cancelImmediately) {
+          await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+        }
+      } catch (stripeError: any) {
+        console.error('Stripe subscription cancellation error:', stripeError);
+        // Continue with local cancellation even if Stripe fails
+      }
+    } else {
+      // This is a payment intent ID or custom recurring booking, handle locally only
+      console.log('Custom recurring booking (not Stripe subscription), handling cancellation locally');
     }
 
     // Update in database

@@ -647,11 +647,12 @@ model Subscription {
   canceledAt           DateTime? // When the subscription was canceled
 
   // Booking details
-  timeSlot     String // e.g., "8:00AM - 9:00AM"
+  timeSlot     String // e.g., "8:00AM - 9:00AM" (display only for multi-slot)
+  timeSlots    String[] @default([]) // Array of all time slots (for multi-slot bookings)
   dayOfWeek    String? // For weekly: Monday, Tuesday, etc.
   dayOfMonth   Int? // For monthly: 1-31
-  startTime    String // e.g., "08:00"
-  endTime      String // e.g., "09:00"
+  startTime    String // e.g., "08:00" (first slot start time)
+  endTime      String // e.g., "09:00" (first slot end time)
   numberOfDogs Int     @default(1)
   totalPrice   Float // Price per billing cycle
 

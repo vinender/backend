@@ -7,6 +7,7 @@ const router = Router();
 
 // Public routes to check availability
 router.get('/availability', bookingController.checkAvailability);
+router.get('/recurring-conflicts', bookingController.checkRecurringConflicts);
 router.get('/fields/:fieldId/slot-availability', bookingController.getSlotAvailability);
 
 // All routes below require authentication
