@@ -7,6 +7,7 @@ import { OAuth2Client, TokenPayload } from 'google-auth-library';
  * Verifies Google ID tokens to prevent spoofing
  */
 
+
 interface GoogleUserInfo {
   email: string;
   emailVerified: boolean;
@@ -14,6 +15,7 @@ interface GoogleUserInfo {
   name?: string;
   picture?: string;
 }
+
 
 class GoogleSignInService {
   private webClientId: string;
@@ -63,10 +65,26 @@ class GoogleSignInService {
         this.androidClientId,
       ].filter(Boolean); // Remove empty strings
 
+      // Remove duplicates
+      const uniqueAudiences = [...new Set(validAudiences)];
+      console.log('   Valid audiences configured:', uniqueAudiences.map(a => a.substring(0, 30) + '...'));
+
+      // Decode token to see the audience (for debugging)
+      try {
+        const tokenParts = idToken.split('.');
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+          console.log(' Token audience (aud):', payload.aud);
+          console.log(' Token issuer (iss):', payload.iss);
+        }
+      } catch (decodeError) {
+        console.log('   Could not decode token for debugging');
+      }
+
       // Verify the token using Google's OAuth2Client
       const ticket = await this.client.verifyIdToken({
         idToken: idToken,
-        audience: validAudiences, // Accept tokens from any of our client IDs
+        audience: uniqueAudiences, // Accept tokens from any of our client IDs
       });
 
       const payload = ticket.getPayload();

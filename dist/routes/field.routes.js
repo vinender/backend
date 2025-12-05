@@ -42,10 +42,15 @@ router.post('/', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), fiel
 // Field management routes
 router
     .route('/:id')
+    .put((0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.updateField)
     .patch((0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.updateField)
     .delete((0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.deleteField);
 // Toggle field active status
 router.patch('/:id/toggle-status', (0, auth_middleware_1.restrictTo)('FIELD_OWNER', 'ADMIN'), field_controller_1.default.toggleFieldStatus);
+// Toggle field blocked status (admin only)
+router.patch('/:id/toggle-blocked', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.toggleFieldBlocked);
+// Toggle field approved status (admin only)
+router.patch('/:id/toggle-approved', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.toggleFieldApproved);
 // Admin approval routes
 router.get('/admin/pending-approval', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.getPendingFields);
 router.patch('/:fieldId/approve', (0, auth_middleware_1.restrictTo)('ADMIN'), field_controller_1.default.approveField);

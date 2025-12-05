@@ -345,7 +345,9 @@ export class SubscriptionService {
     }
 
     if (bookings.length === 0) {
-      throw new Error('No bookings could be created - all slots had conflicts');
+      // All slots had conflicts - don't throw error, return null to indicate skipped
+      console.log(`⚠️ All slots had conflicts for subscription ${subscriptionId} on ${bookingDate.toISOString().split('T')[0]} - skipping this occurrence`);
+      return null;
     }
 
     // Update subscription last booking date

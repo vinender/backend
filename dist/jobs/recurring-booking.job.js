@@ -209,6 +209,26 @@ async function createUpcomingRecurringBookings() {
                 // Create the booking for the next billing cycle
                 console.log(`✨ Creating booking for subscription ${subscription.id} on ${(0, date_fns_1.format)(nextBookingDate, 'PPP')}`);
                 const booking = await subscription_service_1.subscriptionService.createBookingFromSubscription(subscription.id, nextBookingDate);
+                // Check if booking was skipped due to slot conflict (returns null)
+                if (booking === null) {
+                    console.log(`⚠️ Slot conflict for subscription ${subscription.id} on ${(0, date_fns_1.format)(nextBookingDate, 'PPP')} - skipping and notifying user`);
+                    results.skipped++;
+                    // Notify user about the skipped booking
+                    await (0, notification_controller_1.createNotification)({
+                        userId: subscription.userId,
+                        type: 'recurring_booking_conflict',
+                        title: 'Recurring Booking Skipped',
+                        message: `Your ${subscription.interval} booking at ${subscription.field.name} on ${(0, date_fns_1.format)(nextBookingDate, 'PPP')} was skipped because the time slot is already booked.`,
+                        data: {
+                            subscriptionId: subscription.id,
+                            fieldName: subscription.field.name,
+                            bookingDate: nextBookingDate.toISOString(),
+                            timeSlot: subscription.timeSlot,
+                            isSlotConflict: true
+                        }
+                    });
+                    continue;
+                }
                 // Notify the user about the upcoming booking
                 await (0, notification_controller_1.createNotification)({
                     userId: subscription.userId,
@@ -496,19 +516,11 @@ async function checkPastBookingsAndCreateNext() {
                 // Create the next booking
                 console.log(`✨ Auto-creating next booking for subscription ${subscription.id} on ${(0, date_fns_1.format)(nextBookingDate, 'PPP')}`);
                 const newBooking = await subscription_service_1.subscriptionService.createBookingFromSubscription(subscription.id, nextBookingDate);
-                // NOTE: Notifications are sent by the daily job (createUpcomingRecurringBookings)
-                // to avoid duplicate notifications. This hourly job only creates bookings silently.
-                results.created++;
-                console.log(`✅ Created booking ${newBooking.id} for subscription ${subscription.id}`);
-            }
-            catch (error) {
-                const errorMessage = error.message || 'Unknown error';
-                const isSlotConflict = errorMessage.includes('Slot not available');
-                console.error(`❌ Failed to process subscription ${subscription.id}:`, error);
-                results.failed++;
-                // For slot conflicts in hourly job, notify user (since daily job might have missed this)
-                if (isSlotConflict) {
-                    console.log(`⚠️ Slot conflict for subscription ${subscription.id} - notifying user`);
+                // Check if booking was skipped due to slot conflict (returns null)
+                if (newBooking === null) {
+                    console.log(`⚠️ Slot conflict for subscription ${subscription.id} on ${(0, date_fns_1.format)(nextBookingDate, 'PPP')} - skipping and notifying user`);
+                    results.skipped++;
+                    // Notify user about the skipped booking
                     await (0, notification_controller_1.createNotification)({
                         userId: subscription.userId,
                         type: 'recurring_booking_conflict',
@@ -522,7 +534,16 @@ async function checkPastBookingsAndCreateNext() {
                             isSlotConflict: true
                         }
                     });
+                    continue;
                 }
+                // NOTE: Notifications are sent by the daily job (createUpcomingRecurringBookings)
+                // to avoid duplicate notifications. This hourly job only creates bookings silently.
+                results.created++;
+                console.log(`✅ Created booking ${newBooking.id} for subscription ${subscription.id}`);
+            }
+            catch (error) {
+                console.error(`❌ Failed to process subscription ${subscription.id}:`, error);
+                results.failed++;
             }
         }
     }

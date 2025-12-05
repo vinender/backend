@@ -163,13 +163,13 @@ model Field {
 
   // Approval status
   isApproved      Boolean   @default(false) // True when admin approves the field
-  approvalStatus  String    @default("PENDING") // PENDING, APPROVED, REJECTED
-  approvedAt      DateTime? // When the field was approved
-  approvedBy      String?   @db.ObjectId // Admin who approved the field
   rejectionReason String? // Reason for rejection if applicable
 
   // Field claim status
   isClaimed Boolean @default(false) // True when field is claimed by the owner
+
+  // Admin blocking status
+  isBlocked Boolean @default(false) // True when admin blocks the field (field won't appear in listings)
 
   // Owner information (denormalized for performance)
   ownerName String? // Owner's name (denormalized)

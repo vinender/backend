@@ -308,7 +308,15 @@ export const updateClaimStatus = asyncHandler(async (req: Request, res: Response
       `${claim.field.address}${claim.field.city ? ', ' + claim.field.city : ''}${claim.field.state ? ', ' + claim.field.state : ''}` :
       'Address not specified';
 
-    await emailService.sendFieldClaimStatusEmail({
+    // Log email sending attempt for debugging
+    console.log('📧 Sending claim status email to:', claim.email);
+    console.log('📧 Status:', status);
+    console.log('📧 Has credentials:', !!generatedPassword);
+    if (generatedPassword) {
+      console.log('📧 Generated password length:', generatedPassword.length);
+    }
+
+    const emailResult = await emailService.sendFieldClaimStatusEmail({
       email: claim.email,
       fullName: claim.fullName,
       fieldName: claim.field.name || 'Unnamed Field',
@@ -321,9 +329,12 @@ export const updateClaimStatus = asyncHandler(async (req: Request, res: Response
         password: generatedPassword
       } : undefined
     });
-  } catch (emailError) {
+
+    console.log('📧 Email send result:', emailResult ? 'SUCCESS' : 'FAILED');
+  } catch (emailError: any) {
     // Log error but don't fail the status update
-    console.error('Failed to send field claim status email:', emailError);
+    console.error('❌ Failed to send field claim status email:', emailError?.message || emailError);
+    console.error('❌ Full error:', JSON.stringify(emailError, null, 2));
   }
 
   res.json({

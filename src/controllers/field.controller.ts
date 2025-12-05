@@ -135,6 +135,7 @@ class FieldController {
       terrainType,
       fenceType,
       instantBooking,
+      availability,
       sortBy,
       sortOrder,
       page = 1,
@@ -148,6 +149,11 @@ class FieldController {
     // Parse amenities if it's a comma-separated string
     const amenitiesArray = amenities
       ? (amenities as string).split(',').map(a => a.trim())
+      : undefined;
+
+    // Parse availability if it's a comma-separated string (e.g., "Morning,Afternoon")
+    const availabilityArray = availability
+      ? (availability as string).split(',').map(a => a.trim())
       : undefined;
 
     const result = await FieldModel.findAll({
@@ -171,6 +177,7 @@ class FieldController {
       terrainType: terrainType as string,
       fenceType: fenceType as string,
       instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+      availability: availabilityArray,
       sortBy: sortBy as string,
       sortOrder: sortOrder as 'asc' | 'desc',
       skip,
@@ -219,6 +226,7 @@ class FieldController {
       terrainType,
       fenceType,
       instantBooking,
+      availability,
       sortBy,
       sortOrder,
       page = 1,
@@ -232,6 +240,11 @@ class FieldController {
     // Parse amenities if it's a comma-separated string
     const amenitiesArray = amenities
       ? (amenities as string).split(',').map(a => a.trim())
+      : undefined;
+
+    // Parse availability if it's a comma-separated string (e.g., "Morning,Afternoon")
+    const availabilityArray = availability
+      ? (availability as string).split(',').map(a => a.trim())
       : undefined;
 
     // This method already filters by isActive: true and isSubmitted: true
@@ -256,6 +269,7 @@ class FieldController {
       terrainType: terrainType as string,
       fenceType: fenceType as string,
       instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+      availability: availabilityArray,
       sortBy: sortBy as string,
       sortOrder: sortOrder as 'asc' | 'desc',
       skip,
@@ -642,6 +656,121 @@ class FieldController {
     res.json({
       success: true,
       message: `Field ${updatedField.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: enrichedField,
+    });
+  });
+
+  // Toggle field blocked status (admin only)
+  toggleFieldBlocked = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const userRole = (req as any).user.role;
+
+    // Only admin can block/unblock fields
+    if (userRole !== 'ADMIN') {
+      throw new AppError('Only admin can block or unblock fields', 403);
+    }
+
+    // Check if field exists
+    const field = await FieldModel.findById(id);
+    if (!field) {
+      throw new AppError('Field not found', 404);
+    }
+
+    const updatedField = await FieldModel.toggleBlocked(id);
+
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(updatedField);
+
+    res.json({
+      success: true,
+      message: `Field ${updatedField.isBlocked ? 'blocked' : 'unblocked'} successfully`,
+      data: enrichedField,
+    });
+  });
+
+  // Toggle field approved status (admin only)
+  toggleFieldApproved = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const adminId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    // Only admin can approve/unapprove fields
+    if (userRole !== 'ADMIN') {
+      throw new AppError('Only admin can approve or unapprove fields', 403);
+    }
+
+    // Check if field exists
+    const field = await prisma.field.findUnique({
+      where: { id },
+      include: { owner: true }
+    });
+
+    if (!field) {
+      throw new AppError('Field not found', 404);
+    }
+
+    // Only allow approving fields that have been submitted
+    if (!field.isSubmitted && !field.isApproved) {
+      throw new AppError('Cannot approve a field that has not been submitted for review', 400);
+    }
+
+    const newApprovedStatus = !field.isApproved;
+
+    // Update the field
+    const updatedField = await prisma.field.update({
+      where: { id },
+      data: {
+        isApproved: newApprovedStatus,
+        isActive: newApprovedStatus ? field.isActive : false // Deactivate if unapproved
+      }
+    });
+
+    // Create notification for field owner
+    await prisma.notification.create({
+      data: {
+        userId: field.ownerId,
+        type: newApprovedStatus ? 'field_approved' : 'field_unapproved',
+        title: newApprovedStatus ? 'Field Approved!' : 'Field Approval Revoked',
+        message: newApprovedStatus
+          ? `Your field "${field.name}" has been approved and is now live on Fieldsy.`
+          : `Your field "${field.name}" approval has been revoked and is no longer visible on Fieldsy.`,
+        data: {
+          fieldId: field.id,
+          fieldName: field.name
+        }
+      }
+    });
+
+    // Send email notification if approved
+    if (newApprovedStatus) {
+      try {
+        const { emailService } = await import('../services/email.service');
+
+        let fieldAddress = '';
+        if (field.location && typeof field.location === 'object') {
+          const loc = field.location as any;
+          fieldAddress = loc.formatted_address || loc.streetAddress || field.address || '';
+        } else {
+          fieldAddress = field.address || '';
+        }
+
+        await emailService.sendFieldApprovalEmail({
+          email: field.owner.email,
+          ownerName: field.owner.name || field.owner.email,
+          fieldName: field.name || 'Your Field',
+          fieldAddress: fieldAddress
+        });
+      } catch (emailError) {
+        console.error('Failed to send approval email:', emailError);
+      }
+    }
+
+    // Enrich field with full amenity objects
+    const enrichedField = await enrichFieldWithAmenities(updatedField);
+
+    res.json({
+      success: true,
+      message: `Field ${newApprovedStatus ? 'approved' : 'unapproved'} successfully`,
       data: enrichedField,
     });
   });
@@ -1580,9 +1709,20 @@ class FieldController {
     const { page = 1, limit = 12 } = req.query;
 
     try {
-      // Get platform commission rate from system settings
-      const systemSettings = await prisma.systemSettings.findFirst();
-      const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+      // Get default platform commission rate and check for custom commission for this field owner
+      const [systemSettings, ownerUser] = await Promise.all([
+        prisma.systemSettings.findFirst(),
+        prisma.user.findUnique({
+          where: { id: ownerId },
+          select: { commissionRate: true }
+        })
+      ]);
+
+      const defaultCommissionRate = systemSettings?.defaultCommissionRate || 20;
+      // Check if admin has set a custom commission for this field owner
+      const hasCustomCommission = ownerUser?.commissionRate !== null && ownerUser?.commissionRate !== undefined;
+      // Use custom rate if set, otherwise use default platform rate
+      const effectiveCommissionRate = hasCustomCommission ? ownerUser!.commissionRate! : defaultCommissionRate;
 
       // First get all owner's fields
       const fields = await FieldModel.findByOwner(ownerId);
@@ -1657,8 +1797,8 @@ class FieldController {
         // Calculate Stripe fee (1.5% + 20p)
         const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
         const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
-        // Platform fee (admin commission) - what Fieldsy takes
-        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+        // Platform fee (admin commission) - what Fieldsy takes (uses custom rate if set by admin)
+        const platformFee = Math.round((amountAfterStripeFee * effectiveCommissionRate) / 100 * 100) / 100;
         // Field owner earnings - remainder after Stripe and platform fees
         const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
 
@@ -1682,7 +1822,9 @@ class FieldController {
           notes: booking.notes || null,
           rescheduleCount: booking.rescheduleCount || 0,
           // Fee breakdown
-          platformCommissionRate,
+          platformCommissionRate: effectiveCommissionRate,
+          isCustomCommission: hasCustomCommission,
+          defaultCommissionRate,
           stripeFee,
           amountAfterStripeFee,
           fieldOwnerEarnings,
@@ -1728,9 +1870,20 @@ class FieldController {
     const { page = 1, limit = 12 } = req.query;
 
     try {
-      // Get platform commission rate from system settings
-      const systemSettings = await prisma.systemSettings.findFirst();
-      const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+      // Get default platform commission rate and check for custom commission for this field owner
+      const [systemSettings, ownerUser] = await Promise.all([
+        prisma.systemSettings.findFirst(),
+        prisma.user.findUnique({
+          where: { id: ownerId },
+          select: { commissionRate: true }
+        })
+      ]);
+
+      const defaultCommissionRate = systemSettings?.defaultCommissionRate || 20;
+      // Check if admin has set a custom commission for this field owner
+      const hasCustomCommission = ownerUser?.commissionRate !== null && ownerUser?.commissionRate !== undefined;
+      // Use custom rate if set, otherwise use default platform rate
+      const effectiveCommissionRate = hasCustomCommission ? ownerUser!.commissionRate! : defaultCommissionRate;
 
       // First get all owner's fields
       const fields = await FieldModel.findByOwner(ownerId);
@@ -1813,8 +1966,8 @@ class FieldController {
         // Calculate Stripe fee (1.5% + 20p)
         const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
         const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
-        // Platform fee (admin commission) - what Fieldsy takes
-        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+        // Platform fee (admin commission) - what Fieldsy takes (uses custom rate if set by admin)
+        const platformFee = Math.round((amountAfterStripeFee * effectiveCommissionRate) / 100 * 100) / 100;
         // Field owner earnings - remainder after Stripe and platform fees
         const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
 
@@ -1838,7 +1991,9 @@ class FieldController {
           notes: booking.notes || null,
           rescheduleCount: booking.rescheduleCount || 0,
           // Fee breakdown
-          platformCommissionRate,
+          platformCommissionRate: effectiveCommissionRate,
+          isCustomCommission: hasCustomCommission,
+          defaultCommissionRate,
           stripeFee,
           amountAfterStripeFee,
           fieldOwnerEarnings,
@@ -1884,9 +2039,20 @@ class FieldController {
     const { page = 1, limit = 12 } = req.query;
 
     try {
-      // Get platform commission rate from system settings
-      const systemSettings = await prisma.systemSettings.findFirst();
-      const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+      // Get default platform commission rate and check for custom commission for this field owner
+      const [systemSettings, ownerUser] = await Promise.all([
+        prisma.systemSettings.findFirst(),
+        prisma.user.findUnique({
+          where: { id: ownerId },
+          select: { commissionRate: true }
+        })
+      ]);
+
+      const defaultCommissionRate = systemSettings?.defaultCommissionRate || 20;
+      // Check if admin has set a custom commission for this field owner
+      const hasCustomCommission = ownerUser?.commissionRate !== null && ownerUser?.commissionRate !== undefined;
+      // Use custom rate if set, otherwise use default platform rate
+      const effectiveCommissionRate = hasCustomCommission ? ownerUser!.commissionRate! : defaultCommissionRate;
 
       // First get all owner's fields
       const fields = await FieldModel.findByOwner(ownerId);
@@ -1970,8 +2136,8 @@ class FieldController {
         // Calculate Stripe fee (1.5% + 20p)
         const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
         const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
-        // Platform fee (admin commission) - what Fieldsy takes
-        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+        // Platform fee (admin commission) - what Fieldsy takes, using effective rate (custom or default)
+        const platformFee = Math.round((amountAfterStripeFee * effectiveCommissionRate) / 100 * 100) / 100;
         // Field owner earnings - remainder after Stripe and platform fees
         const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
 
@@ -1995,7 +2161,9 @@ class FieldController {
           notes: booking.notes || null,
           rescheduleCount: booking.rescheduleCount || 0,
           // Fee breakdown
-          platformCommissionRate,
+          platformCommissionRate: effectiveCommissionRate,
+          isCustomCommission: hasCustomCommission,
+          defaultCommissionRate,
           stripeFee,
           amountAfterStripeFee,
           fieldOwnerEarnings,
@@ -2224,9 +2392,6 @@ class FieldController {
       where: { id: fieldId },
       data: {
         isApproved: true,
-        approvalStatus: 'APPROVED',
-        approvedAt: new Date(),
-        approvedBy: adminId,
         isActive: true // Make field active when approved
       }
     });
@@ -2262,8 +2427,7 @@ class FieldController {
         email: field.owner.email,
         ownerName: field.owner.name || field.owner.email,
         fieldName: field.name || 'Your Field',
-        fieldAddress: fieldAddress,
-        approvedAt: new Date()
+        fieldAddress: fieldAddress
       });
     } catch (emailError) {
       console.error('Failed to send approval email:', emailError);
@@ -2306,7 +2470,6 @@ class FieldController {
       where: { id: fieldId },
       data: {
         isApproved: false,
-        approvalStatus: 'REJECTED',
         rejectionReason: rejectionReason || 'Field did not meet our approval criteria',
         isActive: false // Deactivate rejected fields
       }
@@ -2352,7 +2515,7 @@ class FieldController {
       prisma.field.findMany({
         where: {
           isSubmitted: true,
-          approvalStatus: 'PENDING'
+          isApproved: false
         },
         include: {
           owner: {
@@ -2373,7 +2536,7 @@ class FieldController {
       prisma.field.count({
         where: {
           isSubmitted: true,
-          approvalStatus: 'PENDING'
+          isApproved: false
         }
       })
     ]);

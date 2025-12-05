@@ -46,11 +46,18 @@ router.post('/', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.createField
 // Field management routes
 router
   .route('/:id')
+  .put(restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.updateField)
   .patch(restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.updateField)
   .delete(restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.deleteField);
 
 // Toggle field active status
 router.patch('/:id/toggle-status', restrictTo('FIELD_OWNER', 'ADMIN'), fieldController.toggleFieldStatus);
+
+// Toggle field blocked status (admin only)
+router.patch('/:id/toggle-blocked', restrictTo('ADMIN'), fieldController.toggleFieldBlocked);
+
+// Toggle field approved status (admin only)
+router.patch('/:id/toggle-approved', restrictTo('ADMIN'), fieldController.toggleFieldApproved);
 
 // Admin approval routes
 router.get('/admin/pending-approval', restrictTo('ADMIN'), fieldController.getPendingFields);

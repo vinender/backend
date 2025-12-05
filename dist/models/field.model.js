@@ -160,7 +160,6 @@ class FieldModel {
                     ownerId: true,
                     averageRating: true,
                     totalReviews: true,
-                    approvalStatus: true,
                     isApproved: true,
                     isSubmitted: true,
                     createdAt: true,
@@ -222,7 +221,6 @@ class FieldModel {
                     ownerId: true,
                     averageRating: true,
                     totalReviews: true,
-                    approvalStatus: true,
                     isApproved: true,
                     isSubmitted: true,
                     createdAt: true,
@@ -242,6 +240,9 @@ class FieldModel {
         const whereClause = {
             isActive: true,
             isSubmitted: true,
+            isApproved: true, // Field must be approved by admin
+            // Filter out admin-blocked fields (NOT true includes false and unset/null)
+            NOT: { isBlocked: true }
         };
         // Exclude fields from blocked field owners (if isBlocked field exists in DB)
         try {
@@ -392,6 +393,70 @@ class FieldModel {
             whereClause.operatingDays = {
                 has: dayOfWeek,
             };
+        }
+        // Availability time filter (Morning, Afternoon, Evening)
+        // Morning: 6:00 AM - 12:00 PM (fields that open before or at 12:00)
+        // Afternoon: 12:00 PM - 5:00 PM (fields open during afternoon hours)
+        // Evening: 5:00 PM onwards (fields that close at or after 17:00)
+        if (where.availability && where.availability.length > 0) {
+            const availabilityConditions = [];
+            // Helper to convert time string to minutes for comparison
+            const timeToMinutes = (timeStr) => {
+                if (!timeStr)
+                    return 0;
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return hours * 60 + (minutes || 0);
+            };
+            for (const slot of where.availability) {
+                if (slot.toLowerCase() === 'morning') {
+                    // Morning: Fields that have opening time before or at 12:00 (noon)
+                    // This means the field is open during at least part of the morning
+                    availabilityConditions.push({
+                        OR: [
+                            { openingTime: { lte: '12:00' } },
+                            { openingTime: null } // Include fields without set times (assume available)
+                        ]
+                    });
+                }
+                else if (slot.toLowerCase() === 'afternoon') {
+                    // Afternoon: Fields that are open during 12:00 PM - 5:00 PM
+                    // Opening time should be before 17:00 AND closing time should be after 12:00
+                    availabilityConditions.push({
+                        AND: [
+                            {
+                                OR: [
+                                    { openingTime: { lt: '17:00' } },
+                                    { openingTime: null }
+                                ]
+                            },
+                            {
+                                OR: [
+                                    { closingTime: { gt: '12:00' } },
+                                    { closingTime: null }
+                                ]
+                            }
+                        ]
+                    });
+                }
+                else if (slot.toLowerCase() === 'evening') {
+                    // Evening: Fields that close at or after 17:00
+                    availabilityConditions.push({
+                        OR: [
+                            { closingTime: { gte: '17:00' } },
+                            { closingTime: null } // Include fields without set times
+                        ]
+                    });
+                }
+            }
+            if (availabilityConditions.length > 0) {
+                // Use OR to match any of the selected time slots
+                if (whereClause.AND) {
+                    whereClause.AND.push({ OR: availabilityConditions });
+                }
+                else {
+                    whereClause.AND = [{ OR: availabilityConditions }];
+                }
+            }
         }
         // Get total count for pagination
         // Only select fields needed for field cards to optimize response size
@@ -680,11 +745,25 @@ class FieldModel {
             data: { isActive: !field?.isActive },
         });
     }
+    // Toggle field blocked status (admin only)
+    async toggleBlocked(id) {
+        const field = await database_1.default.field.findUnique({
+            where: { id },
+            select: { isBlocked: true },
+        });
+        return database_1.default.field.update({
+            where: { id },
+            data: { isBlocked: !field?.isBlocked },
+        });
+    }
     // Get field suggestions for autocomplete
     async getSuggestions(query) {
         const whereClause = {
             isActive: true,
             isSubmitted: true,
+            isApproved: true, // Field must be approved by admin
+            // Filter out admin-blocked fields (NOT true includes false and unset/null)
+            NOT: { isBlocked: true }
         };
         // Check if query might be a UK postcode
         const isPostcode = (0, postcode_utils_1.isValidUKPostcode)(query) || (0, postcode_utils_1.isPartialPostcode)(query);
@@ -761,6 +840,8 @@ class FieldModel {
                 filter: {
                     isActive: true,
                     isSubmitted: true,
+                    isApproved: true, // Field must be approved by admin
+                    isBlocked: { $ne: true }, // Filter out admin-blocked fields
                     location: {
                         $near: {
                             $geometry: {
@@ -835,6 +916,9 @@ class FieldModel {
             where: {
                 isActive: true,
                 isSubmitted: true,
+                isApproved: true, // Field must be approved by admin
+                // Filter out admin-blocked fields (NOT true includes false and unset/null)
+                NOT: { isBlocked: true }
             },
             select: {
                 id: true,

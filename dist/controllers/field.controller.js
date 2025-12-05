@@ -132,13 +132,17 @@ class FieldController {
     });
     // Get all fields with filters and pagination (admin - includes all fields)
     getAllFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
-        const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
+        const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, availability, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
         const pageNum = Number(page);
         const limitNum = Number(limit);
         const skip = (pageNum - 1) * limitNum;
         // Parse amenities if it's a comma-separated string
         const amenitiesArray = amenities
             ? amenities.split(',').map(a => a.trim())
+            : undefined;
+        // Parse availability if it's a comma-separated string (e.g., "Morning,Afternoon")
+        const availabilityArray = availability
+            ? availability.split(',').map(a => a.trim())
             : undefined;
         const result = await field_model_1.default.findAll({
             search: search,
@@ -161,6 +165,7 @@ class FieldController {
             terrainType: terrainType,
             fenceType: fenceType,
             instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+            availability: availabilityArray,
             sortBy: sortBy,
             sortOrder: sortOrder,
             skip,
@@ -184,13 +189,17 @@ class FieldController {
     });
     // Get active fields only (public - for field listing/search)
     getActiveFields = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
-        const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
+        const { search, zipCode, lat, lng, city, state, type, minPrice, maxPrice, amenities, minRating, maxDistance, date, startTime, endTime, numberOfDogs, size, terrainType, fenceType, instantBooking, availability, sortBy, sortOrder, page = 1, limit = 10, } = req.query;
         const pageNum = Number(page);
         const limitNum = Number(limit);
         const skip = (pageNum - 1) * limitNum;
         // Parse amenities if it's a comma-separated string
         const amenitiesArray = amenities
             ? amenities.split(',').map(a => a.trim())
+            : undefined;
+        // Parse availability if it's a comma-separated string (e.g., "Morning,Afternoon")
+        const availabilityArray = availability
+            ? availability.split(',').map(a => a.trim())
             : undefined;
         // This method already filters by isActive: true and isSubmitted: true
         const result = await field_model_1.default.findAll({
@@ -214,6 +223,7 @@ class FieldController {
             terrainType: terrainType,
             fenceType: fenceType,
             instantBooking: instantBooking === 'true' ? true : instantBooking === 'false' ? false : undefined,
+            availability: availabilityArray,
             sortBy: sortBy,
             sortOrder: sortOrder,
             skip,
@@ -531,6 +541,104 @@ class FieldController {
         res.json({
             success: true,
             message: `Field ${updatedField.isActive ? 'activated' : 'deactivated'} successfully`,
+            data: enrichedField,
+        });
+    });
+    // Toggle field blocked status (admin only)
+    toggleFieldBlocked = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const { id } = req.params;
+        const userRole = req.user.role;
+        // Only admin can block/unblock fields
+        if (userRole !== 'ADMIN') {
+            throw new AppError_1.AppError('Only admin can block or unblock fields', 403);
+        }
+        // Check if field exists
+        const field = await field_model_1.default.findById(id);
+        if (!field) {
+            throw new AppError_1.AppError('Field not found', 404);
+        }
+        const updatedField = await field_model_1.default.toggleBlocked(id);
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(updatedField);
+        res.json({
+            success: true,
+            message: `Field ${updatedField.isBlocked ? 'blocked' : 'unblocked'} successfully`,
+            data: enrichedField,
+        });
+    });
+    // Toggle field approved status (admin only)
+    toggleFieldApproved = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
+        const { id } = req.params;
+        const adminId = req.user.id;
+        const userRole = req.user.role;
+        // Only admin can approve/unapprove fields
+        if (userRole !== 'ADMIN') {
+            throw new AppError_1.AppError('Only admin can approve or unapprove fields', 403);
+        }
+        // Check if field exists
+        const field = await database_1.default.field.findUnique({
+            where: { id },
+            include: { owner: true }
+        });
+        if (!field) {
+            throw new AppError_1.AppError('Field not found', 404);
+        }
+        // Only allow approving fields that have been submitted
+        if (!field.isSubmitted && !field.isApproved) {
+            throw new AppError_1.AppError('Cannot approve a field that has not been submitted for review', 400);
+        }
+        const newApprovedStatus = !field.isApproved;
+        // Update the field
+        const updatedField = await database_1.default.field.update({
+            where: { id },
+            data: {
+                isApproved: newApprovedStatus,
+                isActive: newApprovedStatus ? field.isActive : false // Deactivate if unapproved
+            }
+        });
+        // Create notification for field owner
+        await database_1.default.notification.create({
+            data: {
+                userId: field.ownerId,
+                type: newApprovedStatus ? 'field_approved' : 'field_unapproved',
+                title: newApprovedStatus ? 'Field Approved!' : 'Field Approval Revoked',
+                message: newApprovedStatus
+                    ? `Your field "${field.name}" has been approved and is now live on Fieldsy.`
+                    : `Your field "${field.name}" approval has been revoked and is no longer visible on Fieldsy.`,
+                data: {
+                    fieldId: field.id,
+                    fieldName: field.name
+                }
+            }
+        });
+        // Send email notification if approved
+        if (newApprovedStatus) {
+            try {
+                const { emailService } = await Promise.resolve().then(() => __importStar(require('../services/email.service')));
+                let fieldAddress = '';
+                if (field.location && typeof field.location === 'object') {
+                    const loc = field.location;
+                    fieldAddress = loc.formatted_address || loc.streetAddress || field.address || '';
+                }
+                else {
+                    fieldAddress = field.address || '';
+                }
+                await emailService.sendFieldApprovalEmail({
+                    email: field.owner.email,
+                    ownerName: field.owner.name || field.owner.email,
+                    fieldName: field.name || 'Your Field',
+                    fieldAddress: fieldAddress
+                });
+            }
+            catch (emailError) {
+                console.error('Failed to send approval email:', emailError);
+            }
+        }
+        // Enrich field with full amenity objects
+        const enrichedField = await (0, amenity_utils_1.enrichFieldWithAmenities)(updatedField);
+        res.json({
+            success: true,
+            message: `Field ${newApprovedStatus ? 'approved' : 'unapproved'} successfully`,
             data: enrichedField,
         });
     });
@@ -1360,9 +1468,19 @@ class FieldController {
         const ownerId = req.user.id;
         const { page = 1, limit = 12 } = req.query;
         try {
-            // Get platform commission rate from system settings
-            const systemSettings = await database_1.default.systemSettings.findFirst();
-            const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+            // Get default platform commission rate and check for custom commission for this field owner
+            const [systemSettings, ownerUser] = await Promise.all([
+                database_1.default.systemSettings.findFirst(),
+                database_1.default.user.findUnique({
+                    where: { id: ownerId },
+                    select: { commissionRate: true }
+                })
+            ]);
+            const defaultCommissionRate = systemSettings?.defaultCommissionRate || 20;
+            // Check if admin has set a custom commission for this field owner
+            const hasCustomCommission = ownerUser?.commissionRate !== null && ownerUser?.commissionRate !== undefined;
+            // Use custom rate if set, otherwise use default platform rate
+            const effectiveCommissionRate = hasCustomCommission ? ownerUser.commissionRate : defaultCommissionRate;
             // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
@@ -1428,8 +1546,8 @@ class FieldController {
                 // Calculate Stripe fee (1.5% + 20p)
                 const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
                 const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
-                // Platform fee (admin commission) - what Fieldsy takes
-                const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+                // Platform fee (admin commission) - what Fieldsy takes (uses custom rate if set by admin)
+                const platformFee = Math.round((amountAfterStripeFee * effectiveCommissionRate) / 100 * 100) / 100;
                 // Field owner earnings - remainder after Stripe and platform fees
                 const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
                 return {
@@ -1452,7 +1570,9 @@ class FieldController {
                     notes: booking.notes || null,
                     rescheduleCount: booking.rescheduleCount || 0,
                     // Fee breakdown
-                    platformCommissionRate,
+                    platformCommissionRate: effectiveCommissionRate,
+                    isCustomCommission: hasCustomCommission,
+                    defaultCommissionRate,
                     stripeFee,
                     amountAfterStripeFee,
                     fieldOwnerEarnings,
@@ -1496,9 +1616,19 @@ class FieldController {
         const ownerId = req.user.id;
         const { page = 1, limit = 12 } = req.query;
         try {
-            // Get platform commission rate from system settings
-            const systemSettings = await database_1.default.systemSettings.findFirst();
-            const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+            // Get default platform commission rate and check for custom commission for this field owner
+            const [systemSettings, ownerUser] = await Promise.all([
+                database_1.default.systemSettings.findFirst(),
+                database_1.default.user.findUnique({
+                    where: { id: ownerId },
+                    select: { commissionRate: true }
+                })
+            ]);
+            const defaultCommissionRate = systemSettings?.defaultCommissionRate || 20;
+            // Check if admin has set a custom commission for this field owner
+            const hasCustomCommission = ownerUser?.commissionRate !== null && ownerUser?.commissionRate !== undefined;
+            // Use custom rate if set, otherwise use default platform rate
+            const effectiveCommissionRate = hasCustomCommission ? ownerUser.commissionRate : defaultCommissionRate;
             // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
@@ -1572,8 +1702,8 @@ class FieldController {
                 // Calculate Stripe fee (1.5% + 20p)
                 const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
                 const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
-                // Platform fee (admin commission) - what Fieldsy takes
-                const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+                // Platform fee (admin commission) - what Fieldsy takes (uses custom rate if set by admin)
+                const platformFee = Math.round((amountAfterStripeFee * effectiveCommissionRate) / 100 * 100) / 100;
                 // Field owner earnings - remainder after Stripe and platform fees
                 const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
                 return {
@@ -1596,7 +1726,9 @@ class FieldController {
                     notes: booking.notes || null,
                     rescheduleCount: booking.rescheduleCount || 0,
                     // Fee breakdown
-                    platformCommissionRate,
+                    platformCommissionRate: effectiveCommissionRate,
+                    isCustomCommission: hasCustomCommission,
+                    defaultCommissionRate,
                     stripeFee,
                     amountAfterStripeFee,
                     fieldOwnerEarnings,
@@ -1640,9 +1772,19 @@ class FieldController {
         const ownerId = req.user.id;
         const { page = 1, limit = 12 } = req.query;
         try {
-            // Get platform commission rate from system settings
-            const systemSettings = await database_1.default.systemSettings.findFirst();
-            const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+            // Get default platform commission rate and check for custom commission for this field owner
+            const [systemSettings, ownerUser] = await Promise.all([
+                database_1.default.systemSettings.findFirst(),
+                database_1.default.user.findUnique({
+                    where: { id: ownerId },
+                    select: { commissionRate: true }
+                })
+            ]);
+            const defaultCommissionRate = systemSettings?.defaultCommissionRate || 20;
+            // Check if admin has set a custom commission for this field owner
+            const hasCustomCommission = ownerUser?.commissionRate !== null && ownerUser?.commissionRate !== undefined;
+            // Use custom rate if set, otherwise use default platform rate
+            const effectiveCommissionRate = hasCustomCommission ? ownerUser.commissionRate : defaultCommissionRate;
             // First get all owner's fields
             const fields = await field_model_1.default.findByOwner(ownerId);
             if (!fields || fields.length === 0) {
@@ -1716,8 +1858,8 @@ class FieldController {
                 // Calculate Stripe fee (1.5% + 20p)
                 const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
                 const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
-                // Platform fee (admin commission) - what Fieldsy takes
-                const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+                // Platform fee (admin commission) - what Fieldsy takes, using effective rate (custom or default)
+                const platformFee = Math.round((amountAfterStripeFee * effectiveCommissionRate) / 100 * 100) / 100;
                 // Field owner earnings - remainder after Stripe and platform fees
                 const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
                 return {
@@ -1740,7 +1882,9 @@ class FieldController {
                     notes: booking.notes || null,
                     rescheduleCount: booking.rescheduleCount || 0,
                     // Fee breakdown
-                    platformCommissionRate,
+                    platformCommissionRate: effectiveCommissionRate,
+                    isCustomCommission: hasCustomCommission,
+                    defaultCommissionRate,
                     stripeFee,
                     amountAfterStripeFee,
                     fieldOwnerEarnings,
@@ -1947,9 +2091,6 @@ class FieldController {
             where: { id: fieldId },
             data: {
                 isApproved: true,
-                approvalStatus: 'APPROVED',
-                approvedAt: new Date(),
-                approvedBy: adminId,
                 isActive: true // Make field active when approved
             }
         });
@@ -1982,8 +2123,7 @@ class FieldController {
                 email: field.owner.email,
                 ownerName: field.owner.name || field.owner.email,
                 fieldName: field.name || 'Your Field',
-                fieldAddress: fieldAddress,
-                approvedAt: new Date()
+                fieldAddress: fieldAddress
             });
         }
         catch (emailError) {
@@ -2021,7 +2161,6 @@ class FieldController {
             where: { id: fieldId },
             data: {
                 isApproved: false,
-                approvalStatus: 'REJECTED',
                 rejectionReason: rejectionReason || 'Field did not meet our approval criteria',
                 isActive: false // Deactivate rejected fields
             }
@@ -2061,7 +2200,7 @@ class FieldController {
             database_1.default.field.findMany({
                 where: {
                     isSubmitted: true,
-                    approvalStatus: 'PENDING'
+                    isApproved: false
                 },
                 include: {
                     owner: {
@@ -2082,7 +2221,7 @@ class FieldController {
             database_1.default.field.count({
                 where: {
                     isSubmitted: true,
-                    approvalStatus: 'PENDING'
+                    isApproved: false
                 }
             })
         ]);

@@ -1017,7 +1017,7 @@ const getFieldSubmissionTemplate = (data) => {
   `;
 };
 const getFieldApprovalTemplate = (data) => {
-    const formattedDate = new Date(data.approvedAt).toLocaleDateString('en-US', {
+    const formattedDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -1676,24 +1676,36 @@ const getRecurringBookingCreatedTemplateFieldOwner = (data) => {
 // Email service class
 class EmailService {
     async sendMail(to, subject, html) {
+        console.log('📧 [sendMail] Starting...');
+        console.log('📧 [sendMail] Transporter configured:', !!transporter);
+        console.log('📧 [sendMail] To:', to);
+        console.log('📧 [sendMail] Subject:', subject);
+        console.log('📧 [sendMail] From:', EMAIL_FROM);
         if (!transporter) {
-            console.warn(`⚠️ Email service disabled. OTP for ${to}: ${html.match(/\d{6}/)}`);
-            console.warn('Configure EMAIL_USER and EMAIL_PASS in .env to enable email sending');
+            console.warn(`⚠️ Email service disabled. Transporter is null.`);
+            console.warn('Configure SMTP_USER/EMAIL_USER and SMTP_PASS/EMAIL_PASS in .env to enable email sending');
+            console.warn(`Email that would have been sent to: ${to}`);
+            console.warn(`Subject: ${subject}`);
             return false;
         }
         try {
+            console.log('📧 [sendMail] Sending email via SMTP...');
             const info = await transporter.sendMail({
                 from: EMAIL_FROM,
                 to,
                 subject,
                 html,
             });
-            console.log('✅ Email sent successfully:', info.messageId);
+            console.log('✅ Email sent successfully!');
+            console.log('✅ Message ID:', info.messageId);
+            console.log('✅ Response:', info.response);
             return true;
         }
         catch (error) {
             console.error('❌ Failed to send email:', error.message);
-            throw new Error('Failed to send email');
+            console.error('❌ Error code:', error.code);
+            console.error('❌ Error command:', error.command);
+            throw new Error(`Failed to send email: ${error.message}`);
         }
     }
     async sendOtpEmail(email, otp, type, name) {
@@ -1730,6 +1742,12 @@ class EmailService {
     async sendFieldClaimStatusEmail(statusData) {
         const statusText = statusData.status === 'APPROVED' ? 'Approved' : 'Rejected';
         const subject = `Field Claim ${statusText} - Fieldsy`;
+        // Log the email data for debugging
+        console.log('📧 [sendFieldClaimStatusEmail] Preparing email...');
+        console.log('📧 To:', statusData.email);
+        console.log('📧 Subject:', subject);
+        console.log('📧 Status:', statusData.status);
+        console.log('📧 Has credentials:', !!statusData.credentials);
         const html = getFieldClaimStatusTemplate({
             fullName: statusData.fullName,
             fieldName: statusData.fieldName,
@@ -1740,14 +1758,15 @@ class EmailService {
             credentials: statusData.credentials
         });
         try {
+            console.log('📧 [sendFieldClaimStatusEmail] Calling sendMail...');
             const result = await this.sendMail(statusData.email, subject, html);
-            console.log(`✅ Field claim ${statusText.toLowerCase()} email sent to ${statusData.email}`);
+            console.log(`✅ Field claim ${statusText.toLowerCase()} email sent to ${statusData.email}, result:`, result);
             return result;
         }
         catch (error) {
-            console.error(`❌ Failed to send field claim status email to ${statusData.email}:`, error);
-            // Don't throw error to prevent status update from failing
-            return false;
+            console.error(`❌ Failed to send field claim status email to ${statusData.email}:`, error?.message || error);
+            // Re-throw to let the caller know about the failure
+            throw error;
         }
     }
     async sendBookingConfirmationToDogOwner(bookingData) {
@@ -1808,8 +1827,7 @@ class EmailService {
             ownerName: data.ownerName,
             ownerEmail: data.email,
             fieldName: data.fieldName,
-            fieldAddress: data.fieldAddress,
-            approvedAt: data.approvedAt
+            fieldAddress: data.fieldAddress
         });
         try {
             const result = await this.sendMail(data.email, subject, html);
