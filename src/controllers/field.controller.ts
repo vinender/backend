@@ -1580,6 +1580,10 @@ class FieldController {
     const { page = 1, limit = 12 } = req.query;
 
     try {
+      // Get platform commission rate from system settings
+      const systemSettings = await prisma.systemSettings.findFirst();
+      const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+
       // First get all owner's fields
       const fields = await FieldModel.findByOwner(ownerId);
 
@@ -1648,26 +1652,43 @@ class FieldController {
         })
       ]);
 
-      // Format bookings for frontend
-      const formattedBookings = bookings.map((booking: any) => ({
-        id: booking.id,
-        userId: booking.user.id,
-        userName: booking.user.name,
-        userAvatar: booking.user.image || booking.user.googleImage || null,
-        userEmail: booking.user.email,
-        userPhone: booking.user.phone,
-        time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: generateOrderId(booking.id),
-        status: booking.status.toLowerCase(),
-        frequency: formatRecurringFrequency(booking.repeatBooking),
-        dogs: booking.numberOfDogs || 1,
-        amount: booking.totalPrice,
-        date: booking.date.toISOString(),
-        fieldName: booking.field.name,
-        fieldAddress: `${booking.field.address}, ${booking.field.city}`,
-        notes: booking.notes || null,
-        rescheduleCount: booking.rescheduleCount || 0
-      }));
+      // Format bookings for frontend with fee breakdown
+      const formattedBookings = bookings.map((booking: any) => {
+        // Calculate Stripe fee (1.5% + 20p)
+        const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
+        const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
+        // Platform fee (admin commission) - what Fieldsy takes
+        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+        // Field owner earnings - remainder after Stripe and platform fees
+        const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
+
+        return {
+          id: booking.id,
+          userId: booking.user.id,
+          userName: booking.user.name,
+          userAvatar: booking.user.image || booking.user.googleImage || null,
+          userEmail: booking.user.email,
+          userPhone: booking.user.phone,
+          time: `${booking.startTime} - ${booking.endTime}`,
+          orderId: generateOrderId(booking.id),
+          status: booking.status.toLowerCase(),
+          frequency: formatRecurringFrequency(booking.repeatBooking),
+          dogs: booking.numberOfDogs || 1,
+          amount: booking.totalPrice,
+          date: booking.date.toISOString(),
+          fieldName: booking.field.name,
+          fieldId: booking.field.id,
+          fieldAddress: `${booking.field.address}, ${booking.field.city}`,
+          notes: booking.notes || null,
+          rescheduleCount: booking.rescheduleCount || 0,
+          // Fee breakdown
+          platformCommissionRate,
+          stripeFee,
+          amountAfterStripeFee,
+          fieldOwnerEarnings,
+          platformFee
+        };
+      });
 
       res.status(200).json({
         success: true,
@@ -1707,6 +1728,10 @@ class FieldController {
     const { page = 1, limit = 12 } = req.query;
 
     try {
+      // Get platform commission rate from system settings
+      const systemSettings = await prisma.systemSettings.findFirst();
+      const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+
       // First get all owner's fields
       const fields = await FieldModel.findByOwner(ownerId);
 
@@ -1783,26 +1808,43 @@ class FieldController {
         })
       ]);
 
-      // Format bookings for frontend
-      const formattedBookings = bookings.map((booking: any) => ({
-        id: booking.id,
-        userId: booking.user.id,
-        userName: booking.user.name,
-        userAvatar: booking.user.image || booking.user.googleImage || null,
-        userEmail: booking.user.email,
-        userPhone: booking.user.phone,
-        time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: generateOrderId(booking.id),
-        status: booking.status.toLowerCase(),
-        frequency: formatRecurringFrequency(booking.repeatBooking),
-        dogs: booking.numberOfDogs || 1,
-        amount: booking.totalPrice,
-        date: booking.date.toISOString(),
-        fieldName: booking.field.name,
-        fieldAddress: `${booking.field.address}, ${booking.field.city}`,
-        notes: booking.notes || null,
-        rescheduleCount: booking.rescheduleCount || 0
-      }));
+      // Format bookings for frontend with fee breakdown
+      const formattedBookings = bookings.map((booking: any) => {
+        // Calculate Stripe fee (1.5% + 20p)
+        const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
+        const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
+        // Platform fee (admin commission) - what Fieldsy takes
+        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+        // Field owner earnings - remainder after Stripe and platform fees
+        const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
+
+        return {
+          id: booking.id,
+          userId: booking.user.id,
+          userName: booking.user.name,
+          userAvatar: booking.user.image || booking.user.googleImage || null,
+          userEmail: booking.user.email,
+          userPhone: booking.user.phone,
+          time: `${booking.startTime} - ${booking.endTime}`,
+          orderId: generateOrderId(booking.id),
+          status: booking.status.toLowerCase(),
+          frequency: formatRecurringFrequency(booking.repeatBooking),
+          dogs: booking.numberOfDogs || 1,
+          amount: booking.totalPrice,
+          date: booking.date.toISOString(),
+          fieldName: booking.field.name,
+          fieldId: booking.field.id,
+          fieldAddress: `${booking.field.address}, ${booking.field.city}`,
+          notes: booking.notes || null,
+          rescheduleCount: booking.rescheduleCount || 0,
+          // Fee breakdown
+          platformCommissionRate,
+          stripeFee,
+          amountAfterStripeFee,
+          fieldOwnerEarnings,
+          platformFee
+        };
+      });
 
       res.status(200).json({
         success: true,
@@ -1842,6 +1884,10 @@ class FieldController {
     const { page = 1, limit = 12 } = req.query;
 
     try {
+      // Get platform commission rate from system settings
+      const systemSettings = await prisma.systemSettings.findFirst();
+      const platformCommissionRate = systemSettings?.defaultCommissionRate || 20; // Platform takes this percentage
+
       // First get all owner's fields
       const fields = await FieldModel.findByOwner(ownerId);
 
@@ -1919,26 +1965,43 @@ class FieldController {
         })
       ]);
 
-      // Format bookings for frontend
-      const formattedBookings = bookings.map((booking: any) => ({
-        id: booking.id,
-        userId: booking.user.id,
-        userName: booking.user.name,
-        userAvatar: booking.user.image || booking.user.googleImage || null,
-        userEmail: booking.user.email,
-        userPhone: booking.user.phone,
-        time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: generateOrderId(booking.id),
-        status: booking.status.toLowerCase(),
-        frequency: formatRecurringFrequency(booking.repeatBooking),
-        dogs: booking.numberOfDogs || 1,
-        amount: booking.totalPrice,
-        date: booking.date.toISOString(),
-        fieldName: booking.field.name,
-        fieldAddress: `${booking.field.address}, ${booking.field.city}`,
-        notes: booking.notes || null,
-        rescheduleCount: booking.rescheduleCount || 0
-      }));
+      // Format bookings for frontend with fee breakdown
+      const formattedBookings = bookings.map((booking: any) => {
+        // Calculate Stripe fee (1.5% + 20p)
+        const stripeFee = booking.totalPrice > 0 ? Math.round(((booking.totalPrice * 0.015) + 0.20) * 100) / 100 : 0;
+        const amountAfterStripeFee = Math.round((booking.totalPrice - stripeFee) * 100) / 100;
+        // Platform fee (admin commission) - what Fieldsy takes
+        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+        // Field owner earnings - remainder after Stripe and platform fees
+        const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
+
+        return {
+          id: booking.id,
+          userId: booking.user.id,
+          userName: booking.user.name,
+          userAvatar: booking.user.image || booking.user.googleImage || null,
+          userEmail: booking.user.email,
+          userPhone: booking.user.phone,
+          time: `${booking.startTime} - ${booking.endTime}`,
+          orderId: generateOrderId(booking.id),
+          status: booking.status.toLowerCase(),
+          frequency: formatRecurringFrequency(booking.repeatBooking),
+          dogs: booking.numberOfDogs || 1,
+          amount: booking.totalPrice,
+          date: booking.date.toISOString(),
+          fieldName: booking.field.name,
+          fieldId: booking.field.id,
+          fieldAddress: `${booking.field.address}, ${booking.field.city}`,
+          notes: booking.notes || null,
+          rescheduleCount: booking.rescheduleCount || 0,
+          // Fee breakdown
+          platformCommissionRate,
+          stripeFee,
+          amountAfterStripeFee,
+          fieldOwnerEarnings,
+          platformFee
+        };
+      });
 
       res.status(200).json({
         success: true,

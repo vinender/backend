@@ -1484,15 +1484,26 @@ router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, re
                         lifecycleStage = 'PAYMENT_RECEIVED';
                     }
                 }
+                // Calculate Stripe processing fee (approximately 1.5% + 20p for UK/EU cards)
+                const stripeFee = t.amount > 0 ? Math.round(((t.amount * 0.015) + 0.20) * 100) / 100 : 0;
+                const amountAfterStripeFee = Math.round((t.amount - stripeFee) * 100) / 100;
+                // Calculate platform fee and field owner earnings
+                // Commission rate = platform/admin fee percentage (what Fieldsy takes)
+                // Field owner receives the remainder after Stripe fees and platform commission
+                const platformCommissionRate = t.commissionRate || 20; // Default 20% platform fee
+                const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+                const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
                 return {
                     id: t.id,
                     type: t.type,
                     amount: t.amount,
-                    netAmount: t.netAmount,
-                    platformFee: t.platformFee,
-                    commissionRate: t.commissionRate,
-                    isCustomCommission: t.isCustomCommission,
-                    defaultCommissionRate: t.defaultCommissionRate,
+                    // Stripe fee and net after Stripe
+                    stripeFee,
+                    amountAfterStripeFee,
+                    // Platform fee and field owner earnings
+                    platformFee,
+                    fieldOwnerEarnings,
+                    commissionRate: platformCommissionRate,
                     status: t.status,
                     description: t.description,
                     stripePaymentIntentId: t.stripePaymentIntentId,
@@ -1682,19 +1693,27 @@ router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req
             const refundTransaction = allBookingTransactions.find((t) => t.type === 'REFUND');
             // Calculate Stripe processing fee estimate (approximately 1.5% + 20p for UK/EU cards)
             const grossAmount = transaction.amount;
-            const stripeProcessingFee = grossAmount > 0 ? (grossAmount * 0.015) + 0.20 : 0;
-            const amountAfterStripe = grossAmount - stripeProcessingFee;
+            const stripeProcessingFee = grossAmount > 0 ? Math.round(((grossAmount * 0.015) + 0.20) * 100) / 100 : 0;
+            const amountAfterStripe = Math.round((grossAmount - stripeProcessingFee) * 100) / 100;
+            // Calculate platform fee and field owner earnings
+            // Commission rate = platform/admin fee percentage (what Fieldsy takes)
+            // Field owner receives the remainder after Stripe fees and platform commission
+            const platformCommissionRate = transaction.commissionRate || 20; // Default 20% platform fee
+            const platformFee = Math.round((amountAfterStripe * platformCommissionRate) / 100 * 100) / 100;
+            const fieldOwnerEarnings = Math.round((amountAfterStripe - platformFee) * 100) / 100;
             return res.json({
                 success: true,
                 transaction: {
                     ...transaction,
                     type: transaction.type,
                     amount: transaction.amount,
-                    netAmount: transaction.netAmount,
-                    platformFee: transaction.platformFee,
-                    commissionRate: transaction.commissionRate,
-                    isCustomCommission: transaction.isCustomCommission,
-                    defaultCommissionRate: transaction.defaultCommissionRate,
+                    // Stripe fee and net after Stripe
+                    stripeFee: stripeProcessingFee,
+                    amountAfterStripeFee: amountAfterStripe,
+                    // Platform fee and field owner earnings
+                    platformFee,
+                    fieldOwnerEarnings,
+                    commissionRate: platformCommissionRate,
                     status: transaction.status,
                     // Lifecycle tracking
                     lifecycleStage: transaction.lifecycleStage,
@@ -1734,9 +1753,9 @@ router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req
                         grossAmount: grossAmount,
                         stripeProcessingFee: Math.round(stripeProcessingFee * 100) / 100,
                         amountAfterStripe: Math.round(amountAfterStripe * 100) / 100,
-                        platformCommission: transaction.platformFee || 0,
-                        fieldOwnerAmount: transaction.netAmount || 0,
-                        commissionRate: transaction.commissionRate || 0
+                        platformCommission: platformFee,
+                        fieldOwnerAmount: fieldOwnerEarnings,
+                        commissionRate: platformCommissionRate
                     },
                     // Related transactions for this booking
                     relatedTransactions: {
