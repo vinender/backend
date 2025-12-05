@@ -204,6 +204,9 @@ router.get('/field-owners', authenticateAdmin, async (req, res) => {
         phone: true,
         commissionRate: true,
         createdAt: true,
+        isBlocked: true,
+        blockedAt: true,
+        blockReason: true,
         _count: {
           select: {
             ownedFields: true

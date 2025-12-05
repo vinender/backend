@@ -355,7 +355,7 @@ export class PayoutService {
               fieldName: b.field.name,
               customerName: b.user.name || b.user.email,
               date: b.date,
-              amount: b.fieldOwnerAmount || (b.totalPrice * 0.8)
+              amount: b.fieldOwnerAmount || (b.totalPrice * 0.2) // Field owner gets ~20% commission
             }))
           };
         })

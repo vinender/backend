@@ -411,6 +411,10 @@ class BookingController {
     const limitNum = Number(limit);
     const skip = (pageNum - 1) * limitNum;
 
+    // Get system settings for cancellation window
+    const systemSettings = await prisma.systemSettings.findFirst();
+    const cancellationWindowHours = systemSettings?.cancellationWindowHours || 24;
+
     let whereClause: any = {};
 
     if (userRole === 'DOG_OWNER') {
@@ -584,6 +588,21 @@ class BookingController {
               createdAt: true,
             },
           },
+          subscription: {
+            select: {
+              id: true,
+              status: true,
+              interval: true,
+              dayOfWeek: true,
+              dayOfMonth: true,
+              nextBillingDate: true,
+              currentPeriodEnd: true,
+              cancelAtPeriodEnd: true,
+              canceledAt: true,
+              totalPrice: true,
+              stripeSubscriptionId: true,
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -598,6 +617,29 @@ class BookingController {
 
     // Transform bookings to remove redundant data and optimize response
     // Use Promise.all to handle async amenity transformation
+    // Helper function to calculate hours until booking
+    const calculateHoursUntilBooking = (bookingDate: Date, startTime: string): number => {
+      const now = new Date();
+      const bookingDateTime = new Date(bookingDate);
+
+      // Parse the start time and add it to the booking date
+      if (startTime) {
+        const timeMatch = startTime.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/i);
+        if (timeMatch) {
+          let hour = parseInt(timeMatch[1]);
+          const minutes = parseInt(timeMatch[2] || '0');
+          const period = timeMatch[3]?.toUpperCase();
+
+          if (period === 'PM' && hour !== 12) hour += 12;
+          if (period === 'AM' && hour === 12) hour = 0;
+
+          bookingDateTime.setHours(hour, minutes, 0, 0);
+        }
+      }
+
+      return (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    };
+
     const optimizedBookings = await Promise.all(
       bookings.map(async (booking) => {
         const field = booking.field;
@@ -608,6 +650,20 @@ class BookingController {
         const transformedAmenities = field?.amenities && field.amenities.length > 0
           ? await transformAmenities(field.amenities)
           : [];
+
+        // Calculate cancellation/reschedule eligibility
+        const hoursUntilBooking = calculateHoursUntilBooking(booking.date, booking.startTime);
+        const isUpcoming = booking.status === 'CONFIRMED';
+        const isCancellable = isUpcoming && hoursUntilBooking >= cancellationWindowHours;
+        const rescheduleCount = booking.rescheduleCount || 0;
+        const isReschedulable = isUpcoming && hoursUntilBooking >= cancellationWindowHours && rescheduleCount < 3;
+
+        // For subscription immediate cancellation - use same logic as booking cancellation
+        const canCancelSubscriptionImmediately = booking.subscription &&
+          booking.subscription.status === 'active' &&
+          !booking.subscription.cancelAtPeriodEnd &&
+          isUpcoming &&
+          isCancellable;
 
         return {
           id: booking.id,
@@ -625,6 +681,12 @@ class BookingController {
           rescheduleCount: booking.rescheduleCount,
           createdAt: booking.createdAt,
           updatedAt: booking.updatedAt,
+          // Calculated fields for frontend/mobile apps
+          isCancellable,
+          isReschedulable,
+          hoursUntilBooking: Math.floor(hoursUntilBooking),
+          cancellationWindow: cancellationWindowHours,
+          canCancelSubscriptionImmediately: !!canCancelSubscriptionImmediately,
           // Review data - to check if booking has been reviewed
           hasReview: !!booking.fieldReview,
           fieldReview: booking.fieldReview ? {
@@ -667,7 +729,85 @@ class BookingController {
             id: user.id,
             name: user.name,
             email: user.email
-          } : null
+          } : null,
+          // Subscription data for recurring bookings
+          subscription: booking.subscription ? (() => {
+            const sub = booking.subscription;
+            const now = new Date();
+
+            // Helper function to calculate next date based on interval
+            const calculateNextDate = (baseDate: Date, interval: string): Date => {
+              const result = new Date(baseDate);
+              while (result < now) {
+                if (interval === 'everyday') {
+                  result.setDate(result.getDate() + 1);
+                } else if (interval === 'weekly') {
+                  result.setDate(result.getDate() + 7);
+                } else if (interval === 'monthly') {
+                  result.setMonth(result.getMonth() + 1);
+                } else {
+                  // Default to adding 1 day if interval is unknown
+                  result.setDate(result.getDate() + 1);
+                }
+              }
+              return result;
+            };
+
+            // Calculate the correct next billing date based on interval
+            let calculatedNextBillingDate: Date | null = sub.nextBillingDate ? new Date(sub.nextBillingDate) : null;
+
+            // If nextBillingDate is in the past, calculate the next future billing date
+            if (calculatedNextBillingDate && calculatedNextBillingDate < now) {
+              calculatedNextBillingDate = calculateNextDate(calculatedNextBillingDate, sub.interval);
+            }
+
+            // Also check currentPeriodEnd as fallback
+            if (!calculatedNextBillingDate || calculatedNextBillingDate < now) {
+              if (sub.currentPeriodEnd && new Date(sub.currentPeriodEnd) > now) {
+                calculatedNextBillingDate = new Date(sub.currentPeriodEnd);
+              }
+            }
+
+            // Calculate the correct currentPeriodEnd for display
+            // For cancelled subscriptions, this is when the subscription actually ends
+            let calculatedCurrentPeriodEnd: Date = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : now;
+
+            // If currentPeriodEnd is in the past but subscription is still active or cancelAtPeriodEnd,
+            // calculate the correct end date
+            if (calculatedCurrentPeriodEnd < now) {
+              // For cancelAtPeriodEnd, use the calculated next billing date as the end date
+              if (sub.cancelAtPeriodEnd && calculatedNextBillingDate) {
+                calculatedCurrentPeriodEnd = new Date(calculatedNextBillingDate);
+              } else if (sub.status === 'active') {
+                // For active subscriptions, calculate from stored date
+                calculatedCurrentPeriodEnd = calculateNextDate(calculatedCurrentPeriodEnd, sub.interval);
+              }
+            }
+
+            // For cancelled subscriptions showing "ends on" date, use the booking date as reference
+            // if the stored currentPeriodEnd is in the past
+            if (sub.cancelAtPeriodEnd && calculatedCurrentPeriodEnd < now && booking.date) {
+              const bookingDate = new Date(booking.date);
+              // The subscription ends after the current booking date
+              if (bookingDate > now) {
+                calculatedCurrentPeriodEnd = bookingDate;
+              }
+            }
+
+            return {
+              id: sub.id,
+              status: sub.status,
+              interval: sub.interval,
+              dayOfWeek: sub.dayOfWeek,
+              dayOfMonth: sub.dayOfMonth,
+              nextBillingDate: calculatedNextBillingDate,
+              currentPeriodEnd: calculatedCurrentPeriodEnd,
+              cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+              canceledAt: sub.canceledAt,
+              totalPrice: sub.totalPrice,
+              stripeSubscriptionId: sub.stripeSubscriptionId,
+            };
+          })() : null
         };
       })
     );
@@ -1325,9 +1465,12 @@ class BookingController {
         totalPrice = 0;
       }
 
-      // Calculate platform commission (10%) and field owner amount (90%)
-      const platformCommission = totalPrice * 0.10;
-      const fieldOwnerAmount = totalPrice * 0.90;
+      // Calculate commission using the utility function (commission rate = field owner's percentage)
+      const { calculatePayoutAmounts } = await import('../utils/commission.utils');
+      const { fieldOwnerAmount, platformCommission, commissionRate } = await calculatePayoutAmounts(
+        totalPrice,
+        field.ownerId || ''
+      );
 
       // Log for debugging
       console.log('Reschedule price calculation:', {
@@ -1337,7 +1480,8 @@ class BookingController {
         bookingDuration: field.bookingDuration,
         totalPrice,
         platformCommission,
-        fieldOwnerAmount
+        fieldOwnerAmount,
+        commissionRate
       });
 
       // Ensure totalPrice and commission fields are set in the update data
@@ -2146,7 +2290,7 @@ class BookingController {
       userEmail: booking.user?.email || '',
       userPhone: booking.user?.phone || '',
       time: `${booking.startTime} - ${booking.endTime}`,
-      orderId: `#${booking.id.substring(0, 8).toUpperCase()}`,
+      orderId: `#${booking.id.slice(-6).toUpperCase()}`, // Use last 6 chars for uniqueness (matches admin panel format)
       status: booking.status.toLowerCase(),
       frequency: booking.repeatBooking && booking.repeatBooking.toLowerCase() !== 'none' ? booking.repeatBooking : null,
       dogs: booking.numberOfDogs || 1,

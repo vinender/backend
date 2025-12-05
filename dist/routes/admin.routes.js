@@ -257,16 +257,27 @@ router.get('/bookings', admin_middleware_1.authenticateAdmin, async (req, res) =
     try {
         const { page = '1', limit = '10', searchName, status, dateRange } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
+        const take = parseInt(limit);
         // Build where clause for filters
         const whereClause = {};
-        // Search filter - supports searching by user name OR booking ID
+        let shortBookingIdSearch = null;
+        // Search filter - supports searching by user name OR booking ID (full or short format)
         if (searchName && typeof searchName === 'string' && searchName.trim()) {
-            const searchTerm = searchName.trim();
+            let searchTerm = searchName.trim();
             // Check if search term looks like a booking ID (MongoDB ObjectId format: 24 hex characters)
-            const isBookingId = /^[a-f0-9]{24}$/i.test(searchTerm);
-            if (isBookingId) {
-                // Search by booking ID directly
+            const isFullBookingId = /^[a-f0-9]{24}$/i.test(searchTerm);
+            // Check if search term looks like a short booking ID (e.g., #ABC123 or ABC123 - 6 hex characters)
+            // Remove # prefix if present
+            const shortIdTerm = searchTerm.startsWith('#') ? searchTerm.slice(1) : searchTerm;
+            const isShortBookingId = /^[a-f0-9]{6}$/i.test(shortIdTerm);
+            if (isFullBookingId) {
+                // Search by full booking ID directly
                 whereClause.id = searchTerm;
+            }
+            else if (isShortBookingId) {
+                // For short booking ID search, we'll filter in application code
+                // because MongoDB ObjectIds can't use string endsWith
+                shortBookingIdSearch = shortIdTerm.toLowerCase();
             }
             else {
                 // Search by user name (case-insensitive)
@@ -318,11 +329,13 @@ router.get('/bookings', admin_middleware_1.authenticateAdmin, async (req, res) =
                     break;
             }
         }
-        const [bookings, total] = await Promise.all([
-            prisma.booking.findMany({
+        let bookings;
+        let total;
+        if (shortBookingIdSearch) {
+            // For short booking ID search, fetch all matching bookings and filter by ID suffix
+            // This is less efficient but necessary because MongoDB ObjectIds are binary, not strings
+            const allBookings = await prisma.booking.findMany({
                 where: whereClause,
-                skip,
-                take: parseInt(limit),
                 orderBy: { createdAt: 'desc' },
                 include: {
                     user: true,
@@ -333,14 +346,38 @@ router.get('/bookings', admin_middleware_1.authenticateAdmin, async (req, res) =
                     },
                     payment: true
                 }
-            }),
-            prisma.booking.count({ where: whereClause })
-        ]);
+            });
+            // Filter by last 6 characters of booking ID
+            const filteredBookings = allBookings.filter(booking => booking.id.toLowerCase().endsWith(shortBookingIdSearch));
+            total = filteredBookings.length;
+            bookings = filteredBookings.slice(skip, skip + take);
+        }
+        else {
+            // Standard query with pagination
+            [bookings, total] = await Promise.all([
+                prisma.booking.findMany({
+                    where: whereClause,
+                    skip,
+                    take,
+                    orderBy: { createdAt: 'desc' },
+                    include: {
+                        user: true,
+                        field: {
+                            include: {
+                                owner: true
+                            }
+                        },
+                        payment: true
+                    }
+                }),
+                prisma.booking.count({ where: whereClause })
+            ]);
+        }
         res.json({
             success: true,
             bookings,
             total,
-            pages: Math.ceil(total / parseInt(limit))
+            pages: Math.ceil(total / take)
         });
     }
     catch (error) {
@@ -1610,7 +1647,7 @@ router.get('/transactions', admin_middleware_1.authenticateAdmin, async (req, re
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Get single transaction details
+// Get single transaction details with complete breakdown
 router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req, res) => {
     try {
         const { id } = req.params;
@@ -1629,12 +1666,24 @@ router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req
                                     select: { id: true, name: true, email: true }
                                 }
                             }
+                        },
+                        transactions: {
+                            orderBy: { createdAt: 'asc' }
                         }
                     }
                 }
             }
         });
         if (transaction) {
+            const booking = transaction.booking;
+            // Get all transactions for this booking to show complete history
+            const allBookingTransactions = booking?.transactions || [];
+            const paymentTransaction = allBookingTransactions.find((t) => t.type === 'PAYMENT');
+            const refundTransaction = allBookingTransactions.find((t) => t.type === 'REFUND');
+            // Calculate Stripe processing fee estimate (approximately 1.5% + 20p for UK/EU cards)
+            const grossAmount = transaction.amount;
+            const stripeProcessingFee = grossAmount > 0 ? (grossAmount * 0.015) + 0.20 : 0;
+            const amountAfterStripe = grossAmount - stripeProcessingFee;
             return res.json({
                 success: true,
                 transaction: {
@@ -1661,7 +1710,53 @@ router.get('/transactions/:id', admin_middleware_1.authenticateAdmin, async (req
                     payoutCompletedAt: transaction.payoutCompletedAt,
                     refundedAt: transaction.refundedAt,
                     failureCode: transaction.failureCode,
-                    failureMessage: transaction.failureMessage
+                    failureMessage: transaction.failureMessage,
+                    // Enhanced booking details
+                    booking: booking ? {
+                        id: booking.id,
+                        date: booking.date,
+                        timeSlot: booking.timeSlot,
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        numberOfDogs: booking.numberOfDogs,
+                        totalPrice: booking.totalPrice,
+                        status: booking.status,
+                        paymentStatus: booking.paymentStatus,
+                        payoutStatus: booking.payoutStatus,
+                        payoutReleasedAt: booking.payoutReleasedAt,
+                        cancellationReason: booking.cancellationReason,
+                        cancelledAt: booking.cancelledAt,
+                        createdAt: booking.createdAt,
+                        field: booking.field
+                    } : null,
+                    // Payment breakdown for complete financial picture
+                    paymentBreakdown: {
+                        grossAmount: grossAmount,
+                        stripeProcessingFee: Math.round(stripeProcessingFee * 100) / 100,
+                        amountAfterStripe: Math.round(amountAfterStripe * 100) / 100,
+                        platformCommission: transaction.platformFee || 0,
+                        fieldOwnerAmount: transaction.netAmount || 0,
+                        commissionRate: transaction.commissionRate || 0
+                    },
+                    // Related transactions for this booking
+                    relatedTransactions: {
+                        payment: paymentTransaction ? {
+                            id: paymentTransaction.id,
+                            amount: paymentTransaction.amount,
+                            status: paymentTransaction.status,
+                            lifecycleStage: paymentTransaction.lifecycleStage,
+                            createdAt: paymentTransaction.createdAt,
+                            payoutCompletedAt: paymentTransaction.payoutCompletedAt
+                        } : null,
+                        refund: refundTransaction ? {
+                            id: refundTransaction.id,
+                            amount: refundTransaction.amount,
+                            status: refundTransaction.status,
+                            stripeRefundId: refundTransaction.stripeRefundId,
+                            createdAt: refundTransaction.createdAt,
+                            refundedAt: refundTransaction.refundedAt
+                        } : null
+                    }
                 }
             });
         }

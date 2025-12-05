@@ -49,14 +49,19 @@ async function getEffectiveCommissionRate(userId) {
 }
 /**
  * Calculate field owner amount and platform fee based on commission rate
+ *
+ * Commission rate represents what the FIELD OWNER receives as a percentage.
+ * Example: If dog owner pays £100, Stripe takes £1 (1%), leaving £99.
+ * With 20% commission rate: Field owner gets 20% of £99 = £19.80
+ * Platform gets the remaining 80% = £79.20
  */
 async function calculatePayoutAmounts(totalAmount, fieldOwnerId) {
     const { effectiveRate, isCustomRate, defaultRate } = await getEffectiveCommissionRate(fieldOwnerId);
-    // Platform gets the commission percentage
-    const platformFeeAmount = (totalAmount * effectiveRate) / 100;
+    // Field owner gets the commission percentage (their earnings)
+    const fieldOwnerAmount = (totalAmount * effectiveRate) / 100;
+    // Platform gets the remaining amount after field owner's commission
+    const platformFeeAmount = totalAmount - fieldOwnerAmount;
     const platformCommission = platformFeeAmount; // Same value, different name for DB compatibility
-    // Field owner gets the remaining amount
-    const fieldOwnerAmount = totalAmount - platformFeeAmount;
     return {
         fieldOwnerAmount,
         platformFeeAmount,

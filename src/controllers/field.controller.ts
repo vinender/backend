@@ -40,6 +40,20 @@ const formatRecurringFrequency = (repeatBooking?: string | null) => {
   return labelMap[normalized] || repeatBooking.charAt(0).toUpperCase() + repeatBooking.slice(1);
 };
 
+/**
+ * Generate a unique orderId from MongoDB ObjectId
+ * Uses the LAST 6 characters to match admin panel format:
+ * - First 4 bytes (8 hex chars) = timestamp (same for bookings created in same second)
+ * - Last 6 hex chars = counter (guaranteed unique per document)
+ */
+const generateOrderId = (bookingId: string): string => {
+  if (!bookingId || bookingId.length < 6) {
+    return `#${bookingId?.toUpperCase() || 'UNKNOWN'}`;
+  }
+  // Use last 6 characters of the ObjectId for uniqueness (matches admin panel)
+  return `#${bookingId.slice(-6).toUpperCase()}`;
+};
+
 class FieldController {
   // Create new field
   createField = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
@@ -658,7 +672,7 @@ class FieldController {
 
   // Get nearby fields based on lat/lng
   getNearbyFields = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    const { lat, lng, radius = 10, page = 1, limit = 9 } = req.query;
+    const { lat, lng, radius = 10, page = 1, limit = 9, sortBy, sortOrder } = req.query;
 
     // Validate required parameters
     if (!lat || !lng) {
@@ -702,7 +716,39 @@ class FieldController {
     );
 
     // Combine: nearby fields first, then remaining fields
-    const combinedFields = [...nearbyFields, ...remainingFields];
+    let combinedFields = [...nearbyFields, ...remainingFields];
+
+    // Apply sorting if specified
+    if (sortBy && typeof sortBy === 'string') {
+      const sortFields = sortBy.split(',');
+      const sortOrders = (sortOrder && typeof sortOrder === 'string')
+        ? sortOrder.split(',')
+        : sortFields.map(() => 'desc');
+
+      combinedFields.sort((a: any, b: any) => {
+        for (let i = 0; i < sortFields.length; i++) {
+          const field = sortFields[i].trim();
+          const order = sortOrders[i]?.trim() || 'desc';
+
+          let aValue: number, bValue: number;
+
+          if (field === 'rating') {
+            aValue = a.averageRating || 0;
+            bValue = b.averageRating || 0;
+          } else if (field === 'price') {
+            aValue = a.price || 0;
+            bValue = b.price || 0;
+          } else {
+            continue; // Skip unknown sort fields
+          }
+
+          if (aValue !== bValue) {
+            return order === 'asc' ? aValue - bValue : bValue - aValue;
+          }
+        }
+        return 0;
+      });
+    }
 
     // Apply pagination to combined results
     const total = combinedFields.length;
@@ -1488,14 +1534,14 @@ class FieldController {
         userName: booking.user.name,
         userAvatar: booking.user.image || booking.user.googleImage || null,
         time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: `#${booking.id.substring(0, 8).toUpperCase()}`,
+        orderId: generateOrderId(booking.id),
         status: booking.status.toLowerCase(),
         frequency: formatRecurringFrequency(booking.repeatBooking),
         dogs: booking.numberOfDogs,
         amount: booking.totalPrice,
         date: booking.date
       }));
-
+      
       res.json({
         success: true,
         bookings: formattedBookings,
@@ -1611,7 +1657,7 @@ class FieldController {
         userEmail: booking.user.email,
         userPhone: booking.user.phone,
         time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: `#${booking.id.substring(0, 8).toUpperCase()}`,
+        orderId: generateOrderId(booking.id),
         status: booking.status.toLowerCase(),
         frequency: formatRecurringFrequency(booking.repeatBooking),
         dogs: booking.numberOfDogs || 1,
@@ -1746,7 +1792,7 @@ class FieldController {
         userEmail: booking.user.email,
         userPhone: booking.user.phone,
         time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: `#${booking.id.substring(0, 8).toUpperCase()}`,
+        orderId: generateOrderId(booking.id),
         status: booking.status.toLowerCase(),
         frequency: formatRecurringFrequency(booking.repeatBooking),
         dogs: booking.numberOfDogs || 1,
@@ -1882,7 +1928,7 @@ class FieldController {
         userEmail: booking.user.email,
         userPhone: booking.user.phone,
         time: `${booking.startTime} - ${booking.endTime}`,
-        orderId: `#${booking.id.substring(0, 8).toUpperCase()}`,
+        orderId: generateOrderId(booking.id),
         status: booking.status.toLowerCase(),
         frequency: formatRecurringFrequency(booking.repeatBooking),
         dogs: booking.numberOfDogs || 1,

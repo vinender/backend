@@ -506,6 +506,39 @@ class PaymentController {
                         processedAt: new Date()
                     }
                 });
+                // Create transaction record for admin tracking (immediately when payment succeeds)
+                // Check if transaction doesn't already exist for this payment intent
+                const existingTransaction = await database_1.default.transaction.findFirst({
+                    where: { stripePaymentIntentId: paymentIntent.id }
+                });
+                if (!existingTransaction) {
+                    // Get field owner's connected Stripe account ID
+                    const fieldOwnerStripeAccount = await database_1.default.stripeAccount.findFirst({
+                        where: { userId: field.ownerId }
+                    });
+                    await database_1.default.transaction.create({
+                        data: {
+                            bookingId: booking.id,
+                            userId,
+                            fieldOwnerId: field.ownerId || null,
+                            amount: amount,
+                            netAmount: fieldOwnerAmount,
+                            platformFee: platformCommission,
+                            commissionRate: commissionRate,
+                            isCustomCommission: isCustomCommission,
+                            defaultCommissionRate: defaultCommissionRate,
+                            type: 'PAYMENT',
+                            status: 'COMPLETED',
+                            stripePaymentIntentId: paymentIntent.id,
+                            connectedAccountId: fieldOwnerStripeAccount?.stripeAccountId || null,
+                            // Lifecycle tracking
+                            lifecycleStage: 'PAYMENT_RECEIVED',
+                            paymentReceivedAt: new Date(),
+                            description: `Payment for booking at ${field.name}`
+                        }
+                    });
+                    console.log('[PaymentController] Created transaction record for immediate payment:', paymentIntent.id);
+                }
                 // Send notifications
                 const slotsDisplay = normalizedTimeSlots.length === 1
                     ? normalizedTimeSlots[0]

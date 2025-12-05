@@ -186,6 +186,9 @@ router.get('/field-owners', admin_middleware_1.authenticateAdmin, async (req, re
                 phone: true,
                 commissionRate: true,
                 createdAt: true,
+                isBlocked: true,
+                blockedAt: true,
+                blockReason: true,
                 _count: {
                     select: {
                         ownedFields: true

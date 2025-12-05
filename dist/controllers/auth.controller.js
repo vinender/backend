@@ -214,8 +214,10 @@ class AuthController {
         }
     });
     // Social login (Google/Apple)
+    // For Google: requires idToken to be verified server-side
+    // For Apple: use the dedicated appleSignIn endpoint instead
     socialLogin = (0, asyncHandler_1.asyncHandler)(async (req, res, next) => {
-        const { email, name, image, provider, providerId, role } = req.body;
+        const { email, name, image, provider, providerId, role, idToken } = req.body;
         // Comprehensive logging for social login payload
         console.log('==================== SOCIAL LOGIN PAYLOAD ====================');
         console.log('Full Request Body:', JSON.stringify(req.body, null, 2));
@@ -225,23 +227,66 @@ class AuthController {
         console.log('  - Image:', image);
         console.log('  - Provider:', provider);
         console.log('  - Provider ID:', providerId);
+        console.log('  - ID Token present:', !!idToken);
         console.log('  - Role:', role);
         console.log('==============================================================');
-        // Validate input
-        if (!email || !provider || !providerId) {
-            console.log('❌ VALIDATION FAILED: Missing required fields');
-            console.log('  - Email present:', !!email);
-            console.log('  - Provider present:', !!provider);
-            console.log('  - Provider ID present:', !!providerId);
-            throw new AppError_1.AppError('Missing required fields', 400);
-        }
-        // Validate provider
+        // Validate provider first
         const validProviders = ['google', 'apple'];
-        if (!validProviders.includes(provider)) {
+        if (!provider || !validProviders.includes(provider)) {
             console.log('❌ VALIDATION FAILED: Invalid provider -', provider);
             throw new AppError_1.AppError('Invalid provider', 400);
         }
         console.log('✅ Provider validation passed:', provider);
+        // For Google, we MUST verify the ID token server-side
+        // This prevents attackers from sending fake providerId values
+        let verifiedEmail = email;
+        let verifiedProviderId = providerId;
+        let verifiedName = name;
+        let verifiedImage = image;
+        if (provider === 'google') {
+            // Google requires idToken verification
+            if (!idToken) {
+                console.log('❌ VALIDATION FAILED: Google login requires idToken');
+                throw new AppError_1.AppError('Google ID token is required for Google login', 400);
+            }
+            try {
+                // Verify the Google ID token
+                console.log('🔐 Verifying Google ID token...');
+                const { googleSignInService } = require('../services/google-signin.service');
+                const googleUser = await googleSignInService.verifyIdToken(idToken);
+                // Use verified values from the token (not from request body)
+                verifiedEmail = googleUser.email;
+                verifiedProviderId = googleUser.sub;
+                verifiedName = googleUser.name || name;
+                verifiedImage = googleUser.picture || image;
+                console.log('✅ Google token verified successfully');
+                console.log('  - Verified Email:', verifiedEmail);
+                console.log('  - Verified Provider ID:', verifiedProviderId);
+                console.log('  - Verified Name:', verifiedName);
+                // Check if the email matches (if provided in body)
+                if (email && email !== verifiedEmail) {
+                    console.log('⚠️ Email mismatch - using verified email from token');
+                }
+            }
+            catch (error) {
+                console.error('❌ Google token verification failed:', error.message);
+                throw new AppError_1.AppError(error.message || 'Invalid Google ID token', 401);
+            }
+        }
+        else if (provider === 'apple') {
+            // For Apple, recommend using the dedicated endpoint
+            // But still allow if providerId is provided (backwards compatibility)
+            if (!providerId || !email) {
+                console.log('❌ VALIDATION FAILED: Apple login missing required fields');
+                throw new AppError_1.AppError('For Apple Sign In, please use the /auth/apple endpoint with idToken', 400);
+            }
+            console.log('⚠️ Apple login via socialLogin - consider using /auth/apple endpoint');
+        }
+        // Validate that we have required fields after verification
+        if (!verifiedEmail || !verifiedProviderId) {
+            console.log('❌ VALIDATION FAILED: Missing required fields after verification');
+            throw new AppError_1.AppError('Missing required fields', 400);
+        }
         // Validate role if provided
         const validRoles = ['DOG_OWNER', 'FIELD_OWNER'];
         if (role && !validRoles.includes(role)) {
@@ -249,9 +294,9 @@ class AuthController {
             throw new AppError_1.AppError('Invalid role specified', 400);
         }
         console.log('✅ Role validation passed:', role || 'DOG_OWNER (default)');
-        // Check if user already exists AND is verified
-        console.log('🔍 Checking for existing user with email:', email);
-        const existingUser = await user_model_1.default.findByEmail(email);
+        // Check if user already exists AND is verified (using verified email)
+        console.log('🔍 Checking for existing user with email:', verifiedEmail);
+        const existingUser = await user_model_1.default.findByEmail(verifiedEmail);
         if (existingUser && existingUser.emailVerified) {
             console.log('✅ Existing verified user found');
             console.log('  - User ID:', existingUser.id);
@@ -291,19 +336,20 @@ class AuthController {
             });
         }
         // Create or update user (AUTOMATICALLY VERIFIED for social logins)
+        // Use VERIFIED values from token, not from request body
         console.log('📝 Creating or updating social user...');
-        console.log('  - Email:', email);
-        console.log('  - Name:', name);
-        console.log('  - Image:', image);
+        console.log('  - Email (verified):', verifiedEmail);
+        console.log('  - Name (verified):', verifiedName);
+        console.log('  - Image (verified):', verifiedImage);
         console.log('  - Provider:', provider);
-        console.log('  - Provider ID:', providerId);
+        console.log('  - Provider ID (verified):', verifiedProviderId);
         console.log('  - Role:', role || 'DOG_OWNER');
         const user = await user_model_1.default.createOrUpdateSocialUser({
-            email,
-            name,
-            image,
+            email: verifiedEmail,
+            name: verifiedName,
+            image: verifiedImage,
             provider,
-            providerId,
+            providerId: verifiedProviderId,
             role: role || 'DOG_OWNER',
         });
         console.log('✅ User created/updated successfully');
