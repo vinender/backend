@@ -13,62 +13,53 @@ Kind: Command failed: Error code 11000 (DuplicateKey): Index build failed...
 E11000 duplicate key error collection: fieldsy.field_reviews index: field_reviews_bookingId_key dup key: { bookingId: null }
 ```
 
-This happens because there are multiple `FieldReview` documents with `bookingId: null`, and Prisma is trying to add a unique constraint on `bookingId`.
+This happens because MongoDB's unique index constraint doesn't allow multiple `null` values. Even if there are no duplicate reviews, having multiple field_reviews with `bookingId: null` violates this constraint.
 
 ## Root Causes
 
 1. **isBlocked Filter**: The code in `backend/src/models/field.model.ts` filters fields with `isBlocked: false`, but this field doesn't exist in production yet
-2. **Duplicate Null Reviews**: Multiple field reviews exist with `null` bookingId values, violating the unique constraint requirement
+2. **MongoDB Unique Index Limitation**: MongoDB's unique indexes don't allow multiple `null` values, so we cannot use `@@unique([bookingId])` when some reviews have `bookingId: null`
 
 ## Solution
 
-### Step 1: Clean Up Duplicate Field Reviews (PRODUCTION ONLY)
+### Step 1: Update Prisma Schema (COMPLETED)
 
-**IMPORTANT**: Only run this step if you get the duplicate key error. Run this in your **production environment**:
+The schema has been updated to remove the `@@unique([bookingId])` constraint and replace it with a regular index. This allows multiple reviews with `null` bookingId values while still maintaining an index for efficient lookups.
 
-```bash
-cd /path/to/fieldsy/backend
+**Change made in `prisma/schema.prisma`**:
+```prisma
+// OLD (causes error with null values):
+@@unique([bookingId]) // Each booking can only have one review
 
-# Upload fix-field-reviews.js to production server
-# Then run:
-node fix-field-reviews.js
-```
-
-This script will:
-1. Find all field reviews with `bookingId: null`
-2. For each field-user combination with multiple reviews, keep the most recent one
-3. Delete the older duplicate reviews
-4. Prepare the database for the unique constraint
-
-**Alternative - Manual MongoDB Cleanup**:
-```javascript
-// Connect to production MongoDB and run this query to see duplicates:
-db.field_reviews.aggregate([
-  { $match: { bookingId: null } },
-  { $group: {
-    _id: { fieldId: "$fieldId", userId: "$userId" },
-    count: { $sum: 1 },
-    docs: { $push: "$$ROOT" }
-  }},
-  { $match: { count: { $gt: 1 } } }
-])
-
-// Then manually delete duplicates, keeping the most recent one for each field-user pair
+// NEW (works with null values):
+@@index([bookingId]) // Index for lookups
+// Note: Business logic should enforce one review per booking when bookingId is present
 ```
 
 ### Step 2: Push Prisma Schema to Production Database
 
-After cleaning up duplicates, run this command in your **production environment**:
+Run this command in your **production environment** (EC2):
 
 ```bash
-cd /path/to/fieldsy/backend
+cd /var/www/fieldsy/backend
+
+# Pull the latest code with schema changes
+git pull origin main
+
+# Generate Prisma client with updated schema
+npx prisma generate
+
+# Push schema to database
 npx prisma db push
+
+# Restart backend server
+pm2 restart backend
 ```
 
 This will:
 1. Add the `isBlocked` field to all existing Field documents (default: `false`)
 2. Add the `isBlocked` field to all existing User documents (default: `false`)
-3. Add unique constraint on `field_reviews.bookingId` (now safe after cleanup)
+3. Add a regular index on `field_reviews.bookingId` (NOT unique, so it allows multiple nulls)
 4. Update all other schema changes
 
 ### Step 3: Alternative - Manual MongoDB Update (If Automated Push Fails)

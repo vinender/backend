@@ -368,7 +368,9 @@ model FieldReview {
   user    User     @relation(fields: [userId], references: [id])
   booking Booking? @relation(fields: [bookingId], references: [id])
 
-  @@unique([bookingId]) // Each booking can only have one review
+  // Note: Cannot use @@unique([bookingId]) because MongoDB doesn't allow multiple null values in unique indexes
+  // Business logic should enforce one review per booking when bookingId is present
+  @@index([bookingId]) // Index for lookups
   @@index([fieldId, createdAt])
   @@index([userId])
   @@index([rating])
