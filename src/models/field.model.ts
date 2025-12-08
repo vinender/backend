@@ -904,9 +904,9 @@ class FieldModel {
     const whereClause: any = {
       isActive: true,
       isSubmitted: true,
-      isApproved: true, // Field must be approved by admin
-      // Filter out admin-blocked fields (NOT true includes false and unset/null)
-      NOT: { isBlocked: true }
+      isApproved: true // Field must be approved by admin
+      // Note: isBlocked filter removed for production compatibility
+      // Will be added back after DB migration
     };
 
     // Check if query might be a UK postcode
@@ -992,7 +992,8 @@ class FieldModel {
           isActive: true,
           isSubmitted: true,
           isApproved: true, // Field must be approved by admin
-          isBlocked: { $ne: true }, // Filter out admin-blocked fields
+          // Note: isBlocked filter removed for production compatibility
+          // Will be added back after DB migration: isBlocked: { $ne: true },
           location: {
             $near: {
               $geometry: {
@@ -1074,9 +1075,9 @@ class FieldModel {
       where: {
         isActive: true,
         isSubmitted: true,
-        isApproved: true, // Field must be approved by admin
-        // Filter out admin-blocked fields (NOT true includes false and unset/null)
-        NOT: { isBlocked: true }
+        isApproved: true // Field must be approved by admin
+        // Note: isBlocked filter removed for production compatibility
+        // Will be added back after DB migration
       },
       select: {
         id: true,
