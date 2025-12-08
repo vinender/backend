@@ -240,10 +240,23 @@ class FieldModel {
         const whereClause = {
             isActive: true,
             isSubmitted: true,
-            isApproved: true, // Field must be approved by admin
-            // Filter out admin-blocked fields (NOT true includes false and unset/null)
-            NOT: { isBlocked: true }
+            isApproved: true // Field must be approved by admin
         };
+        // Filter out admin-blocked fields (if isBlocked field exists in DB)
+        // This is wrapped in try-catch for production compatibility where field may not exist yet
+        try {
+            // Try to query fields with isBlocked filter to check if field exists
+            const testQuery = await database_1.default.field.findFirst({
+                where: { isBlocked: true },
+                select: { id: true }
+            });
+            // If query succeeds, add the NOT filter to whereClause
+            whereClause.NOT = { isBlocked: true };
+        }
+        catch (error) {
+            // If isBlocked field doesn't exist in production DB yet, skip this filter
+            console.warn('Warning: isBlocked field not found in Field model. Skipping blocked field filter.');
+        }
         // Exclude fields from blocked field owners (if isBlocked field exists in DB)
         try {
             const blockedOwners = await database_1.default.user.findMany({
