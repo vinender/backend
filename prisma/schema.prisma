@@ -242,13 +242,13 @@ model Booking {
   updatedAt DateTime @updatedAt
 
   // Relations
-  user         User          @relation(fields: [userId], references: [id])
-  field        Field         @relation(fields: [fieldId], references: [id])
-  payment      Payment?
-  review       Review?
-  fieldReview  FieldReview?
-  transactions Transaction[]
-  subscription Subscription? @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  field         Field          @relation(fields: [fieldId], references: [id])
+  payment       Payment?
+  review        Review?
+  fieldReviews  FieldReview[] // Changed to one-to-many to support optional bookingId
+  transactions  Transaction[]
+  subscription  Subscription?  @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
 
   @@index([userId])
   @@index([fieldId])
