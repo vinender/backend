@@ -316,26 +316,11 @@ class FieldModel {
     const whereClause: any = {
       isActive: true,
       isSubmitted: true,
-      isApproved: true // Field must be approved by admin
+      isApproved: true, // Field must be approved by admin
+      isBlocked: false // Exclude blocked fields
     };
 
-    // Filter out admin-blocked fields (if isBlocked field exists in DB)
-    // This is wrapped in try-catch for production compatibility where field may not exist yet
-    try {
-      // Try to query fields with isBlocked filter to check if field exists
-      const testQuery = await prisma.field.findFirst({
-        where: { isBlocked: true },
-        select: { id: true }
-      });
-
-      // If query succeeds, add the NOT filter to whereClause
-      whereClause.NOT = { isBlocked: true };
-    } catch (error: any) {
-      // If isBlocked field doesn't exist in production DB yet, skip this filter
-      console.warn('Warning: isBlocked field not found in Field model. Skipping blocked field filter.');
-    }
-
-    // Exclude fields from blocked field owners (if isBlocked field exists in DB)
+    // Exclude fields from blocked field owners
     try {
       const blockedOwners = await prisma.user.findMany({
         where: {
@@ -351,8 +336,8 @@ class FieldModel {
         };
       }
     } catch (error: any) {
-      // If isBlocked field doesn't exist in production DB yet, skip this filter
-      console.warn('Warning: isBlocked field not found in User model. Skipping blocked user filter.');
+      // If query fails, log but continue without this filter
+      console.warn('Warning: Could not fetch blocked field owners:', error.message);
     }
 
     // Handle comprehensive search (field name, address, city, state, zipCode)
