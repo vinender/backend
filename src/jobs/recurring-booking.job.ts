@@ -203,23 +203,9 @@ async function createUpcomingRecurringBookings() {
 
         // Check if booking was skipped due to slot conflict (returns null)
         if (booking === null) {
-          console.log(`⚠️ Slot conflict for subscription ${subscription.id} on ${format(nextBookingDate, 'PPP')} - skipping and notifying user`);
+          console.log(`⚠️ Slot conflict for subscription ${subscription.id} on ${format(nextBookingDate, 'PPP')} - skipping (notification suppressed)`);
           results.skipped++;
-
-          // Notify user about the skipped booking
-          await createNotification({
-            userId: subscription.userId,
-            type: 'recurring_booking_conflict',
-            title: 'Recurring Booking Skipped',
-            message: `Your ${subscription.interval} booking at ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} was skipped because the time slot is already booked.`,
-            data: {
-              subscriptionId: subscription.id,
-              fieldName: subscription.field.name,
-              bookingDate: nextBookingDate.toISOString(),
-              timeSlot: subscription.timeSlot,
-              isSlotConflict: true
-            }
-          });
+          // Note: Notification removed to prevent spam - slots are already shown as unavailable in UI
           continue;
         }
 
@@ -309,40 +295,12 @@ async function createUpcomingRecurringBookings() {
         // Check if this is a slot conflict error
         const isSlotConflict = errorMessage.includes('Slot not available');
 
-        // Notify user about the failure with appropriate message
-        await createNotification({
-          userId: subscription.userId,
-          type: isSlotConflict ? 'recurring_booking_conflict' : 'recurring_booking_failed',
-          title: isSlotConflict ? 'Recurring Booking Skipped' : 'Booking Creation Failed',
-          message: isSlotConflict
-            ? `Your ${subscription.interval} booking at ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} was skipped because the time slot is already booked. Your subscription remains active.`
-            : `We couldn't create your upcoming ${subscription.interval} booking. Please contact support.`,
-          data: {
-            subscriptionId: subscription.id,
-            fieldName: subscription.field.name,
-            bookingDate: nextBookingDate.toISOString(),
-            timeSlot: subscription.timeSlot,
-            error: errorMessage,
-            isSlotConflict
-          }
-        });
-
-        // Also notify field owner about the conflict
-        if (isSlotConflict && subscription.field.ownerId) {
-          await createNotification({
-            userId: subscription.field.ownerId,
-            type: 'recurring_booking_conflict',
-            title: 'Recurring Booking Conflict',
-            message: `A ${subscription.interval} recurring booking for ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} at ${subscription.timeSlot} was skipped due to a scheduling conflict.`,
-            data: {
-              subscriptionId: subscription.id,
-              fieldId: subscription.fieldId,
-              fieldName: subscription.field.name,
-              bookingDate: nextBookingDate.toISOString(),
-              timeSlot: subscription.timeSlot,
-              dogOwnerName: subscription.user.name
-            }
-          });
+        // Note: Notifications removed to prevent spam
+        // Slot conflicts are expected and normal - slots are shown as unavailable in UI
+        // Only log actual failures (non-conflict errors) for monitoring
+        if (!isSlotConflict) {
+          console.error(`⚠️ Non-conflict error for subscription ${subscription.id}:`, errorMessage);
+          // Could add admin notification here for actual system failures if needed
         }
       }
     }
@@ -540,23 +498,9 @@ async function checkPastBookingsAndCreateNext() {
 
         // Check if booking was skipped due to slot conflict (returns null)
         if (newBooking === null) {
-          console.log(`⚠️ Slot conflict for subscription ${subscription.id} on ${format(nextBookingDate, 'PPP')} - skipping and notifying user`);
+          console.log(`⚠️ Slot conflict for subscription ${subscription.id} on ${format(nextBookingDate, 'PPP')} - skipping (notification suppressed)`);
           results.skipped++;
-
-          // Notify user about the skipped booking
-          await createNotification({
-            userId: subscription.userId,
-            type: 'recurring_booking_conflict',
-            title: 'Recurring Booking Skipped',
-            message: `Your ${subscription.interval} booking at ${subscription.field.name} on ${format(nextBookingDate, 'PPP')} was skipped because the time slot is already booked.`,
-            data: {
-              subscriptionId: subscription.id,
-              fieldName: subscription.field.name,
-              bookingDate: nextBookingDate.toISOString(),
-              timeSlot: subscription.timeSlot,
-              isSlotConflict: true
-            }
-          });
+          // Note: Notification removed to prevent spam - slots are already shown as unavailable in UI
           continue;
         }
 

@@ -1654,6 +1654,9 @@ class FieldController {
                 fieldId: { in: fieldIds },
                 date: {
                     gte: tomorrow
+                },
+                status: {
+                    not: 'CANCELLED'
                 }
             };
             const pageNum = Number(page);

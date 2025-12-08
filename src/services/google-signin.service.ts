@@ -32,6 +32,7 @@ class GoogleSignInService {
     // Initialize OAuth2 client
     this.client = new OAuth2Client(this.webClientId);
 
+
     // Validate configuration on initialization
     if (!this.webClientId) {
       console.warn('⚠️  Google Sign In is not fully configured. GOOGLE_CLIENT_ID is missing.');
@@ -47,6 +48,7 @@ class GoogleSignInService {
     }
   }
 
+  
   /**
    * Verify Google ID token from client
    * Works for both web and mobile apps

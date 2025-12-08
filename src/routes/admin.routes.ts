@@ -1552,211 +1552,141 @@ router.get('/transactions', authenticateAdmin, async (req, res) => {
         break;
     }
 
-    // Collect all transactions from different sources
-    let allTransactions: any[] = [];
+    // GROUP BY BOOKING APPROACH: Get all bookings with their payment, refund, and payout status
+    // This ensures ONE ROW PER BOOKING instead of multiple rows per transaction event
 
-    // 1. Get Transactions from Transaction model
-    if (type === 'ALL' || type === 'PAYMENT' || type === 'REFUND') {
-      const transactionWhere: any = {};
+    // Build booking filter
+    const bookingWhere: any = {};
 
-      if (type !== 'ALL') {
-        transactionWhere.type = type;
-      }
-      if (status !== 'ALL') {
-        transactionWhere.status = status;
-      }
-      if (dateRange !== 'ALL') {
-        transactionWhere.createdAt = dateFilter;
-      }
-      if (search) {
-        transactionWhere.OR = [
-          { description: { contains: search as string, mode: 'insensitive' } },
-          { user: { name: { contains: search as string, mode: 'insensitive' } } },
-          { user: { email: { contains: search as string, mode: 'insensitive' } } },
-          { booking: { field: { name: { contains: search as string, mode: 'insensitive' } } } }
-        ];
-      }
+    if (dateRange !== 'ALL') {
+      bookingWhere.createdAt = dateFilter;
+    }
 
-      const transactions = await prisma.transaction.findMany({
-        where: transactionWhere,
-        include: {
-          user: {
-            select: { id: true, name: true, email: true }
-          },
-          booking: {
-            include: {
-              field: {
-                include: {
-                  owner: {
-                    select: { id: true, name: true, email: true }
-                  }
-                }
-              }
+    if (search) {
+      bookingWhere.OR = [
+        { user: { name: { contains: search as string, mode: 'insensitive' } } },
+        { user: { email: { contains: search as string, mode: 'insensitive' } } },
+        { field: { name: { contains: search as string, mode: 'insensitive' } } },
+        { id: { contains: search as string, mode: 'insensitive' } }
+      ];
+    }
+
+    // Get bookings with all related data
+    const bookings = await prisma.booking.findMany({
+      where: bookingWhere,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true }
+        },
+        field: {
+          include: {
+            owner: {
+              select: { id: true, name: true, email: true }
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      allTransactions.push(...transactions.map(t => {
-        // Determine lifecycle stage based on transaction type and status
-        // For REFUND type, always use REFUNDED regardless of what's stored (schema default may have set PAYMENT_RECEIVED)
-        let lifecycleStage = t.lifecycleStage;
-
-        if (t.type === 'REFUND') {
-          lifecycleStage = 'REFUNDED';
-        } else if (!lifecycleStage || lifecycleStage === 'PAYMENT_RECEIVED') {
-          // For payments, determine stage based on status if not explicitly set
-          if (t.status === 'FAILED') {
-            lifecycleStage = 'FAILED';
-          } else if (t.status === 'CANCELLED') {
-            lifecycleStage = 'CANCELLED';
-          } else if (t.status === 'COMPLETED') {
-            lifecycleStage = t.lifecycleStage || 'PAYMENT_RECEIVED';
-          } else {
-            lifecycleStage = 'PAYMENT_RECEIVED';
-          }
+        transactions: {
+          orderBy: { createdAt: 'asc' }
         }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-        // Calculate Stripe processing fee (approximately 1.5% + 20p for UK/EU cards)
-        const stripeFee = t.amount > 0 ? Math.round(((t.amount * 0.015) + 0.20) * 100) / 100 : 0;
-        const amountAfterStripeFee = Math.round((t.amount - stripeFee) * 100) / 100;
+    // Transform bookings into transaction records (one row per booking)
+    let allTransactions: any[] = bookings.map(booking => {
+      // Find payment transaction
+      const paymentTransaction = booking.transactions.find(t => t.type === 'PAYMENT');
+      // Find refund transaction
+      const refundTransaction = booking.transactions.find(t => t.type === 'REFUND');
 
-        // Calculate platform fee and field owner earnings
-        // Commission rate = platform/admin fee percentage (what Fieldsy takes)
-        // Field owner receives the remainder after Stripe fees and platform commission
-        const platformCommissionRate = t.commissionRate || 20; // Default 20% platform fee
-        const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
-        const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
+      // Get main transaction (payment if exists, otherwise first transaction)
+      const mainTransaction = paymentTransaction || booking.transactions[0];
 
-        return {
-          id: t.id,
-          type: t.type,
-          amount: t.amount,
-          // Stripe fee and net after Stripe
-          stripeFee,
-          amountAfterStripeFee,
-          // Platform fee and field owner earnings
-          platformFee,
-          fieldOwnerEarnings,
-          commissionRate: platformCommissionRate,
-          status: t.status,
-          description: t.description,
-          stripePaymentIntentId: t.stripePaymentIntentId,
-          stripeChargeId: t.stripeChargeId,
-          stripeBalanceTransactionId: t.stripeBalanceTransactionId,
-          stripeRefundId: t.stripeRefundId,
-          stripeTransferId: t.stripeTransferId,
-          stripePayoutId: t.stripePayoutId,
-          connectedAccountId: t.connectedAccountId,
-          // Lifecycle tracking fields - use computed default if not set
-          lifecycleStage,
-          paymentReceivedAt: t.paymentReceivedAt || (t.type === 'PAYMENT' && t.status === 'COMPLETED' ? t.createdAt : null),
-          fundsAvailableAt: t.fundsAvailableAt,
-          transferredAt: t.transferredAt,
-          payoutInitiatedAt: t.payoutInitiatedAt,
-          payoutCompletedAt: t.payoutCompletedAt,
-          refundedAt: t.refundedAt || (t.type === 'REFUND' ? t.createdAt : null),
-          failureCode: t.failureCode,
-          failureMessage: t.failureMessage,
-          createdAt: t.createdAt,
-          user: t.user,
-          booking: t.booking
-        };
-      }));
-    }
-
-    // 2. Get Payouts
-    if (type === 'ALL' || type === 'PAYOUT') {
-      const payoutWhere: any = {};
-
-      if (status !== 'ALL') {
-        payoutWhere.status = status.toLowerCase();
-      }
-      if (dateRange !== 'ALL') {
-        payoutWhere.createdAt = dateFilter;
+      if (!mainTransaction) {
+        return null; // Skip bookings without transactions
       }
 
-      const payouts = await prisma.payout.findMany({
-        where: payoutWhere,
-        include: {
-          stripeAccount: {
-            include: {
-              user: {
-                select: { id: true, name: true, email: true }
-              }
-            }
-          }
+      // Calculate fees
+      const amount = mainTransaction.amount || 0;
+      const stripeFee = amount > 0 ? Math.round(((amount * 0.015) + 0.20) * 100) / 100 : 0;
+      const amountAfterStripeFee = Math.round((amount - stripeFee) * 100) / 100;
+      const platformCommissionRate = mainTransaction.commissionRate || 20;
+      const platformFee = Math.round((amountAfterStripeFee * platformCommissionRate) / 100 * 100) / 100;
+      const fieldOwnerEarnings = Math.round((amountAfterStripeFee - platformFee) * 100) / 100;
+
+      return {
+        id: mainTransaction.id,
+        bookingId: booking.id,
+        type: 'PAYMENT', // Always show as PAYMENT in table, details show refund/payout status
+        amount: amount,
+        stripeFee,
+        amountAfterStripeFee,
+        platformFee,
+        fieldOwnerEarnings,
+        commissionRate: platformCommissionRate,
+        status: mainTransaction.status,
+        description: mainTransaction.description,
+        // Payment identifiers
+        stripePaymentIntentId: paymentTransaction?.stripePaymentIntentId,
+        stripeChargeId: paymentTransaction?.stripeChargeId,
+        stripeBalanceTransactionId: paymentTransaction?.stripeBalanceTransactionId,
+        // Refund identifiers
+        stripeRefundId: refundTransaction?.stripeRefundId,
+        // Lifecycle
+        lifecycleStage: mainTransaction.lifecycleStage,
+        paymentReceivedAt: mainTransaction.paymentReceivedAt || mainTransaction.createdAt,
+        fundsAvailableAt: mainTransaction.fundsAvailableAt,
+        transferredAt: mainTransaction.transferredAt,
+        payoutInitiatedAt: mainTransaction.payoutInitiatedAt,
+        payoutCompletedAt: mainTransaction.payoutCompletedAt,
+        refundedAt: refundTransaction?.refundedAt || refundTransaction?.createdAt,
+        failureCode: mainTransaction.failureCode,
+        failureMessage: mainTransaction.failureMessage,
+        createdAt: booking.createdAt,
+        // Booking details
+        bookingDate: booking.date,
+        bookingStatus: booking.status,
+        // User and field info
+        user: booking.user,
+        booking: {
+          id: booking.id,
+          date: booking.date,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          numberOfDogs: booking.numberOfDogs,
+          totalPrice: booking.totalPrice,
+          status: booking.status,
+          paymentStatus: booking.paymentStatus,
+          payoutStatus: booking.payoutStatus,
+          payoutReleasedAt: booking.payoutReleasedAt,
+          cancellationReason: booking.cancellationReason,
+          cancelledAt: booking.cancelledAt,
+          createdAt: booking.createdAt,
+          field: booking.field
         },
-        orderBy: { createdAt: 'desc' }
-      });
+        // Refund info (if exists)
+        hasRefund: !!refundTransaction,
+        refundAmount: refundTransaction?.amount,
+        refundStatus: refundTransaction?.status,
+        // Payout info from booking
+        payoutStatus: booking.payoutStatus,
+        payoutReleasedAt: booking.payoutReleasedAt
+      };
+    }).filter(t => t !== null); // Remove null entries
 
-      // Get booking details for payouts
-      for (const payout of payouts) {
-        let bookingDetails = null;
-        if (payout.bookingIds && payout.bookingIds.length > 0) {
-          const booking = await prisma.booking.findFirst({
-            where: { id: payout.bookingIds[0] },
-            include: {
-              field: {
-                include: {
-                  owner: {
-                    select: { id: true, name: true, email: true }
-                  }
-                }
-              }
-            }
-          });
-          bookingDetails = booking;
-        }
-
-        // Determine lifecycle stage for payouts based on status
-        let payoutLifecycleStage = 'PAYOUT_INITIATED';
-        if (payout.status.toLowerCase() === 'paid') {
-          payoutLifecycleStage = 'PAYOUT_COMPLETED';
-        } else if (payout.status.toLowerCase() === 'failed') {
-          payoutLifecycleStage = 'FAILED';
-        } else if (payout.status.toLowerCase() === 'canceled' || payout.status.toLowerCase() === 'cancelled') {
-          payoutLifecycleStage = 'CANCELLED';
-        } else if (payout.status.toLowerCase() === 'in_transit') {
-          payoutLifecycleStage = 'PAYOUT_INITIATED';
-        }
-
-        allTransactions.push({
-          id: payout.id,
-          type: 'PAYOUT',
-          amount: payout.amount,
-          status: payout.status.toUpperCase(),
-          description: payout.description,
-          stripePayoutId: payout.stripePayoutId,
-          stripeAccountId: payout.stripeAccountId,
-          arrivalDate: payout.arrivalDate,
-          failureCode: payout.failureCode,
-          failureMessage: payout.failureMessage,
-          createdAt: payout.createdAt,
-          user: payout.stripeAccount?.user,
-          booking: bookingDetails,
-          // Lifecycle stage for payouts
-          lifecycleStage: payoutLifecycleStage,
-          payoutInitiatedAt: payout.createdAt,
-          payoutCompletedAt: payout.status.toLowerCase() === 'paid' ? (payout.arrivalDate || payout.createdAt) : null
-        });
+    // Apply type filter after transformation
+    if (type !== 'ALL') {
+      if (type === 'REFUND') {
+        allTransactions = allTransactions.filter(t => t.hasRefund);
+      } else if (type === 'PAYOUT') {
+        allTransactions = allTransactions.filter(t => t.payoutStatus === 'RELEASED' || t.payoutStatus === 'COMPLETED');
       }
+      // For PAYMENT, show all (default)
     }
 
-    // Sort all transactions by date
-    allTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    // Apply search filter if needed (for payouts that weren't filtered above)
-    if (search && type !== 'PAYMENT' && type !== 'REFUND') {
-      const searchLower = (search as string).toLowerCase();
-      allTransactions = allTransactions.filter(t =>
-        t.description?.toLowerCase().includes(searchLower) ||
-        t.user?.name?.toLowerCase().includes(searchLower) ||
-        t.user?.email?.toLowerCase().includes(searchLower) ||
-        t.booking?.field?.name?.toLowerCase().includes(searchLower) ||
-        t.id.toLowerCase().includes(searchLower)
-      );
+    // Apply status filter
+    if (status !== 'ALL') {
+      allTransactions = allTransactions.filter(t => t.status === status);
     }
 
     // Get total before pagination
