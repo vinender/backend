@@ -242,13 +242,13 @@ model Booking {
   updatedAt DateTime @updatedAt
 
   // Relations
-  user          User           @relation(fields: [userId], references: [id])
-  field         Field          @relation(fields: [fieldId], references: [id])
-  payment       Payment?
-  review        Review?
-  fieldReviews  FieldReview[] // Changed to one-to-many to support optional bookingId
-  transactions  Transaction[]
-  subscription  Subscription?  @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  field        Field         @relation(fields: [fieldId], references: [id])
+  payment      Payment?
+  review       Review?
+  fieldReview  FieldReview?
+  transactions Transaction[]
+  subscription Subscription? @relation("SubscriptionBookings", fields: [subscriptionId], references: [id])
 
   @@index([userId])
   @@index([fieldId])
@@ -368,9 +368,7 @@ model FieldReview {
   user    User     @relation(fields: [userId], references: [id])
   booking Booking? @relation(fields: [bookingId], references: [id])
 
-  // Note: Cannot use @@unique([bookingId]) because MongoDB doesn't allow multiple null values in unique indexes
-  // Business logic should enforce one review per booking when bookingId is present
-  @@index([bookingId]) // Index for lookups
+  @@unique([bookingId]) // Each booking can only have one review
   @@index([fieldId, createdAt])
   @@index([userId])
   @@index([rating])
