@@ -57,7 +57,23 @@ const initBookingStatusJob = () => {
             const bookingsToComplete = todayBookings.filter(booking => {
                 if (!booking.endTime)
                     return false;
-                const [endHour, endMinute] = booking.endTime.split(':').map(Number);
+                // Parse time format (handles both "14:30" and "2:30PM" formats)
+                let endHour = 0;
+                let endMinute = 0;
+                // Check if time includes AM/PM
+                const timeMatch = booking.endTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+                if (timeMatch) {
+                    endHour = parseInt(timeMatch[1]);
+                    endMinute = parseInt(timeMatch[2]);
+                    const period = timeMatch[3]?.toUpperCase();
+                    // Convert to 24-hour format if AM/PM is present
+                    if (period === 'PM' && endHour !== 12) {
+                        endHour += 12;
+                    }
+                    else if (period === 'AM' && endHour === 12) {
+                        endHour = 0;
+                    }
+                }
                 // Check if booking end time has passed
                 if (currentHour > endHour || (currentHour === endHour && currentMinute >= endMinute)) {
                     return true;

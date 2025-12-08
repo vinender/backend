@@ -112,20 +112,27 @@ export class SubscriptionService {
 
     const price = await stripe.prices.create(priceData);
 
-    // Calculate subscription start date (next occurrence)
-    let subscriptionStartDate = new Date();
+    // Calculate next billing date (next occurrence after first booking)
+    let nextBillingDate = new Date();
     if (repeatBooking === 'weekly') {
-      // Find next occurrence of the selected day
-      subscriptionStartDate = this.getNextWeeklyDate(bookingDate);
+      // Next billing is one week after the first booking
+      nextBillingDate = this.getNextWeeklyDate(bookingDate);
     } else {
-      // Monthly - next month on the same date
-      subscriptionStartDate = this.getNextMonthlyDate(bookingDate);
+      // Next billing is one month after the first booking
+      nextBillingDate = this.getNextMonthlyDate(bookingDate);
     }
+
+    // Convert to Unix timestamp for Stripe (seconds since epoch)
+    const billingCycleAnchor = Math.floor(nextBillingDate.getTime() / 1000);
 
     // Create the subscription
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: price.id }],
+      // Set billing cycle to start from the next occurrence after first booking
+      billing_cycle_anchor: billingCycleAnchor,
+      // Don't prorate - charge full amount at each cycle
+      proration_behavior: 'none',
       metadata: {
         userId: user.id,
         fieldId: field.id,
@@ -138,7 +145,8 @@ export class SubscriptionService {
         dayOfMonth: repeatBooking === 'monthly' ? dayOfMonth.toString() : '',
         interval: repeatBooking,
         platformCommission: platformCommission.toString(),
-        fieldOwnerAmount: fieldOwnerAmount.toString()
+        fieldOwnerAmount: fieldOwnerAmount.toString(),
+        firstBookingDate: bookingDate.toISOString()
       },
       payment_behavior: 'default_incomplete',
       payment_settings: {
@@ -789,21 +797,11 @@ export class SubscriptionService {
       }
     }
 
-    // Send notification to user about cancelled bookings
-    if (futureBookings.length > 0) {
-      await createNotification({
-        userId: subscription.userId,
-        type: 'subscription_cancelled',
-        title: 'Recurring Booking Cancelled',
-        message: `Your recurring subscription has been cancelled. ${futureBookings.length} future booking(s) have been cancelled and the time slots are now available.`,
-        data: {
-          subscriptionId: subscription.id,
-          cancelledBookingsCount: futureBookings.length
-        }
-      });
-    }
+    // Note: Notification removed to prevent duplicate toast notifications
+    // Frontend already shows a toast when subscription is cancelled
+    // If you need to add notification back, make sure to suppress toast in NotificationContext
 
-    return stripeSubscription;
+    return subscription;
   }
 
   /**
