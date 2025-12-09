@@ -481,9 +481,7 @@ class FieldModel {
     let fieldsWithAvailability: string[] | undefined = undefined;
 
     if (where.date) {
-      console.log('🔍 Date filter triggered:', where.date);
       const dayOfWeek = new Date(where.date).toLocaleDateString('en-US', { weekday: 'long' });
-      console.log('🔍 Looking for fields operating on:', dayOfWeek);
 
       // Don't add operating days to whereClause - we'll check ALL fields manually
       // This ensures we scan every field for availability
@@ -525,19 +523,39 @@ class FieldModel {
         },
       });
 
-      console.log(`🔍 Found ${candidateFields.length} total active fields to check`);
 
       // For each field, check if it operates on this day AND has at least one available slot
       fieldsWithAvailability = [];
 
       for (const field of candidateFields) {
         // First check if this field operates on the selected day
-        if (!field.operatingDays || !field.operatingDays.includes(dayOfWeek)) {
-          console.log(`⏭️  Skipping "${field.name}" - doesn't operate on ${dayOfWeek}`);
-          continue;
+        // Need to expand "everyday", "weekdays", "weekends" to actual days
+        const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const weekends = ['Saturday', 'Sunday'];
+
+        let fieldOperatesOnThisDay = false;
+        if (field.operatingDays) {
+          for (const opDay of field.operatingDays) {
+            if (opDay === 'everyday') {
+              fieldOperatesOnThisDay = true;
+              break;
+            } else if (opDay === 'weekdays' && weekdays.includes(dayOfWeek)) {
+              fieldOperatesOnThisDay = true;
+              break;
+            } else if (opDay === 'weekends' && weekends.includes(dayOfWeek)) {
+              fieldOperatesOnThisDay = true;
+              break;
+            } else if (opDay === dayOfWeek) {
+              // Direct day name match (in case individual days are stored)
+              fieldOperatesOnThisDay = true;
+              break;
+            }
+          }
         }
 
-        console.log(`✅ Checking "${field.name}" - operates on ${dayOfWeek}`);
+        if (!fieldOperatesOnThisDay) {
+          continue;
+        }
 
         // Get all CONFIRMED bookings for this field on this date
         const bookings = await prisma.booking.findMany({
@@ -554,8 +572,6 @@ class FieldModel {
             endTime: true,
           },
         });
-
-        console.log(`   📅 Found ${bookings.length} confirmed bookings for "${field.name}"`);
 
         // Generate all possible time slots for this field
         const openTime = field.openingTime || '06:00';
@@ -580,8 +596,6 @@ class FieldModel {
           });
         }
 
-        console.log(`   🕐 Generated ${allSlots.length} possible time slots for "${field.name}"`);
-
         // Check if any slot is available (not booked)
         const bookedSlots = bookings.map(booking => ({
           start: timeToMinutes(booking.startTime),
@@ -597,14 +611,9 @@ class FieldModel {
         });
 
         if (hasAvailableSlot) {
-          console.log(`   ✅ "${field.name}" HAS available slots!`);
           fieldsWithAvailability.push(field.id);
-        } else {
-          console.log(`   ❌ "${field.name}" is fully booked`);
         }
       }
-
-      console.log(`\n🎯 Final result: ${fieldsWithAvailability.length} fields with availability`);
 
       // If no fields have availability, return empty results
       if (fieldsWithAvailability.length === 0) {
