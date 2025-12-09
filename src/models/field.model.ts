@@ -476,74 +476,324 @@ class FieldModel {
       whereClause.instantBooking = where.instantBooking;
     }
 
-    // Date and time availability filter (basic implementation)
+    // Date and time availability filter
+    // Step 1: Filter by operating day
+    let fieldsWithAvailability: string[] | undefined = undefined;
+
     if (where.date) {
+      console.log('🔍 Date filter triggered:', where.date);
       const dayOfWeek = new Date(where.date).toLocaleDateString('en-US', { weekday: 'long' });
-      whereClause.operatingDays = {
-        has: dayOfWeek,
-      };
-    }
+      console.log('🔍 Looking for fields operating on:', dayOfWeek);
 
-    // Availability time filter (Morning, Afternoon, Evening)
-    // Morning: 6:00 AM - 12:00 PM (fields that open before or at 12:00)
-    // Afternoon: 12:00 PM - 5:00 PM (fields open during afternoon hours)
-    // Evening: 5:00 PM onwards (fields that close at or after 17:00)
-    if (where.availability && where.availability.length > 0) {
-      const availabilityConditions: any[] = [];
+      // Don't add operating days to whereClause - we'll check ALL fields manually
+      // This ensures we scan every field for availability
 
-      // Helper to convert time string to minutes for comparison
-      const timeToMinutes = (timeStr: string): number => {
-        if (!timeStr) return 0;
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        return hours * 60 + (minutes || 0);
-      };
+      // Step 2: Check which fields have available slots on this specific date
+      // Get start and end of the selected date
+      const selectedDate = new Date(where.date);
+      // Normalize the date to start of day in UTC
+      const startOfDay = new Date(Date.UTC(
+        selectedDate.getUTCFullYear(),
+        selectedDate.getUTCMonth(),
+        selectedDate.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      const endOfDay = new Date(Date.UTC(
+        selectedDate.getUTCFullYear(),
+        selectedDate.getUTCMonth(),
+        selectedDate.getUTCDate(),
+        23, 59, 59, 999
+      ));
 
-      for (const slot of where.availability) {
-        if (slot.toLowerCase() === 'morning') {
-          // Morning: Fields that have opening time before or at 12:00 (noon)
-          // This means the field is open during at least part of the morning
-          availabilityConditions.push({
-            OR: [
-              { openingTime: { lte: '12:00' } },
-              { openingTime: null } // Include fields without set times (assume available)
-            ]
+      console.log('🔍 Date range for bookings:', { startOfDay, endOfDay });
+
+      // Get ALL active approved fields (don't filter by operating days - we'll check that per field)
+      const candidateFields = await prisma.field.findMany({
+        where: {
+          isActive: true,
+          isSubmitted: true,
+          isApproved: true,
+          isBlocked: false,
+        },
+        select: {
+          id: true,
+          name: true,
+          openingTime: true,
+          closingTime: true,
+          bookingDuration: true,
+          operatingDays: true,
+        },
+      });
+
+      console.log(`🔍 Found ${candidateFields.length} total active fields to check`);
+
+      // For each field, check if it operates on this day AND has at least one available slot
+      fieldsWithAvailability = [];
+
+      for (const field of candidateFields) {
+        // First check if this field operates on the selected day
+        if (!field.operatingDays || !field.operatingDays.includes(dayOfWeek)) {
+          console.log(`⏭️  Skipping "${field.name}" - doesn't operate on ${dayOfWeek}`);
+          continue;
+        }
+
+        console.log(`✅ Checking "${field.name}" - operates on ${dayOfWeek}`);
+
+        // Get all CONFIRMED bookings for this field on this date
+        const bookings = await prisma.booking.findMany({
+          where: {
+            fieldId: field.id,
+            date: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+            status: 'CONFIRMED',
+          },
+          select: {
+            startTime: true,
+            endTime: true,
+          },
+        });
+
+        console.log(`   📅 Found ${bookings.length} confirmed bookings for "${field.name}"`);
+
+        // Generate all possible time slots for this field
+        const openTime = field.openingTime || '06:00';
+        const closeTime = field.closingTime || '22:00';
+        const slotDuration = field.bookingDuration === '30min' ? 30 : 60;
+
+        // Convert time string to minutes
+        const timeToMinutes = (timeStr: string): number => {
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          return hours * 60 + (minutes || 0);
+        };
+
+        const openMinutes = timeToMinutes(openTime);
+        const closeMinutes = timeToMinutes(closeTime);
+
+        // Generate all possible slots
+        const allSlots: Array<{ start: number; end: number }> = [];
+        for (let time = openMinutes; time < closeMinutes; time += slotDuration) {
+          allSlots.push({
+            start: time,
+            end: time + slotDuration,
           });
-        } else if (slot.toLowerCase() === 'afternoon') {
-          // Afternoon: Fields that are open during 12:00 PM - 5:00 PM
-          // Opening time should be before 17:00 AND closing time should be after 12:00
-          availabilityConditions.push({
-            AND: [
-              {
-                OR: [
-                  { openingTime: { lt: '17:00' } },
-                  { openingTime: null }
-                ]
-              },
-              {
-                OR: [
-                  { closingTime: { gt: '12:00' } },
-                  { closingTime: null }
-                ]
-              }
-            ]
-          });
-        } else if (slot.toLowerCase() === 'evening') {
-          // Evening: Fields that close at or after 17:00
-          availabilityConditions.push({
-            OR: [
-              { closingTime: { gte: '17:00' } },
-              { closingTime: null } // Include fields without set times
-            ]
-          });
+        }
+
+        console.log(`   🕐 Generated ${allSlots.length} possible time slots for "${field.name}"`);
+
+        // Check if any slot is available (not booked)
+        const bookedSlots = bookings.map(booking => ({
+          start: timeToMinutes(booking.startTime),
+          end: timeToMinutes(booking.endTime),
+        }));
+
+        const hasAvailableSlot = allSlots.some(slot => {
+          return !bookedSlots.some(booked =>
+            (slot.start >= booked.start && slot.start < booked.end) ||
+            (slot.end > booked.start && slot.end <= booked.end) ||
+            (slot.start <= booked.start && slot.end >= booked.end)
+          );
+        });
+
+        if (hasAvailableSlot) {
+          console.log(`   ✅ "${field.name}" HAS available slots!`);
+          fieldsWithAvailability.push(field.id);
+        } else {
+          console.log(`   ❌ "${field.name}" is fully booked`);
         }
       }
 
-      if (availabilityConditions.length > 0) {
-        // Use OR to match any of the selected time slots
+      console.log(`\n🎯 Final result: ${fieldsWithAvailability.length} fields with availability`);
+
+      // If no fields have availability, return empty results
+      if (fieldsWithAvailability.length === 0) {
+        return { fields: [], total: 0 };
+      }
+
+      // Add to where clause
+      if (whereClause.AND) {
+        whereClause.AND.push({ id: { in: fieldsWithAvailability } });
+      } else {
+        whereClause.AND = [{ id: { in: fieldsWithAvailability } }];
+      }
+    }
+
+    // Availability time filter (Morning, Afternoon, Evening)
+    // When combined with date filter, further narrow down to specific time periods with available slots
+    if (where.availability && where.availability.length > 0) {
+      if (where.date && fieldsWithAvailability) {
+        // If date is also specified, filter fields that have available slots in specific time periods
+        const selectedDate = new Date(where.date);
+        const startOfDay = new Date(Date.UTC(
+          selectedDate.getFullYear(),
+          selectedDate.getMonth(),
+          selectedDate.getDate(),
+          0, 0, 0, 0
+        ));
+        const endOfDay = new Date(Date.UTC(
+          selectedDate.getFullYear(),
+          selectedDate.getMonth(),
+          selectedDate.getDate(),
+          23, 59, 59, 999
+        ));
+
+        const fieldsWithTimeAvailability: string[] = [];
+
+        // Define time ranges for availability slots (in minutes)
+        const timeRanges: Record<string, { start: number; end: number }> = {
+          morning: { start: 6 * 60, end: 12 * 60 }, // 6:00 AM - 12:00 PM
+          afternoon: { start: 12 * 60, end: 17 * 60 }, // 12:00 PM - 5:00 PM
+          evening: { start: 17 * 60, end: 22 * 60 }, // 5:00 PM - 10:00 PM
+        };
+
+        // Helper to convert time string to minutes
+        const timeToMinutes = (timeStr: string): number => {
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          return hours * 60 + (minutes || 0);
+        };
+
+        // Check each field for available slots in the requested time periods
+        for (const fieldId of fieldsWithAvailability) {
+          const field = await prisma.field.findUnique({
+            where: { id: fieldId },
+            select: {
+              openingTime: true,
+              closingTime: true,
+              bookingDuration: true,
+            },
+          });
+
+          if (!field) continue;
+
+          // Get bookings for this field on this date
+          const bookings = await prisma.booking.findMany({
+            where: {
+              fieldId,
+              date: {
+                gte: startOfDay,
+                lte: endOfDay,
+              },
+              status: 'CONFIRMED',
+            },
+            select: {
+              startTime: true,
+              endTime: true,
+            },
+          });
+
+          const openTime = field.openingTime || '06:00';
+          const closeTime = field.closingTime || '22:00';
+          const slotDuration = field.bookingDuration === '30min' ? 30 : 60;
+
+          const openMinutes = timeToMinutes(openTime);
+          const closeMinutes = timeToMinutes(closeTime);
+
+          // Generate all possible slots
+          const allSlots: Array<{ start: number; end: number }> = [];
+          for (let time = openMinutes; time < closeMinutes; time += slotDuration) {
+            allSlots.push({
+              start: time,
+              end: time + slotDuration,
+            });
+          }
+
+          const bookedSlots = bookings.map(booking => ({
+            start: timeToMinutes(booking.startTime),
+            end: timeToMinutes(booking.endTime),
+          }));
+
+          // Check if field has available slots in any of the requested time periods
+          let hasAvailableInRequestedTime = false;
+
+          for (const availabilitySlot of where.availability) {
+            const slotKey = availabilitySlot.toLowerCase();
+            if (!timeRanges[slotKey]) continue;
+
+            const { start: periodStart, end: periodEnd } = timeRanges[slotKey];
+
+            // Check if any slot in this time period is available
+            const hasSlotInPeriod = allSlots.some(slot => {
+              // Slot must overlap with the requested time period
+              const overlapsPeriod = slot.start < periodEnd && slot.end > periodStart;
+              if (!overlapsPeriod) return false;
+
+              // Slot must not be booked
+              const isBooked = bookedSlots.some(booked =>
+                (slot.start >= booked.start && slot.start < booked.end) ||
+                (slot.end > booked.start && slot.end <= booked.end) ||
+                (slot.start <= booked.start && slot.end >= booked.end)
+              );
+
+              return !isBooked;
+            });
+
+            if (hasSlotInPeriod) {
+              hasAvailableInRequestedTime = true;
+              break;
+            }
+          }
+
+          if (hasAvailableInRequestedTime) {
+            fieldsWithTimeAvailability.push(fieldId);
+          }
+        }
+
+        // Update the fields list to only include those with time-specific availability
+        if (fieldsWithTimeAvailability.length === 0) {
+          return { fields: [], total: 0 };
+        }
+
+        // Replace the fieldsWithAvailability constraint with the more specific one
         if (whereClause.AND) {
-          whereClause.AND.push({ OR: availabilityConditions });
-        } else {
-          whereClause.AND = [{ OR: availabilityConditions }];
+          whereClause.AND = whereClause.AND.filter((clause: any) => !clause.id?.in);
+          whereClause.AND.push({ id: { in: fieldsWithTimeAvailability } });
+        }
+      } else {
+        // No date specified, just filter by operating hours
+        const availabilityConditions: any[] = [];
+
+        for (const slot of where.availability) {
+          if (slot.toLowerCase() === 'morning') {
+            availabilityConditions.push({
+              OR: [
+                { openingTime: { lte: '12:00' } },
+                { openingTime: null }
+              ]
+            });
+          } else if (slot.toLowerCase() === 'afternoon') {
+            availabilityConditions.push({
+              AND: [
+                {
+                  OR: [
+                    { openingTime: { lt: '17:00' } },
+                    { openingTime: null }
+                  ]
+                },
+                {
+                  OR: [
+                    { closingTime: { gt: '12:00' } },
+                    { closingTime: null }
+                  ]
+                }
+              ]
+            });
+          } else if (slot.toLowerCase() === 'evening') {
+            availabilityConditions.push({
+              OR: [
+                { closingTime: { gte: '17:00' } },
+                { closingTime: null }
+              ]
+            });
+          }
+        }
+
+        if (availabilityConditions.length > 0) {
+          if (whereClause.AND) {
+            whereClause.AND.push({ OR: availabilityConditions });
+          } else {
+            whereClause.AND = [{ OR: availabilityConditions }];
+          }
         }
       }
     }

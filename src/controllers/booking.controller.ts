@@ -271,7 +271,7 @@ class BookingController {
         rescheduleCount: true,
         createdAt: true,
         updatedAt: true,
-        fieldReview: {
+        review: {
           select: {
             id: true,
             rating: true,
@@ -581,7 +581,7 @@ class BookingController {
               email: true,
             },
           },
-          fieldReview: {
+          fieldReviews: {
             select: {
               id: true,
               rating: true,
@@ -595,6 +595,7 @@ class BookingController {
               interval: true,
               dayOfWeek: true,
               dayOfMonth: true,
+              lastBookingDate: true,
               nextBillingDate: true,
               currentPeriodEnd: true,
               cancelAtPeriodEnd: true,
@@ -753,15 +754,34 @@ class BookingController {
               return result;
             };
 
-            // Calculate the correct next billing date based on interval
-            let calculatedNextBillingDate: Date | null = sub.nextBillingDate ? new Date(sub.nextBillingDate) : null;
+            // Calculate the correct next billing date based on lastBookingDate and interval
+            // This represents the next date when a booking will be created
+            let calculatedNextBillingDate: Date | null = null;
 
-            // If nextBillingDate is in the past, calculate the next future billing date
-            if (calculatedNextBillingDate && calculatedNextBillingDate < now) {
-              calculatedNextBillingDate = calculateNextDate(calculatedNextBillingDate, sub.interval);
+            if (sub.lastBookingDate) {
+              // Calculate next booking date from last booking date
+              const lastBooking = new Date(sub.lastBookingDate);
+              if (sub.interval === 'everyday') {
+                calculatedNextBillingDate = new Date(lastBooking);
+                calculatedNextBillingDate.setDate(calculatedNextBillingDate.getDate() + 1);
+              } else if (sub.interval === 'weekly') {
+                calculatedNextBillingDate = new Date(lastBooking);
+                calculatedNextBillingDate.setDate(calculatedNextBillingDate.getDate() + 7);
+              } else if (sub.interval === 'monthly') {
+                calculatedNextBillingDate = new Date(lastBooking);
+                calculatedNextBillingDate.setMonth(calculatedNextBillingDate.getMonth() + 1);
+              }
+            } else {
+              // Fallback to stored nextBillingDate if no lastBookingDate
+              calculatedNextBillingDate = sub.nextBillingDate ? new Date(sub.nextBillingDate) : null;
+
+              // If nextBillingDate is in the past, calculate the next future billing date
+              if (calculatedNextBillingDate && calculatedNextBillingDate < now) {
+                calculatedNextBillingDate = calculateNextDate(calculatedNextBillingDate, sub.interval);
+              }
             }
 
-            // Also check currentPeriodEnd as fallback
+            // Also check currentPeriodEnd as fallback if still no valid date
             if (!calculatedNextBillingDate || calculatedNextBillingDate < now) {
               if (sub.currentPeriodEnd && new Date(sub.currentPeriodEnd) > now) {
                 calculatedNextBillingDate = new Date(sub.currentPeriodEnd);
